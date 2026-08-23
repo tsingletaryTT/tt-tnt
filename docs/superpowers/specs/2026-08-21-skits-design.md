@@ -84,7 +84,7 @@ pipeline would make every downstream number unattributable.
 
 Each model turn gets a think-block derived from the scene so far plus the turn it precedes. The
 one change from stage 1: **`offer` is the preceding partner turn**, not the prefix's tail. For
-turn 1 there is no partner yet, so `offer` is the prefix's final sentence. That change is what
+turn 1 there is no partner yet, so `offer` is the whole two-sentence prefix. **Erratum (2026-08-23):** this line originally read "the prefix's final sentence". The implementation has always used both prefix sentences, and the published stage-2 measurement rests on that form, so the code is authoritative and this line is corrected to match. Pinned by `tests/test_skit.py::test_offer_of_block_0_is_the_whole_prefix_not_its_last_sentence`. That change is what
 gives `accept` something real to accept.
 
 Reuses `train.improv`'s `split_sentences`, `content_words`, `extract_slots`, `render_think`, and

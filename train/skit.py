@@ -70,9 +70,16 @@ def _slots_for_turn(offer_text: str, established: List[str], turn: str, prev_tur
                     intensity: Callable[[str], float]) -> Optional[Slots]:
     """Derive one block, or None to drop the skit.
 
-    `offer_text` is the IMMEDIATELY PRECEDING span — the partner's turn, or the prefix's
-    last sentence for the first block. That is what makes `accept` mean accepting an offer
-    rather than merely repeating a word from somewhere in the scene.
+    `offer_text` is the IMMEDIATELY PRECEDING span — the partner's turn for blocks 1 and 2,
+    or, for block 0, the WHOLE two-sentence prefix (there is no partner turn yet). That is
+    what makes `accept` mean accepting an offer rather than merely repeating a word from
+    somewhere in the scene.
+
+    NOTE on block 0: the design spec (2026-08-21-skits-design.md) says "the prefix's final
+    sentence" here. The code uses both prefix sentences and always has; the spec sentence is
+    an erratum, not a description of behaviour. The published stage-2 measurement rests on
+    the two-sentence form, so the code is authoritative and the spec is corrected to match.
+    `test_offer_of_block_0_is_the_whole_prefix_not_its_last_sentence` pins this.
 
     `established` is every content word in the scene so far, which is what `add` is measured
     against: a word already in play is not an addition even if this particular turn is the

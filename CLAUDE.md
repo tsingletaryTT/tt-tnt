@@ -1950,8 +1950,69 @@ budget, so `--limit 200000` yields ~19,210 skits — stage-1-comparable at zero 
 Relaxing the accept/add gates to raise yield would buy examples by destroying the measurement:
 those gates *are* the falsifiable prediction that makes stage 2 different from stage 1.
 
-**Still open.** Tasks 3-8 unstarted. Task 4 must re-derive at `--limit 200000` before training,
-and its `stochastic_rounding` assertion must read the flag back out of
-`trainer.optimizer.get_state_dict()` rather than trust the config handed in — the warm-start base
-carries exactly 17 gamma tensors, the same 17 stage 1 found frozen bit-identical for 3000 steps
-because that flag defaults off on the SFT path.
+**Resolved.** Both were done: derivation re-ran at `--limit 200000` (18,610 skits, within 1% of
+stage 1's 18,791 — the earlier "~19,210" was a projection), and the `stochastic_rounding` guard
+reads `trainer.optimizer.get_state_dict()` and was proven by deliberately breaking it on hardware,
+where it raised before step 1.
+
+## 2026-08-23 — skits, tasks 3-5: the result, and the control that cut it by 4.5×
+
+Stage 2 shipped. Suite **1212 passed, 2 skipped**. Verdict **PARTIAL**, published in
+`docs/measurements/skits-stage2.json`.
+
+**The headline is `add`, not `accept`.** Stage 1 moved 0 of 4 scorers. Stage 2's think arm beats
+its shuffled control on all four — but the shuffled control breaks two links at once, the
+block↔turn link *and* the shared-context link, so its gap conflates plan-following with the model
+echoing a scene it can already see. The implementer added a second control I had not asked for —
+score the same block against the *no-think* arm's turn for the same skit — and it cut `accept`'s
+effect from **+0.603 to +0.134**. Reviewing that control turned up a confound its author could not
+see: the arms are separately trained models, so the contrast is plan-presence ⊕ arm-identity.
+Bounding the arm term with the cross-arm reference test gives `accept` **+0.083**, `stakes`
+**+0.017** (withdrawn — barely above its own arm term), and `add` **+0.348** — where the confound
+carries the *opposite* sign, so `add` is biased downward. There is a mechanism: the `add` word is
+already visible in the context only ~40% of the time versus **92.8%** for `accept`, which is mostly
+the protagonist's name. The slot that looked weakest is the only one measuring what we claimed.
+The artifact says outright "THE CLAIM IS NOT 'all four slots move'", and the withdrawal rule is
+code (`CONFOUND_WITHDRAW_SHARE`), not a judgement applied by hand.
+
+**A story that felt true and wasn't.** "The mechanism that gives plan-following also gives looping"
+explained a real failure — the think arm repeats itself more (0.058 vs 0.023, t=4.234). It is
+wrong. Correlation with plan-following is **+0.039**; correlation with the block repeating the
+*same* word across all three turns is **+0.283**. Those 32 of 256 skits average 0.147 against
+0.045, and removing them drops t to 2.699 — below threshold, NOT INTERPRETABLE. A model following a
+*varied* plan does not loop. The fix proposed under the wrong mechanism (score blocks for novelty
+across turns) happens to be the right fix for the real one.
+
+**Ten hollow tests, and the tenth changed the diagnosis.** Nine were value-level: assertions that
+held against both correct and incorrect code. The tenth is a class, not an instance — whole
+*decision functions* that appear in no test file and are reached only through a driver. Four
+mutations in that class each rewrote a published claim while all 1,212 tests passed: inverting one
+word at the degeneration call site flipped the artifact's verdict from PARTIAL to "STAGE 2
+SUCCESS"; swapping two arguments flipped every arm-quality proxy and restored the withdrawn slot to
+headline; reversing `score_pair`'s positional args manufactured a significant finding. Fixing
+instances one at a time had not converged — the verdict wiring was pulled into a tested function
+and the *withdrawal machinery added in the same commit* got no test at all.
+
+**The threshold ruling paid for itself.** Requiring this eval to define its own Bonferroni
+constants (α=0.05/11, t=2.843) rather than import stage 1's (0.01/2.576) was defensive when
+written. Cross-arm `accept` landed at t=2.698 and `escalation` at 2.594 — both *between* the two
+thresholds. Importing stage 1's would have manufactured two findings, one of them
+"the think arm accepts offers better".
+
+**What the eval population actually is.** 90.7% of stories drop. Three sequential gates each
+demand a carried word and a fresh word, and they multiply (~0.46³). The corpus is 54.6% dialogue by
+story and the kept skits are 31.0% — a **43% relative loss**, because the sentence splitter
+fragments dialogue-with-attribution and those skits then fail the accept gate. We are measuring the
+monologic residue. Reading a derived skit shows the deeper problem: the "partner turn" is the same
+narrator's next sentence, not a second voice, which is why `handback_anticipation` tops out at
+0.119 on ground truth. A probe of alternation-by-position (five or more quoted utterances, roles by
+index parity) finds **18.8% of stories usable → ~80,000 skits**, four times what we trained on, and
+produces real yes-and structure. That is skits-v2.
+
+**Process.** An unleased `import ttml` happened a fifth time, always the same way — importing the
+package to check it exists (`importlib.util.find_spec` is the tool; the lesson is now in the global
+CLAUDE.md). A test-fix agent held a mutant on disk for 2m29s while an eval ran concurrently; it was
+harmless only because the mutant touched `labels` and the reader consumed `input_ids` — luck, not
+design, so mutations are now serialised against live runs. `scripts/eval_skits.py --rescore-from`
+re-derives every published number from stored generations with no model, tokenizer, or device,
+verified under an import blocker that raises on `torch`/`transformers`/`ttnn`/`ttml`.

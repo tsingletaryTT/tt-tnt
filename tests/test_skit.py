@@ -117,3 +117,36 @@ def test_segments_supervise_only_think_blocks_and_model_turns():
         assert all(s.turns[partner_idx] not in text for text in supervised), (
             "a partner turn leaked into the supervised region; the model must learn to "
             "READ a partner turn, not produce one")
+
+
+# Fixture note: STORY above cannot distinguish the two candidate offer spans for block 0 --
+# its prefix sentences share 'aardvark', so whole-prefix and last-sentence give the same
+# accept. This story is built so the prefix's FIRST sentence contributes a carried word
+# ('kettle') that its second does not, which is what makes the assertion discriminating.
+PREFIX_STORY = ("Kettle gleams. Otter waits. "
+                "Kettle otter hums. Hums badger. "
+                "Badger yawns. Yawns cactus. "
+                "Cactus drifts.")
+
+
+def test_offer_of_block_0_is_the_whole_prefix_not_its_last_sentence():
+    """Block 0 has no partner turn, so its offer is BOTH prefix sentences.
+
+    The design spec says "the prefix's final sentence"; the code has always used both, and
+    the published stage-2 measurement rests on the two-sentence form. This test pins the
+    real behaviour so the spec erratum cannot be "fixed" into a silent measurement change.
+    """
+    s = derive_skit(PREFIX_STORY, story_id=0,
+                    idf={w: 1.0 for w in ("kettle", "otter", "hums", "badger",
+                                          "yawns", "cactus", "drifts")},
+                    intensity=lambda t: 0.0)
+    assert s is not None
+    assert s.prefix == "Kettle gleams. Otter waits."
+    offer_words = set(content_words(s.blocks[0].offer))
+    # 'kettle' and 'gleams' come from the prefix's FIRST sentence -- present only if the
+    # whole prefix is the offer span.
+    assert "kettle" in offer_words, f"block 0's offer lost the first prefix sentence: {offer_words}"
+    assert "gleams" in offer_words, f"block 0's offer lost the first prefix sentence: {offer_words}"
+    # and it must actually reach `accept`, which is the slot the offer span determines
+    assert "kettle" in set(content_words(s.blocks[0].accept)), (
+        "a word carried from the prefix's first sentence must be able to reach accept")
