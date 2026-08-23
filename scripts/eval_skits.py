@@ -68,13 +68,12 @@ from scripts.eval_improv import (  # noqa: E402
 )
 from scripts.score_improv import (  # noqa: E402
     build_association,
-    intensity,
     load_closure_lexicon,
     load_harm_lexicon,
     score_pair,
 )
 from scripts.score_skits import SLOT_NAMES, SlotHits, score_block, slot_accuracy  # noqa: E402
-from train.improv import parse_think, render_think, split_sentences  # noqa: E402
+from train.improv import content_words, parse_think, render_think, split_sentences  # noqa: E402
 from train.skit import MODEL_TURNS  # noqa: E402
 
 #: Four slots + pooled accuracy + four failure-mode scorers + adherence + degeneration.
@@ -139,6 +138,126 @@ _WORD_RE = re.compile(r"[A-Za-z']+")
 # ---------------------------------------------------------------------------------------
 # Statistics.
 # ---------------------------------------------------------------------------------------
+
+
+#: Direction for the two auxiliary tests, declared the same way `SLOT_DIRECTIONS` is and for
+#: the same reason. A code-review mutation of the literal `"lower"` at the degeneration call
+#: site passed all 27 tests and flipped the artifact's top-level verdict from PARTIAL to
+#: "STAGE 2 SUCCESS" — the direction was written inline, in the driver, where no test could
+#: see it. Both call sites now read this table, and `score_and_assemble` (a called function
+#: with a fixture test) is what exercises them.
+AUX_DIRECTIONS = {"adherence": "higher", "degeneration": "lower"}
+
+#: A slot's plan-following claim is WITHDRAWN when the arm-quality proxy explains at least
+#: this share of its context-only gap. See `decompose_confound` for what the proxy is and
+#: why it is a sensitivity bound rather than a correction.
+CONFOUND_WITHDRAW_SHARE = 0.5
+
+
+def evaluate_success_criteria(*, adherence_think: Sequence[float],
+                              gaps: Dict[str, Optional[float]],
+                              contrasts: Dict[str, Dict[str, object]],
+                              degeneration_test: Dict[str, object],
+                              swap_is_load_bearing: bool) -> Dict[str, object]:
+    """The plan's four gates, as a called function rather than inline driver code.
+
+    Every one of these is a one-token edit away from inverting: `>= 2` to `>= 1`, `!=` to
+    `==`, `0.80` to `0.08`. Inline in `main()` none of them was reachable by a test, and a
+    mutation of exactly this kind (the degeneration direction) turned a PARTIAL verdict into
+    "STAGE 2 SUCCESS" while all 27 tests stayed green.
+    """
+    materially_positive = sum(1 for slot in SLOT_NAMES
+                              if (gaps.get(slot) or 0.0) > 0.05
+                              and contrasts[slot].get("verdict") not in
+                              ("NOT INTERPRETABLE", "NO DATA"))
+    success: Dict[str, object] = {
+        "adherence_at_least_0_80_at_every_turn": all(a >= 0.80 for a in adherence_think),
+        "shuffled_gap_materially_positive_on_at_least_2_of_4_slots": materially_positive >= 2,
+        "degeneration_no_worse_than_the_no_think_arm": (
+            degeneration_test["verdict"] != "no-think better"),
+        "swap_test_shows_continuations_do_change": bool(swap_is_load_bearing),
+    }
+    success["all_criteria_met"] = all(bool(v) for v in success.values())
+    return success
+
+
+def decompose_confound(context_only_gaps: Dict[str, Optional[float]],
+                       arm_tests: Dict[str, Dict[str, object]],
+                       degenerate_slots: Sequence[str] = ("handback_anticipation",)
+                       ) -> Dict[str, Dict[str, object]]:
+    """Split each context-only gap into an arm-quality proxy and a residual.
+
+    THE CONTROL IS NOT "SAME EVERYTHING". The context-only floor scores the think arm's
+    block against the NO-THINK arm's turn, and those are SEPARATELY TRAINED MODELS — so the
+    contrast is plan-presence PLUS arm identity, not plan-presence alone. It is also only
+    strictly same-context at turn position 0: `roll_forward` feeds each arm its own prior
+    turns, so by position 2 the two arms are continuing different scenes of their own making.
+
+    The cross-arm reference test (the ground-truth block scored against each arm's turn,
+    which neither arm ever sees) is the best available proxy for the arm-identity part. It
+    is itself NOT significant, so this is a SENSITIVITY BOUND, not a correction — the
+    residual is what survives if the entire non-significant arm difference were real.
+
+    Rules, and each is a claim about what may be published:
+      * a slot whose control is degenerate by construction -> "not measurable"
+      * proxy >= CONFOUND_WITHDRAW_SHARE of the gap -> "withdrawn"
+      * proxy < 0 (the confound points the OTHER way) -> "headline", biased downward
+      * otherwise -> "bounded": at most the gap, plausibly the residual
+    """
+    out: Dict[str, Dict[str, object]] = {}
+    for slot in SLOT_NAMES:
+        gap = context_only_gaps.get(slot)
+        proxy = arm_tests.get(slot, {}).get("mean_delta")
+        if slot in degenerate_slots or gap is None or proxy is None:
+            out[slot] = {"context_only_gap": gap, "arm_quality_proxy": proxy,
+                         "residual": None, "claim": "not measurable",
+                         "why": ("the context-only control is degenerate for this slot — "
+                                 "score_block reads only the block's handback value and the "
+                                 "corpus next-partner turn, which is identical in both "
+                                 "conditions, so the gap is forced to 0.0000")}
+            continue
+        residual = round(gap - float(proxy), 4)
+        if float(proxy) >= CONFOUND_WITHDRAW_SHARE * gap:
+            claim, why = "withdrawn", (
+                f"the arm-quality proxy ({proxy:+.4f}) explains at least "
+                f"{CONFOUND_WITHDRAW_SHARE:.0%} of the {gap:+.4f} gap — this slot must NOT "
+                f"be published as plan-following")
+        elif float(proxy) < 0:
+            claim, why = "headline", (
+                f"the confound points the OTHER way ({proxy:+.4f}), so {gap:+.4f} is biased "
+                f"DOWNWARD — this is the safest slot to publish")
+        else:
+            claim, why = "bounded", (
+                f"at most {gap:+.4f}, plausibly ~{residual:+.4f} once the (non-significant) "
+                f"arm-quality proxy {proxy:+.4f} is subtracted")
+        out[slot] = {"context_only_gap": gap, "arm_quality_proxy": round(float(proxy), 4),
+                     "residual": residual, "claim": claim, "why": why}
+    return out
+
+
+def slot_value_visibility(val_skits: Sequence[dict], slots_think: Sequence[Sequence[Any]],
+                          slot: str) -> Optional[float]:
+    """How often a generated slot's value was ALREADY VISIBLE in the context.
+
+    This is the mechanism behind the confound decomposition, measured rather than asserted:
+    if a slot's value is usually already on the page, a turn written without any block hits
+    it anyway, and the context-only floor is high. `accept` is mostly the protagonist's
+    name; `add` names something new by definition.
+    """
+    seen = hits = 0
+    for j, skit in enumerate(val_skits):
+        for i, t_idx in enumerate(MODEL_TURNS):
+            block = slots_think[j][i]
+            if block is None:
+                continue
+            value = getattr(block, slot, "") if not isinstance(block, dict) else block.get(slot, "")
+            want = set(content_words(value))
+            if not want:
+                continue
+            context = skit["prefix"] + " " + " ".join(skit["turns"][:t_idx])
+            seen += 1
+            hits += bool(want & set(content_words(context)))
+    return round(hits / seen, 4) if seen else None
 
 
 def paired_verdict(a: Sequence[float], b: Sequence[float], direction: str) -> Dict[str, object]:
@@ -626,6 +745,496 @@ def _context_for(skit: dict, t_idx: int) -> Tuple[str, Optional[str]]:
     return prev, nxt
 
 
+def _block_dict(block: Any) -> Optional[Dict[str, str]]:
+    """A generated block as a plain dict, whether it arrived as `Slots` (live run) or as
+    JSON (re-scoring a stored artifact). Both paths must score identically."""
+    if block is None:
+        return None
+    return block if isinstance(block, dict) else block.as_dict()
+
+
+def score_and_assemble(*, val_skits: Sequence[dict], turns_think: Sequence[Sequence[str]],
+                       turns_nothink: Sequence[Sequence[str]],
+                       slots_think: Sequence[Sequence[Any]],
+                       adherence_think: Sequence[float], adherence_nothink: Sequence[float],
+                       adherence_series_think: Sequence[float],
+                       adherence_series_nothink: Sequence[float],
+                       swap_is_load_bearing: bool, harm: frozenset, closure: frozenset,
+                       assoc: Dict[str, object]) -> Dict[str, Any]:
+    """Every scored number and every verdict, as ONE CALLED FUNCTION.
+
+    This used to be inline in `main()`, and that was a hole rather than a style choice: a
+    code review mutated the degeneration direction from "lower" to "higher" — one token, in
+    the driver — and all 27 tests passed while the artifact's top-level verdict changed from
+    PARTIAL to "STAGE 2 SUCCESS". Three sibling call sites (the adherence direction, the
+    `>= 2` success gate, `_context_for`'s next-partner index) had the same property. Wiring
+    that decides a published verdict has to be reachable by a fixture, so it lives here and
+    `tests/test_eval_skits.py` drives it end to end on three synthetic skits.
+
+    Pure: no model, no tokenizer, no device. Given the same stored turns it reproduces the
+    same numbers, which is what makes `--rescore-from` a re-analysis rather than a rerun.
+    """
+    n_model_turns = len(val_skits) * len(MODEL_TURNS)
+    matched_hits: List[SlotHits] = []
+    shuffled_hits: List[SlotHits] = []
+    context_only_hits: List[SlotHits] = []
+    ref_hits_think: List[SlotHits] = []
+    ref_hits_nothink: List[SlotHits] = []
+    n_scorable = 0
+    #: Turns where the model never closed a think-block, so `split_generation` had no block
+    #: to strip and the "turn" it returned is raw template text. See `contamination` below.
+    contaminated: List[Dict[str, Any]] = []
+
+    for j, skit in enumerate(val_skits):
+        other = val_skits[(j + 1) % len(val_skits)]
+        for i, t_idx in enumerate(MODEL_TURNS):
+            prev, nxt = _context_for(skit, t_idx)
+            oprev, onxt = _context_for(other, t_idx)
+            block = _block_dict(slots_think[j][i])
+            if "<think>" in turns_think[j][i]:
+                contaminated.append({"index": j, "story_id": skit["story_id"],
+                                     "turn": t_idx, "turn_text": turns_think[j][i][:120]})
+            if block is not None and turns_think[j][i]:
+                n_scorable += 1
+                matched_hits.append(_score_one(block, turn=turns_think[j][i],
+                                               prev_turn=prev, next_partner=nxt, harm=harm))
+                # The control: this same block against the NEXT skit's model turn at the
+                # same position, with that skit's own surrounding turns — the exact
+                # construction task 3 used to measure the corpus floors.
+                foreign_turn = turns_think[(j + 1) % len(val_skits)][i]
+                shuffled_hits.append(_score_one(block, turn=foreign_turn,
+                                                prev_turn=oprev, next_partner=onxt, harm=harm))
+                # The tighter control: the SAME block against the NO-THINK arm's turn for
+                # THIS skit at THIS position. Same scene, same partner turns — but NOT "same
+                # everything": the no-think arm is a separately trained model, so this
+                # contrast carries plan-presence PLUS arm identity. `confound_decomposition`
+                # below bounds the second part instead of pretending it is absent.
+                context_only_hits.append(_score_one(block, turn=turns_nothink[j][i],
+                                                    prev_turn=prev, next_partner=nxt,
+                                                    harm=harm))
+            ref = skit["blocks"][i]
+            ref_hits_think.append(_score_one(ref, turn=turns_think[j][i], prev_turn=prev,
+                                             next_partner=nxt, harm=harm))
+            ref_hits_nothink.append(_score_one(ref, turn=turns_nothink[j][i], prev_turn=prev,
+                                               next_partner=nxt, harm=harm))
+
+    if matched_hits:
+        assert_control_is_not_the_treatment(matched_hits, shuffled_hits,
+                                            name="shuffled-slot control")
+        assert_control_is_not_the_treatment(matched_hits, context_only_hits,
+                                            name="context-only control")
+    matched_acc = slot_accuracy(matched_hits) if matched_hits else {s: None for s in SLOT_NAMES}
+    shuffled_acc = (slot_accuracy(shuffled_hits) if shuffled_hits
+                    else {s: None for s in SLOT_NAMES})
+    context_only_acc = (slot_accuracy(context_only_hits) if context_only_hits
+                        else {s: None for s in SLOT_NAMES})
+    table = slot_table(matched_acc, shuffled_acc, context_only_acc)
+
+    own_vs_foreign: Dict[str, Dict[str, object]] = {}
+    own_vs_context_only: Dict[str, Dict[str, object]] = {}
+    for slot in SLOT_NAMES:
+        xs, ys = paired_defined([getattr(h, slot) for h in matched_hits],
+                                [getattr(h, slot) for h in shuffled_hits])
+        own_vs_foreign[slot] = (paired_verdict(xs, ys, SLOT_DIRECTIONS[slot]) if xs
+                                else {"verdict": "NO DATA", "n": 0})
+        xs, ys = paired_defined([getattr(h, slot) for h in matched_hits],
+                                [getattr(h, slot) for h in context_only_hits])
+        own_vs_context_only[slot] = (paired_verdict(xs, ys, SLOT_DIRECTIONS[slot]) if xs
+                                     else {"verdict": "NO DATA", "n": 0})
+
+    # Cross-arm paired contrast on the ground-truth reference block (tests 1-4).
+    slot_arm_tests: Dict[str, Dict[str, object]] = {}
+    for slot in SLOT_NAMES:
+        xs, ys = paired_defined([getattr(h, slot) for h in ref_hits_think],
+                                [getattr(h, slot) for h in ref_hits_nothink])
+        slot_arm_tests[slot] = (paired_verdict(xs, ys, SLOT_DIRECTIONS[slot]) if xs
+                                else {"verdict": "NO DATA", "n": 0})
+    # FIX 3: this test CANNOT return anything but t = 0.0, and a reader seeing "NOT
+    # INTERPRETABLE" would conclude "no arm difference" where the truth is "no difference
+    # was measurable even in principle". The warning goes in the row, not a footnote.
+    slot_arm_tests["handback_anticipation"]["structurally_incapable_of_a_nonzero_result"] = (
+        "score_block scores handback_anticipation against the ground-truth block's "
+        "`handback` value and the CORPUS next-partner turn. Neither depends on the model's "
+        "turn, so the two arms' series are identical BY CONSTRUCTION and t is forced to "
+        "0.0. This is not evidence of no arm difference — no difference was measurable even "
+        "in principle. It nevertheless occupies one of the eleven pre-declared family slots "
+        "(that family was fixed before this was noticed, and shrinking it after seeing the "
+        "data would be a worse sin than reporting it), and it dilutes "
+        "`pooled_slot_accuracy`, which averages it in as a permanent tie.")
+
+    def _pooled(h: SlotHits) -> Optional[float]:
+        vals = [v for v in (h.accept, h.add, h.stakes, h.handback_anticipation)
+                if v is not None]
+        return (sum(1 for v in vals if v) / len(vals)) if vals else None
+
+    xs, ys = paired_defined([_pooled(h) for h in ref_hits_think],
+                            [_pooled(h) for h in ref_hits_nothink])
+    pooled_test = paired_verdict(xs, ys, "higher")                       # test 5
+    pooled_test["dilution_note"] = (
+        "handback_anticipation contributes a permanent tie to every observation it is "
+        "defined on (see slot_arm_tests), so this pooled number is shrunk toward zero by a "
+        "component that could not have moved.")
+
+    # Failure-mode scorers (tests 6-9), on cross-turn intervals: each model turn is scored
+    # against the text immediately preceding it (the prefix, or the real partner turn),
+    # which is the same interval `stakes` uses and is identical for both arms.
+    fail_series: Dict[str, Tuple[List[float], List[float]]] = {
+        k: ([], []) for k in SCORER_DIRECTIONS}
+    for j, skit in enumerate(val_skits):
+        for i, t_idx in enumerate(MODEL_TURNS):
+            prev, _ = _context_for(skit, t_idx)
+            st_ = score_pair(prev, turns_think[j][i], harm=harm, assoc=assoc, closure=closure)
+            sn_ = score_pair(prev, turns_nothink[j][i], harm=harm, assoc=assoc, closure=closure)
+            fail_series["escalation"][0].append(st_.escalation)
+            fail_series["escalation"][1].append(sn_.escalation)
+            fail_series["new_harm"][0].append(float(st_.new_harm))
+            fail_series["new_harm"][1].append(float(sn_.new_harm))
+            fail_series["groundedness"][0].append(st_.groundedness)
+            fail_series["groundedness"][1].append(sn_.groundedness)
+            fail_series["affordance"][0].append(float(st_.affordance))
+            fail_series["affordance"][1].append(float(sn_.affordance))
+    failure_tests = {name: paired_verdict(a, b, SCORER_DIRECTIONS[name])
+                     for name, (a, b) in fail_series.items()}
+    # `affordance` returns t = 0.0 here, and that is NOT an identical pair of series: it is
+    # a near-saturated scorer whose discordant pairs happen to balance. Say which, with the
+    # numbers, or a reader will file it next to handback's structural zero.
+    aff_t, aff_n = fail_series["affordance"]
+    failure_tests["affordance"]["saturation_note"] = (
+        f"fires on {round(100 * st.fmean(aff_t), 2)}% of think-arm and "
+        f"{round(100 * st.fmean(aff_n), 2)}% of no-think-arm turns. The exact t = 0.0 is "
+        f"COINCIDENTAL BALANCE, not structure — see signs_pos/signs_neg: the discordant "
+        f"pairs cancel. A near-saturated scorer has little variance left to discriminate "
+        f"with; it is not incapable of moving the way handback_anticipation is.")
+
+    adherence_test = paired_verdict(adherence_series_think, adherence_series_nothink,
+                                    AUX_DIRECTIONS["adherence"])
+
+    # ---- Degeneration, and the contamination that inflates it (FIX 5) -------------------
+    deg_think = [four_gram_repeat_rate(t) for t in turns_think]
+    deg_nothink = [four_gram_repeat_rate(t) for t in turns_nothink]
+    degeneration_test = paired_verdict(deg_think, deg_nothink, AUX_DIRECTIONS["degeneration"])
+    dirty = {c["index"] for c in contaminated}
+    clean = [j for j in range(len(val_skits)) if j not in dirty]
+    deg_clean = ({"think_mean_4gram_repeat": round(st.fmean([deg_think[j] for j in clean]), 4),
+                  "nothink_mean_4gram_repeat": round(st.fmean([deg_nothink[j] for j in clean]), 4),
+                  "test": paired_verdict([deg_think[j] for j in clean],
+                                         [deg_nothink[j] for j in clean],
+                                         AUX_DIRECTIONS["degeneration"]),
+                  "n_skits": len(clean)} if clean and dirty else None)
+
+    # ---- Where the looping actually lives (FIX 6) --------------------------------------
+    # Not "the mechanism that gives plan-following also gives looping" — that story is not
+    # in the data (a model following a VARIED plan does not loop). Looping concentrates in
+    # the skits where the block STOPS VARYING across the three turns.
+    def _corr(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
+        if len(xs) < 3:
+            return None
+        mx, my = st.fmean(xs), st.fmean(ys)
+        num = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
+        den = (sum((a - mx) ** 2 for a in xs) * sum((b - my) ** 2 for b in ys)) ** 0.5
+        return round(num / den, 4) if den else None
+
+    per_skit_add_hit: List[float] = []
+    for j, skit in enumerate(val_skits):
+        hits = []
+        for i, t_idx in enumerate(MODEL_TURNS):
+            block = _block_dict(slots_think[j][i])
+            if block is None or not turns_think[j][i]:
+                continue
+            prev, nxt = _context_for(skit, t_idx)
+            hits.append(_score_one(block, turn=turns_think[j][i], prev_turn=prev,
+                                   next_partner=nxt, harm=harm).add)
+        per_skit_add_hit.append(sum(1 for h in hits if h) / len(hits) if hits else 0.0)
+
+    stagnant = []
+    for j in range(len(val_skits)):
+        adds = [(_block_dict(b) or {}).get("add") for b in slots_think[j]]
+        if all(a is not None for a in adds) and len(set(adds)) == 1:
+            stagnant.append(j)
+    varied = [j for j in range(len(val_skits)) if j not in set(stagnant)]
+    stagnation = {
+        "definition": "skits whose three generated blocks all name the SAME `add` value",
+        "n_stagnant": len(stagnant), "n_total": len(val_skits),
+        "fraction": round(len(stagnant) / max(len(val_skits), 1), 4),
+        "mean_repeat_stagnant": (round(st.fmean([deg_think[j] for j in stagnant]), 4)
+                                 if stagnant else None),
+        "mean_repeat_varied": (round(st.fmean([deg_think[j] for j in varied]), 4)
+                               if varied else None),
+        # The two correlations that decide WHICH story the degeneration finding supports.
+        # "plan-following causes looping" would need the first to be large; it is ~0.
+        "corr_add_hit_rate_with_repeat": _corr(per_skit_add_hit, deg_think),
+        "corr_block_stagnation_with_repeat": _corr([float(j in set(stagnant))
+                                                    for j in range(len(val_skits))],
+                                                   deg_think),
+        "test_excluding_stagnant_skits": (
+            paired_verdict([deg_think[j] for j in varied], [deg_nothink[j] for j in varied],
+                           AUX_DIRECTIONS["degeneration"]) if varied and stagnant else None),
+        "note": ("Read the excluded-stagnant test and the two correlations before blaming "
+                 "think-blocks for looping: "
+                 "if it falls below the critical t, the degeneration finding is carried by "
+                 "the minority of skits where the plan stopped varying — stagnation, not "
+                 "plan-following. The fix that follows is to score blocks for NOVELTY "
+                 "across turns, not to remove the blocks."),
+    }
+
+    # ---- The confound decomposition (FIX 2) --------------------------------------------
+    ctx_gaps = {slot: table[slot].get("gap_over_context_only") for slot in SLOT_NAMES}
+    decomposition = decompose_confound(ctx_gaps, slot_arm_tests)
+    for slot in SLOT_NAMES:
+        decomposition[slot]["slot_value_already_visible_in_context"] = slot_value_visibility(
+            val_skits, slots_think, slot if slot != "handback_anticipation" else "handback")
+    publishable = [s for s in SLOT_NAMES if decomposition[s]["claim"] in ("headline", "bounded")]
+
+    success = evaluate_success_criteria(
+        adherence_think=adherence_think,
+        gaps={s: table[s].get("gap_over_shuffled") for s in SLOT_NAMES},
+        contrasts=own_vs_foreign, degeneration_test=degeneration_test,
+        swap_is_load_bearing=swap_is_load_bearing)
+    survives_context_only = sum(
+        1 for slot in SLOT_NAMES
+        if own_vs_context_only[slot].get("verdict") == "think better"
+        and decomposition[slot]["claim"] in ("headline", "bounded"))
+    success["supplementary_plan_following_survives_the_context_only_control"] = {
+        "n_slots": survives_context_only,
+        "slots": [s for s in SLOT_NAMES
+                  if own_vs_context_only[s].get("verdict") == "think better"
+                  and decomposition[s]["claim"] in ("headline", "bounded")],
+        "passed": survives_context_only >= 2,
+        "note": ("Not part of `all_criteria_met` — the plan's gate was written before this "
+                 "control existed. Counts only slots whose claim SURVIVES the arm-quality "
+                 "decomposition: handback_anticipation cannot contribute (degenerate "
+                 "control) and stakes is withdrawn (mostly confounded)."),
+    }
+    verdict_core = ("DECORATIVE" if not swap_is_load_bearing
+                    else ("STAGE 2 SUCCESS" if success["all_criteria_met"]
+                          else "PARTIAL — see success_criteria"))
+
+    return {
+        "verdict_core": verdict_core,
+        "success_criteria": success,
+        "n_scorable": n_scorable,
+        "n_model_turns": n_model_turns,
+        "slots_model_generated_blocks": {
+            "n_scorable_observations": n_scorable,
+            "n_model_turns_attempted": n_model_turns,
+            "table": table,
+            "own_block_vs_foreign_block": own_vs_foreign,
+            "own_block_vs_context_only_control": own_vs_context_only,
+            "confound_decomposition": decomposition,
+            "publishable_plan_following_slots": publishable,
+            "note": (
+                "`matched` is the model's OWN block scored against the turn it then wrote. "
+                "`shuffled_floor` is that same block scored against another skit's model "
+                "turn (the task-3 control). `context_only_floor` is that same block scored "
+                "against the NO-THINK arm's turn for the same skit and position. "
+                "DO NOT read the context-only contrast as plan-presence alone: the "
+                "no-think arm is a SEPARATELY TRAINED MODEL, so the contrast is "
+                "plan-presence PLUS arm identity, and it is strictly same-context only at "
+                "turn position 0 (each arm is fed its own prior turns thereafter; the gap "
+                "was checked at position 0 and holds, so this weakens the wording, not the "
+                "result). `confound_decomposition` bounds the arm-identity part using the "
+                "cross-arm reference test as a proxy. THE CLAIM IS NOT 'all four slots "
+                "move': `add` is the headline (its confound has the opposite sign, so it is "
+                "biased downward), `accept` is bounded, `stakes` is WITHDRAWN, and "
+                "`handback_anticipation`'s control is degenerate by construction. "
+                "These eight contrasts sit OUTSIDE the pre-declared family of 11 and are "
+                "reported at the same critical t; counted as tests the family is 19 and the "
+                "critical value would be 3.01 — any |t| in 2.843-3.01 is borderline."),
+        },
+        "slots_reference_block_across_arms": {
+            "tests": slot_arm_tests, "pooled": pooled_test,
+            "think_accuracy": slot_accuracy(ref_hits_think),
+            "nothink_accuracy": slot_accuracy(ref_hits_nothink),
+            "note": ("The skit's ground-truth block scored against each arm's generated "
+                     "turn. Neither arm is shown that block, which is what makes this the "
+                     "only slot comparison that is fair across arms — forcing it into the "
+                     "think arm's context would hand it the answer words (accept/add are "
+                     "lifted from the corpus turn) and measure copying. It doubles as the "
+                     "arm-quality proxy in `confound_decomposition`; it is NOT significant "
+                     "on any slot, which is why that decomposition is a bound rather than a "
+                     "correction."),
+        },
+        "failure_modes": failure_tests,
+        "adherence": {"think_by_turn": list(adherence_think),
+                      "nothink_by_turn": list(adherence_nothink),
+                      "test": adherence_test,
+                      "direction": AUX_DIRECTIONS["adherence"],
+                      "note": "per turn POSITION, never pooled — a pooled number hides a "
+                              "model that writes a good block for turn 0 and collapses by "
+                              "turn 4. The no-think arm is a negative control: it never saw "
+                              "a think-block in training."},
+        "degeneration": {"think_mean_4gram_repeat": round(st.fmean(deg_think), 4),
+                         "nothink_mean_4gram_repeat": round(st.fmean(deg_nothink), 4),
+                         "test": degeneration_test,
+                         "direction": AUX_DIRECTIONS["degeneration"],
+                         "excluding_contaminated_turns": deg_clean,
+                         "stagnation_analysis": stagnation,
+                         "note": ("4-gram repeat rate ACROSS a skit's three model turns "
+                                  "(within-turn scoring would report ~0 for a model that "
+                                  "writes the same sentence three times). The headline "
+                                  "number INCLUDES the contaminated turns listed under "
+                                  "`contamination`; `excluding_contaminated_turns` is the "
+                                  "same test without them and is the number to quote when "
+                                  "the effect size matters.")},
+        "contamination": {
+            "n_unparsed_blocks": n_model_turns - n_scorable,
+            "n_turns_leaking_template_text": len(contaminated),
+            "n_turns": len(contaminated),
+            "detail": contaminated,
+            "note": ("`n_unparsed_blocks` counts model turns whose block did not parse (they "
+                     "are excluded from every slot measurement). A SUBSET of them "
+                     "(`n_turns_leaking_template_text`) opened a think-block and never "
+                     "closed it, so `split_generation` found no `</think>` to split on and "
+                     "the 'turn' it returned is raw template text. These leak into the cross-arm test, "
+                     "the failure scorers and degeneration. They are REPORTED rather than "
+                     "silently dropped, and every affected conclusion is restated without "
+                     "them — see `degeneration.excluding_contaminated_turns`."),
+        },
+    }
+
+
+def _repo_relative(path: Path) -> str:
+    """Repo-relative when possible, else the path as given. An absolute worktree path baked
+    into a committed artifact stops resolving the moment the worktree is removed."""
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def rescore_from_artifact(source: Path, out: Path, *, skits_path: Path,
+                          assoc_skits: int) -> int:
+    """Recompute every scored number from an artifact's STORED `generated_turns`.
+
+    A re-analysis, not a rerun: no checkpoint, no tokenizer, no model, no device. This
+    exists because the alternative — regenerating 1,536 turns to change a note or add a
+    control — costs 25 minutes of CPU to reproduce numbers the previous run already wrote
+    down, and this repo has paid that bill before.
+
+    It is also a determinism check with teeth: the sections it recomputes must match the
+    source artifact's on every pre-existing number, and it prints any that do not.
+    """
+    src = json.loads(source.read_text())
+    gen = src.get("generated_turns")
+    if not gen:
+        raise RuntimeError(f"{source} has no `generated_turns` block — nothing to re-score. "
+                           f"Only artifacts written after that block was added can be "
+                           f"re-analysed without regenerating.")
+
+    harm, closure = load_harm_lexicon(), load_closure_lexicon()
+    manifest_think = json.loads(MANIFEST_THINK.read_text())
+    manifest_nothink = json.loads(MANIFEST_NOTHINK.read_text())
+    n_train = int(manifest_think["n_examples"])
+    if int(manifest_nothink["n_examples"]) != n_train:
+        raise RuntimeError("the two arms trained on different-sized training sets; they are "
+                           "not paired and must not be compared")
+    all_skits = [json.loads(l) for l in skits_path.read_text().splitlines()]
+    train_skits, val_skits = all_skits[:n_train], all_skits[n_train:]
+
+    # The stored turns must line up with the skits file, skit for skit, or every score
+    # would be computed against the wrong scene while looking perfectly healthy.
+    stored_ids = gen["story_ids"]
+    if [s["story_id"] for s in val_skits] != stored_ids:
+        raise RuntimeError("stored generated_turns do not correspond to this skits file's "
+                           "held-out tail (story_id sequence differs) — refusing to score "
+                           "turns against the wrong scenes")
+    turns_think, turns_nothink = gen["think"], gen["nothink"]
+    slots_think = gen["think_blocks"]
+
+    # Adherence: recomputable exactly from the stored blocks (None == did not parse). The
+    # no-think arm's is carried over, because it needs raw generations this artifact does
+    # not store — and it is asserted to be the all-zero negative control it claims to be.
+    adh_think = [sum(1 for row in slots_think if row[i] is not None) / len(slots_think)
+                 for i in range(len(MODEL_TURNS))]
+    adh_nothink = src["adherence"]["nothink_by_turn"]
+    if any(a != 0.0 for a in adh_nothink):
+        raise RuntimeError(f"carried-over no-think adherence is not all zero ({adh_nothink}); "
+                           f"it can no longer be reconstructed from stored blocks alone")
+    if [round(a, 6) for a in adh_think] != [round(a, 6)
+                                            for a in src["adherence"]["think_by_turn"]]:
+        raise RuntimeError(f"recomputed think adherence {adh_think} != stored "
+                           f"{src['adherence']['think_by_turn']} — the stored blocks and the "
+                           f"stored adherence disagree")
+    adh_series_t = [1.0 if b is not None else 0.0 for row in slots_think for b in row]
+    adh_series_n = [0.0] * len(adh_series_t)
+
+    assoc_pairs: List[Tuple[str, str]] = []
+    for s in train_skits[:assoc_skits]:
+        for t_idx in MODEL_TURNS:
+            prev, _ = _context_for(s, t_idx)
+            assoc_pairs.append((prev, s["turns"][t_idx]))
+    assoc = build_association(assoc_pairs)
+
+    sections = score_and_assemble(
+        val_skits=val_skits, turns_think=turns_think, turns_nothink=turns_nothink,
+        slots_think=slots_think, adherence_think=adh_think, adherence_nothink=adh_nothink,
+        adherence_series_think=adh_series_t, adherence_series_nothink=adh_series_n,
+        swap_is_load_bearing=bool(src["swap_test"]["thinking_is_load_bearing"]),
+        harm=harm, closure=closure, assoc=assoc)
+
+    # Reproduction check against the source artifact, printed rather than assumed.
+    drift = []
+    for path, new in (
+        ("failure_modes.new_harm.t", sections["failure_modes"]["new_harm"]["t"]),
+        ("failure_modes.groundedness.t", sections["failure_modes"]["groundedness"]["t"]),
+        ("degeneration.test.t", sections["degeneration"]["test"]["t"]),
+        ("adherence.test.t", sections["adherence"]["test"]["t"]),
+        ("slots.table.accept.matched",
+         sections["slots_model_generated_blocks"]["table"]["accept"]["matched"]),
+        ("slots.table.add.matched",
+         sections["slots_model_generated_blocks"]["table"]["add"]["matched"]),
+    ):
+        node: Any = src
+        for key in path.split("."):
+            key = {"slots": "slots_model_generated_blocks"}.get(key, key)
+            node = node[key]
+        if node != new:
+            drift.append(f"{path}: stored {node} -> recomputed {new}")
+    print("  reproduction vs source artifact: "
+          + ("IDENTICAL on every checked number" if not drift else "DRIFT " + "; ".join(drift)))
+
+    report = dict(src)
+    report.update(sections["slots_model_generated_blocks"] and {
+        "slots_model_generated_blocks": sections["slots_model_generated_blocks"],
+        "slots_reference_block_across_arms": sections["slots_reference_block_across_arms"],
+        "failure_modes": sections["failure_modes"],
+        "adherence": sections["adherence"],
+        "degeneration": sections["degeneration"],
+        "contamination": sections["contamination"],
+        "success_criteria": sections["success_criteria"],
+        "verdict": sections["verdict_core"],
+    })
+    report["limitations"] = build_limitations(
+        eval_set=str(skits_path.relative_to(ROOT)), n_skits=len(val_skits))
+    report["rescoring"] = {
+        "source_artifact": _repo_relative(source),
+        "what_was_recomputed": sorted(["slots_model_generated_blocks",
+                                       "slots_reference_block_across_arms", "failure_modes",
+                                       "adherence", "degeneration", "contamination",
+                                       "success_criteria", "verdict", "limitations"]),
+        "what_was_carried_over": sorted(["swap_test", "swap_test_detail", "power",
+                                         "held_out", "generation_settings", "examples",
+                                         "generated_turns", "manifests_used",
+                                         "tokenization_parity", "derivation",
+                                         "hf_conversion", "bonferroni",
+                                         "adherence.nothink_by_turn"]),
+        "reproduction_check": ("every pre-existing number recomputed identically from the "
+                              "stored turns" if not drift else drift),
+        "note": ("No model was loaded and no token was generated: this is scoring re-run "
+                 "over the turns the generation run stored. The generation itself is greedy "
+                 "and was verified byte-identical across three independent runs."),
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2))
+    print(f"wrote {out}")
+    print(f"\nVERDICT: {report['verdict']}")
+    for slot in SLOT_NAMES:
+        d = sections["slots_model_generated_blocks"]["confound_decomposition"][slot]
+        print(f"  {slot:22} gap={d['context_only_gap']} proxy={d['arm_quality_proxy']} "
+              f"residual={d['residual']} -> {d['claim']}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -646,7 +1255,16 @@ def main() -> int:
     ap.add_argument("--assoc-skits", type=int, default=6000,
                     help="training skits used to build the NPMI table for groundedness")
     ap.add_argument("--work-dir", type=Path, default=ROOT / "artifacts" / "skits" / "hf-eval")
+    ap.add_argument("--rescore-from", type=Path, default=None,
+                    help="Re-score an existing artifact's stored `generated_turns` instead "
+                         "of generating. No model, no tokenizer, no device — a re-analysis, "
+                         "not a rerun.")
     args = ap.parse_args()
+
+    if args.rescore_from:
+        print(f"[rescore] re-analysing {args.rescore_from} — no generation, no model ...")
+        return rescore_from_artifact(args.rescore_from, args.out, skits_path=args.skits,
+                                     assoc_skits=args.assoc_skits)
 
     harm = load_harm_lexicon()
     closure = load_closure_lexicon()
@@ -802,87 +1420,6 @@ def main() -> int:
     #             real plan called for" without handing the think arm the answer words.
     # ---------------------------------------------------------------------------------
     print("[6/8] scoring slots, failure modes, adherence, degeneration ...")
-    matched_hits: List[SlotHits] = []
-    shuffled_hits: List[SlotHits] = []
-    context_only_hits: List[SlotHits] = []
-    ref_hits_think: List[Optional[SlotHits]] = []
-    ref_hits_nothink: List[Optional[SlotHits]] = []
-    n_scorable = 0
-    for j, skit in enumerate(val_skits):
-        other = val_skits[(j + 1) % len(val_skits)]
-        for i, t_idx in enumerate(MODEL_TURNS):
-            prev, nxt = _context_for(skit, t_idx)
-            oprev, onxt = _context_for(other, t_idx)
-            block = slots_think[j][i]
-            if block is not None and turns_think[j][i]:
-                n_scorable += 1
-                matched_hits.append(_score_one(block.as_dict(), turn=turns_think[j][i],
-                                               prev_turn=prev, next_partner=nxt, harm=harm))
-                # The control: this same block against the NEXT skit's model turn at the
-                # same position, with that skit's own surrounding turns — the exact
-                # construction task 3 used to measure the corpus floors.
-                foreign_turn = turns_think[(j + 1) % len(val_skits)][i]
-                shuffled_hits.append(_score_one(block.as_dict(), turn=foreign_turn,
-                                                prev_turn=oprev, next_partner=onxt, harm=harm))
-                # The tighter control: the SAME block against the NO-THINK arm's turn for
-                # THIS skit at THIS position. Same scene, same context, no block behind the
-                # turn — so whatever survives here is context overlap, not plan-following.
-                context_only_hits.append(_score_one(block.as_dict(),
-                                                    turn=turns_nothink[j][i],
-                                                    prev_turn=prev, next_partner=nxt,
-                                                    harm=harm))
-            ref = skit["blocks"][i]
-            ref_hits_think.append(_score_one(ref, turn=turns_think[j][i], prev_turn=prev,
-                                             next_partner=nxt, harm=harm))
-            ref_hits_nothink.append(_score_one(ref, turn=turns_nothink[j][i], prev_turn=prev,
-                                               next_partner=nxt, harm=harm))
-
-    if matched_hits:
-        assert_control_is_not_the_treatment(matched_hits, shuffled_hits,
-                                            name="shuffled-slot control")
-        assert_control_is_not_the_treatment(matched_hits, context_only_hits,
-                                            name="context-only control")
-    matched_acc = slot_accuracy(matched_hits) if matched_hits else {s: None for s in SLOT_NAMES}
-    shuffled_acc = (slot_accuracy(shuffled_hits) if shuffled_hits
-                    else {s: None for s in SLOT_NAMES})
-    context_only_acc = (slot_accuracy(context_only_hits) if context_only_hits
-                        else {s: None for s in SLOT_NAMES})
-    table = slot_table(matched_acc, shuffled_acc, context_only_acc)
-
-    # Within-arm paired contrasts: own block vs foreign block (topical + plan control), and
-    # own block vs the no-think arm's turn on the SAME skit (context-only control).
-    own_vs_foreign = {}
-    own_vs_context_only = {}
-    for slot in SLOT_NAMES:
-        xs, ys = paired_defined([getattr(h, slot) for h in matched_hits],
-                                [getattr(h, slot) for h in shuffled_hits])
-        own_vs_foreign[slot] = (paired_verdict(xs, ys, SLOT_DIRECTIONS[slot]) if xs
-                                else {"verdict": "NO DATA", "n": 0})
-        xs, ys = paired_defined([getattr(h, slot) for h in matched_hits],
-                                [getattr(h, slot) for h in context_only_hits])
-        own_vs_context_only[slot] = (paired_verdict(xs, ys, SLOT_DIRECTIONS[slot]) if xs
-                                     else {"verdict": "NO DATA", "n": 0})
-
-    # Cross-arm paired contrast on the ground-truth reference block (tests 1-4).
-    slot_arm_tests = {}
-    for slot in SLOT_NAMES:
-        xs, ys = paired_defined([getattr(h, slot) for h in ref_hits_think],
-                                [getattr(h, slot) for h in ref_hits_nothink])
-        slot_arm_tests[slot] = (paired_verdict(xs, ys, SLOT_DIRECTIONS[slot]) if xs
-                                else {"verdict": "NO DATA", "n": 0})
-
-    def _pooled(h: SlotHits) -> Optional[float]:
-        vals = [v for v in (h.accept, h.add, h.stakes, h.handback_anticipation)
-                if v is not None]
-        return (sum(1 for v in vals if v) / len(vals)) if vals else None
-
-    xs, ys = paired_defined([_pooled(h) for h in ref_hits_think],
-                            [_pooled(h) for h in ref_hits_nothink])
-    pooled_test = paired_verdict(xs, ys, "higher")                       # test 5
-
-    # Failure-mode scorers (tests 6-9), on cross-turn intervals: each model turn is scored
-    # against the text immediately preceding it (the prefix, or the real partner turn),
-    # which is the same interval `stakes` uses and is identical for both arms.
     assoc_pairs: List[Tuple[str, str]] = []
     for s in train_skits[:args.assoc_skits]:
         for t_idx in MODEL_TURNS:
@@ -890,76 +1427,34 @@ def main() -> int:
             assoc_pairs.append((prev, s["turns"][t_idx]))
     assoc = build_association(assoc_pairs)
 
-    fail_series: Dict[str, Tuple[List[float], List[float]]] = {
-        k: ([], []) for k in SCORER_DIRECTIONS}
-    for j, skit in enumerate(val_skits):
-        for i, t_idx in enumerate(MODEL_TURNS):
-            prev, _ = _context_for(skit, t_idx)
-            st_ = score_pair(prev, turns_think[j][i], harm=harm, assoc=assoc, closure=closure)
-            sn_ = score_pair(prev, turns_nothink[j][i], harm=harm, assoc=assoc, closure=closure)
-            fail_series["escalation"][0].append(st_.escalation)
-            fail_series["escalation"][1].append(sn_.escalation)
-            fail_series["new_harm"][0].append(float(st_.new_harm))
-            fail_series["new_harm"][1].append(float(sn_.new_harm))
-            fail_series["groundedness"][0].append(st_.groundedness)
-            fail_series["groundedness"][1].append(sn_.groundedness)
-            fail_series["affordance"][0].append(float(st_.affordance))
-            fail_series["affordance"][1].append(float(sn_.affordance))
-    failure_tests = {name: paired_verdict(a, b, SCORER_DIRECTIONS[name])
-                     for name, (a, b) in fail_series.items()}
-
-    # Adherence (test 10) and degeneration (test 11).
+    # Adherence needs the RAW generations (a block that failed to parse is still text), so
+    # it is measured here and handed to the assembler, which is otherwise pure.
     adh_think = adherence_by_turn(raw_think, n_turns=len(MODEL_TURNS))
     adh_nothink = adherence_by_turn(raw_nothink, n_turns=len(MODEL_TURNS))
     adh_series_t = [1.0 if s is not None else 0.0 for row in slots_think for s in row]
     adh_series_n = [1.0 if parse_think(g) is not None else 0.0
                     for row in raw_nothink for g in row]
-    adherence_test = paired_verdict(adh_series_t, adh_series_n, "higher")
 
-    deg_think = [four_gram_repeat_rate(t) for t in turns_think]
-    deg_nothink = [four_gram_repeat_rate(t) for t in turns_nothink]
-    degeneration_test = paired_verdict(deg_think, deg_nothink, "lower")
+    sections = score_and_assemble(
+        val_skits=val_skits, turns_think=turns_think, turns_nothink=turns_nothink,
+        slots_think=slots_think, adherence_think=adh_think, adherence_nothink=adh_nothink,
+        adherence_series_think=adh_series_t, adherence_series_nothink=adh_series_n,
+        swap_is_load_bearing=bool(swap["thinking_is_load_bearing"]),
+        harm=harm, closure=closure, assoc=assoc)
 
     # ---------------------------------------------------------------------------------
     # [7/8] Verdict.
     # ---------------------------------------------------------------------------------
     print("[7/8] assembling verdict ...")
-    gaps = shuffled_gap(matched_acc, shuffled_acc)
-    materially_positive = sum(1 for slot in SLOT_NAMES
-                              if (gaps.get(slot) or 0.0) > 0.05
-                              and own_vs_foreign[slot].get("verdict") not in
-                              ("NOT INTERPRETABLE", "NO DATA"))
-    success = {
-        "adherence_at_least_0_80_at_every_turn": all(a >= 0.80 for a in adh_think),
-        "shuffled_gap_materially_positive_on_at_least_2_of_4_slots": materially_positive >= 2,
-        "degeneration_no_worse_than_the_no_think_arm": (
-            degeneration_test["verdict"] != "no-think better"),
-        "swap_test_shows_continuations_do_change": bool(swap["thinking_is_load_bearing"]),
-    }
-    success["all_criteria_met"] = all(success.values())
-    # Recorded AFTER all_criteria_met on purpose: the plan named three gates plus the swap
-    # test, and this is a stricter supplementary one added by this task (it did not exist to
-    # be passed or failed when the gate was written). It asks whether the plan-following
-    # signal survives the control that holds the SCENE fixed, not merely the one that
-    # swaps in an unrelated skit.
-    survives_context_only = sum(
-        1 for slot in SLOT_NAMES
-        if own_vs_context_only[slot].get("verdict") == "think better"
-        and (table[slot].get("gap_over_context_only") or 0.0) > 0.02)
-    success["supplementary_plan_following_survives_the_context_only_control"] = {
-        "n_slots": survives_context_only,
-        "passed": survives_context_only >= 2,
-        "note": ("Not part of `all_criteria_met` — the plan's gate was written before this "
-                 "control existed. handback_anticipation cannot contribute here: its "
-                 "context-only floor is degenerate by construction (see the slot table)."),
-    }
-    n_slots_favouring_think = sum(1 for v in slot_arm_tests.values()
-                                  if v.get("verdict") == "think better")
-    n_failure_favouring_think = sum(1 for v in failure_tests.values()
+    success = sections["success_criteria"]
+    table = sections["slots_model_generated_blocks"]["table"]
+    own_vs_foreign = sections["slots_model_generated_blocks"]["own_block_vs_foreign_block"]
+    n_slots_favouring_think = sum(
+        1 for v in sections["slots_reference_block_across_arms"]["tests"].values()
+        if v.get("verdict") == "think better")
+    n_failure_favouring_think = sum(1 for v in sections["failure_modes"].values()
                                     if v["verdict"] == "think better")
-    verdict = ("DECORATIVE" if not swap["thinking_is_load_bearing"]
-               else ("STAGE 2 SUCCESS" if success["all_criteria_met"]
-                     else "PARTIAL — see success_criteria"))
+    verdict = sections["verdict_core"]
     if args.max_eval_skits:
         # A truncated run must never be readable as the measurement. The marker goes in the
         # verdict string itself, not only in a field further down that a reader may skip.
@@ -974,51 +1469,12 @@ def main() -> int:
         "swap_test_detail": {"n": n_swap, "divergence_positions": divergence,
                              "note": "token index into the generated continuation; None "
                                      "means identical for the full window"},
-        "slots_model_generated_blocks": {
-            "n_scorable_observations": n_scorable,
-            "n_model_turns_attempted": n_model_turns,
-            "table": table,
-            "own_block_vs_foreign_block": own_vs_foreign,
-            "own_block_vs_context_only_control": own_vs_context_only,
-            "note": ("`matched` is the model's OWN block scored against the turn it then "
-                     "wrote. `shuffled_floor` is that same block scored against another "
-                     "skit's model turn (the task-3 control). `context_only_floor` is that "
-                     "same block scored against the NO-THINK arm's turn for the SAME skit "
-                     "and position — same scene, same context, but a turn written without a "
-                     "block — which is what separates plan-following from context echo. "
-                     "These eight contrasts sit OUTSIDE the pre-declared family of 11 and "
-                     "are reported at the same critical t; if they are counted as tests too "
-                     "the family is 19 and the correct critical value would be 3.01 — any "
-                     "|t| between 2.843 and 3.01 should be read as borderline."),
-        },
-        "slots_reference_block_across_arms": {
-            "tests": slot_arm_tests, "pooled": pooled_test,
-            "think_accuracy": slot_accuracy([h for h in ref_hits_think if h is not None]),
-            "nothink_accuracy": slot_accuracy([h for h in ref_hits_nothink if h is not None]),
-            "note": ("The skit's ground-truth block scored against each arm's generated "
-                     "turn. Neither arm is shown that block, which is what makes this the "
-                     "only slot comparison that is fair across arms — forcing it into the "
-                     "think arm's context would hand it the answer words (accept/add are "
-                     "lifted from the corpus turn) and measure copying."),
-        },
-        "failure_modes": failure_tests,
-        "adherence": {"think_by_turn": adh_think, "nothink_by_turn": adh_nothink,
-                      "test": adherence_test,
-                      "note": "per turn POSITION, never pooled — a pooled number hides a "
-                              "model that writes a good block for turn 0 and collapses by "
-                              "turn 4. The no-think arm is a negative control: it never saw "
-                              "a think-block in training."},
-        "degeneration": {"think_mean_4gram_repeat": round(st.fmean(deg_think), 4),
-                         "nothink_mean_4gram_repeat": round(st.fmean(deg_nothink), 4),
-                         "test": degeneration_test,
-                         "note": ("4-gram repeat rate ACROSS a skit's three model turns "
-                                  "(within-turn scoring would report ~0 for a model that "
-                                  "writes the same sentence three times). This is the one "
-                                  "pre-declared criterion the think arm fails, and it is a "
-                                  "cost of the mechanism the rest of the file shows "
-                                  "working: a block commits to an `add` word and the arm "
-                                  "then writes that word into its turn, block after "
-                                  "block.")},
+        "slots_model_generated_blocks": sections["slots_model_generated_blocks"],
+        "slots_reference_block_across_arms": sections["slots_reference_block_across_arms"],
+        "failure_modes": sections["failure_modes"],
+        "adherence": sections["adherence"],
+        "degeneration": sections["degeneration"],
+        "contamination": sections["contamination"],
         "bonferroni": {"alpha": BONFERRONI_ALPHA, "critical_t": CRITICAL_T,
                        "n_tests": N_TESTS,
                        "family": ["slot:accept", "slot:add", "slot:stakes",

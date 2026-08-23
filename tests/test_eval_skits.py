@@ -369,3 +369,151 @@ def test_a_control_identical_to_the_treatment_is_refused_not_reported():
     assert_control_is_not_the_treatment(treatment, almost, name="ctl")
     with pytest.raises(RuntimeError, match="length mismatch"):
         assert_control_is_not_the_treatment(treatment, almost[:1], name="ctl")
+
+
+# ---------------------------------------------------------------------------------------
+# FIX 1 — the driver-wiring blind spot.
+#
+# A code review mutated ONE token in main() — the degeneration direction "lower" -> "higher"
+# — and all 27 tests passed while the artifact's top-level verdict changed from PARTIAL to
+# "STAGE 2 SUCCESS". Three siblings had the same property: the adherence direction, the
+# `>= 2` success gate, and `_context_for`'s next-partner index. The fix is not another
+# assertion about arithmetic; it is that the assembly is now a CALLED FUNCTION with a
+# fixture behind it, and that both directions are declared in a table the way
+# SLOT_DIRECTIONS already was.
+# ---------------------------------------------------------------------------------------
+
+
+def _fixture_skit(story_id, turns, add_words):
+    return {"story_id": story_id, "prefix": "A girl named Mia lived by the river.",
+            "turns": turns,
+            "blocks": [{"offer": "mia river", "accept": "mia", "add": add_words[i],
+                        "stakes": "level", "handback": "river"} for i in range(3)]}
+
+
+def _assembler_fixture():
+    """Three skits where the think arm LOOPS and the no-think arm does not.
+
+    Deliberately unambiguous: within a skit the think arm writes the same sentence three
+    times (4-gram repeat high) while the no-think arm writes three different ones (repeat
+    0.0). BETWEEN skits every turn uses different content words, so the shuffled control is
+    genuinely a control — a uniform fixture would trip
+    `assert_control_is_not_the_treatment`, which is itself the point of that guard.
+    """
+    from scripts.eval_skits import score_and_assemble
+
+    loops = ["Mia ran to the river and shouted at the cold water.",
+             "Mia climbed the tall ladder and dropped her striped hat.",
+             "Mia baked a plum cake for her cheerful father."]
+    adds = [["river", "water", "cold"], ["ladder", "hat", "tall"],
+            ["cake", "plum", "father"]]
+    quiet = [["Mia found a smooth pebble.", "She showed it to her mother.",
+              "They walked home slowly."],
+             ["Mia opened the wooden gate.", "A brown puppy trotted past.",
+              "She counted the daisies."],
+             ["Mia drew a yellow sun.", "Her crayon snapped in half.",
+              "She started a new picture."]]
+    skits = [_fixture_skit(1000 + k,
+                           [f"Mia found a stone by the river {k}.",
+                            f"Her friend laughed at the stone {k}.",
+                            f"Mia threw the stone into the river {k}.",
+                            f"The water splashed on her friend {k}.",
+                            f"Mia laughed with her friend {k}."],
+                           adds[k])
+             for k in range(3)]
+    turns_think = [[loops[k]] * 3 for k in range(3)]
+    turns_nothink = quiet
+    blocks = [[dict(s["blocks"][i]) for i in range(3)] for s in skits]
+    return score_and_assemble(
+        val_skits=skits, turns_think=turns_think, turns_nothink=turns_nothink,
+        slots_think=blocks, adherence_think=[1.0, 1.0, 1.0],
+        adherence_nothink=[0.0, 0.0, 0.0],
+        adherence_series_think=[1.0] * 9, adherence_series_nothink=[0.0] * 9,
+        swap_is_load_bearing=True,
+        harm=frozenset(["shouted"]), closure=frozenset(["bed"]),
+        assoc={"uni": {}, "co": {}, "n": 0})
+
+
+def test_assembler_reports_a_looping_think_arm_as_worse_not_better():
+    """Catches the exact one-token mutation that flipped the published verdict."""
+    sections = _assembler_fixture()
+    deg = sections["degeneration"]
+    assert deg["think_mean_4gram_repeat"] > deg["nothink_mean_4gram_repeat"]
+    assert deg["direction"] == "lower"
+    assert deg["test"]["verdict"] == "no-think better", (
+        "a think arm that repeats itself more must be reported as WORSE on degeneration; "
+        "'think better' here means the direction was inverted")
+    assert sections["success_criteria"]["degeneration_no_worse_than_the_no_think_arm"] is False
+    assert sections["success_criteria"]["all_criteria_met"] is False
+    assert sections["verdict_core"].startswith("PARTIAL")
+
+
+def test_assembler_reports_adherence_in_the_think_arms_favour():
+    """The mirror-image mutation: the think arm emits a block every time and the no-think
+    arm never does, so "higher" is the only direction that can name the think arm."""
+    sections = _assembler_fixture()
+    assert sections["adherence"]["direction"] == "higher"
+    assert sections["adherence"]["test"]["verdict"] == "think better"
+
+
+def test_aux_directions_are_declared_the_way_slot_directions_are():
+    from scripts.eval_skits import AUX_DIRECTIONS
+
+    assert AUX_DIRECTIONS == {"adherence": "higher", "degeneration": "lower"}
+
+
+def test_success_gate_needs_two_slots_not_one():
+    """`>= 2` is a one-character edit from `>= 1`, and inline in the driver nothing could
+    see it."""
+    from scripts.eval_skits import evaluate_success_criteria
+
+    good = {"verdict": "think better"}
+    dull = {"verdict": "NOT INTERPRETABLE"}
+    one = evaluate_success_criteria(
+        adherence_think=[0.9, 0.9, 0.9],
+        gaps={"accept": 0.60, "add": 0.0, "stakes": 0.0, "handback_anticipation": 0.0},
+        contrasts={"accept": good, "add": dull, "stakes": dull,
+                   "handback_anticipation": dull},
+        degeneration_test={"verdict": "NOT INTERPRETABLE"}, swap_is_load_bearing=True)
+    assert one["shuffled_gap_materially_positive_on_at_least_2_of_4_slots"] is False
+    two = evaluate_success_criteria(
+        adherence_think=[0.9, 0.9, 0.9],
+        gaps={"accept": 0.60, "add": 0.50, "stakes": 0.0, "handback_anticipation": 0.0},
+        contrasts={"accept": good, "add": good, "stakes": dull,
+                   "handback_anticipation": dull},
+        degeneration_test={"verdict": "NOT INTERPRETABLE"}, swap_is_load_bearing=True)
+    assert two["shuffled_gap_materially_positive_on_at_least_2_of_4_slots"] is True
+    assert two["all_criteria_met"] is True
+
+
+def test_success_gate_fails_on_low_adherence_and_on_a_worse_degeneration_verdict():
+    from scripts.eval_skits import evaluate_success_criteria
+
+    good = {"verdict": "think better"}
+    base = dict(gaps={"accept": 0.6, "add": 0.5, "stakes": 0.0, "handback_anticipation": 0.0},
+                contrasts={"accept": good, "add": good, "stakes": good,
+                           "handback_anticipation": good},
+                swap_is_load_bearing=True)
+    low = evaluate_success_criteria(adherence_think=[0.9, 0.79, 0.9],
+                                    degeneration_test={"verdict": "NOT INTERPRETABLE"},
+                                    **base)
+    assert low["adherence_at_least_0_80_at_every_turn"] is False
+    worse = evaluate_success_criteria(adherence_think=[0.9, 0.9, 0.9],
+                                      degeneration_test={"verdict": "no-think better"},
+                                      **base)
+    assert worse["degeneration_no_worse_than_the_no_think_arm"] is False
+    assert worse["all_criteria_met"] is False
+
+
+def test_context_for_names_the_previous_turn_and_the_FOLLOWING_partner_turn():
+    """`_context_for` decides which text every slot is scored against. An off-by-one here
+    scores `stakes` against the wrong interval and `handback` against the wrong partner
+    turn, and no other test in this file would notice."""
+    from scripts.eval_skits import _context_for
+
+    skit = {"prefix": "P", "turns": ["t0", "t1", "t2", "t3", "t4"]}
+    assert _context_for(skit, 0) == ("P", "t1")
+    assert _context_for(skit, 2) == ("t1", "t3")
+    assert _context_for(skit, 4) == ("t3", None), (
+        "the last model turn has NO following partner turn; anything but None here turns an "
+        "undefined observation into a scored one")

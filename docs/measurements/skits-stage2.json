@@ -251,7 +251,45 @@
         "verdict": "NOT INTERPRETABLE"
       }
     },
-    "note": "`matched` is the model's OWN block scored against the turn it then wrote. `shuffled_floor` is that same block scored against another skit's model turn (the task-3 control). `context_only_floor` is that same block scored against the NO-THINK arm's turn for the SAME skit and position \u2014 same scene, same context, but a turn written without a block \u2014 which is what separates plan-following from context echo. These eight contrasts sit OUTSIDE the pre-declared family of 11 and are reported at the same critical t; if they are counted as tests too the family is 19 and the correct critical value would be 3.01 \u2014 any |t| between 2.843 and 3.01 should be read as borderline."
+    "confound_decomposition": {
+      "accept": {
+        "context_only_gap": 0.134,
+        "arm_quality_proxy": 0.0508,
+        "residual": 0.0832,
+        "claim": "bounded",
+        "why": "at most +0.1340, plausibly ~+0.0832 once the (non-significant) arm-quality proxy +0.0508 is subtracted",
+        "slot_value_already_visible_in_context": 0.9277
+      },
+      "add": {
+        "context_only_gap": 0.3259,
+        "arm_quality_proxy": -0.0221,
+        "residual": 0.348,
+        "claim": "headline",
+        "why": "the confound points the OTHER way (-0.0221), so +0.3259 is biased DOWNWARD \u2014 this is the safest slot to publish",
+        "slot_value_already_visible_in_context": 0.4442
+      },
+      "stakes": {
+        "context_only_gap": 0.0486,
+        "arm_quality_proxy": 0.0312,
+        "residual": 0.0174,
+        "claim": "withdrawn",
+        "why": "the arm-quality proxy (+0.0312) explains at least 50% of the +0.0486 gap \u2014 this slot must NOT be published as plan-following",
+        "slot_value_already_visible_in_context": 0.0053
+      },
+      "handback_anticipation": {
+        "context_only_gap": 0.0,
+        "arm_quality_proxy": 0.0,
+        "residual": null,
+        "claim": "not measurable",
+        "why": "the context-only control is degenerate for this slot \u2014 score_block reads only the block's handback value and the corpus next-partner turn, which is identical in both conditions, so the gap is forced to 0.0000",
+        "slot_value_already_visible_in_context": 0.4494
+      }
+    },
+    "publishable_plan_following_slots": [
+      "accept",
+      "add"
+    ],
+    "note": "`matched` is the model's OWN block scored against the turn it then wrote. `shuffled_floor` is that same block scored against another skit's model turn (the task-3 control). `context_only_floor` is that same block scored against the NO-THINK arm's turn for the same skit and position. DO NOT read the context-only contrast as plan-presence alone: the no-think arm is a SEPARATELY TRAINED MODEL, so the contrast is plan-presence PLUS arm identity, and it is strictly same-context only at turn position 0 (each arm is fed its own prior turns thereafter; the gap was checked at position 0 and holds, so this weakens the wording, not the result). `confound_decomposition` bounds the arm-identity part using the cross-arm reference test as a proxy. THE CLAIM IS NOT 'all four slots move': `add` is the headline (its confound has the opposite sign, so it is biased downward), `accept` is bounded, `stakes` is WITHDRAWN, and `handback_anticipation`'s control is degenerate by construction. These eight contrasts sit OUTSIDE the pre-declared family of 11 and are reported at the same critical t; counted as tests the family is 19 and the critical value would be 3.01 \u2014 any |t| in 2.843-3.01 is borderline."
   },
   "slots_reference_block_across_arms": {
     "tests": {
@@ -309,7 +347,8 @@
         "n": 512,
         "critical_t": 2.843,
         "alpha": 0.004545454545454546,
-        "verdict": "NOT INTERPRETABLE"
+        "verdict": "NOT INTERPRETABLE",
+        "structurally_incapable_of_a_nonzero_result": "score_block scores handback_anticipation against the ground-truth block's `handback` value and the CORPUS next-partner turn. Neither depends on the model's turn, so the two arms' series are identical BY CONSTRUCTION and t is forced to 0.0. This is not evidence of no arm difference \u2014 no difference was measurable even in principle. It nevertheless occupies one of the eleven pre-declared family slots (that family was fixed before this was noticed, and shrinking it after seeing the data would be a worse sin than reporting it), and it dilutes `pooled_slot_accuracy`, which averages it in as a permanent tie."
       }
     },
     "pooled": {
@@ -324,7 +363,8 @@
       "n": 768,
       "critical_t": 2.843,
       "alpha": 0.004545454545454546,
-      "verdict": "NOT INTERPRETABLE"
+      "verdict": "NOT INTERPRETABLE",
+      "dilution_note": "handback_anticipation contributes a permanent tie to every observation it is defined on (see slot_arm_tests), so this pooled number is shrunk toward zero by a component that could not have moved."
     },
     "think_accuracy": {
       "accept": 0.6328125,
@@ -338,7 +378,7 @@
       "stakes": 0.84375,
       "handback_anticipation": 0.12890625
     },
-    "note": "The skit's ground-truth block scored against each arm's generated turn. Neither arm is shown that block, which is what makes this the only slot comparison that is fair across arms \u2014 forcing it into the think arm's context would hand it the answer words (accept/add are lifted from the corpus turn) and measure copying."
+    "note": "The skit's ground-truth block scored against each arm's generated turn. Neither arm is shown that block, which is what makes this the only slot comparison that is fair across arms \u2014 forcing it into the think arm's context would hand it the answer words (accept/add are lifted from the corpus turn) and measure copying. It doubles as the arm-quality proxy in `confound_decomposition`; it is NOT significant on any slot, which is why that decomposition is a bound rather than a correction."
   },
   "failure_modes": {
     "escalation": {
@@ -395,7 +435,8 @@
       "n": 768,
       "critical_t": 2.843,
       "alpha": 0.004545454545454546,
-      "verdict": "NOT INTERPRETABLE"
+      "verdict": "NOT INTERPRETABLE",
+      "saturation_note": "fires on 96.35% of think-arm and 96.35% of no-think-arm turns. The exact t = 0.0 is COINCIDENTAL BALANCE, not structure \u2014 see signs_pos/signs_neg: the discordant pairs cancel. A near-saturated scorer has little variance left to discriminate with; it is not incapable of moving the way handback_anticipation is."
     }
   },
   "adherence": {
@@ -423,6 +464,7 @@
       "alpha": 0.004545454545454546,
       "verdict": "think better"
     },
+    "direction": "higher",
     "note": "per turn POSITION, never pooled \u2014 a pooled number hides a model that writes a good block for turn 0 and collapses by turn 4. The no-think arm is a negative control: it never saw a think-block in training."
   },
   "degeneration": {
@@ -442,7 +484,52 @@
       "alpha": 0.004545454545454546,
       "verdict": "no-think better"
     },
-    "note": "4-gram repeat rate ACROSS a skit's three model turns (within-turn scoring would report ~0 for a model that writes the same sentence three times). This is the one pre-declared criterion the think arm fails, and it is a cost of the mechanism the rest of the file shows working: a block commits to an `add` word and the arm then writes that word into its turn, block after block."
+    "direction": "lower",
+    "excluding_contaminated_turns": {
+      "think_mean_4gram_repeat": 0.0523,
+      "nothink_mean_4gram_repeat": 0.0232,
+      "test": {
+        "mean_delta": 0.0291,
+        "sd": 0.114,
+        "se": 0.0072,
+        "t": 4.058,
+        "direction": "lower",
+        "signs_pos": 85,
+        "signs_neg": 38,
+        "signs_zero": 130,
+        "n": 253,
+        "critical_t": 2.843,
+        "alpha": 0.004545454545454546,
+        "verdict": "no-think better"
+      },
+      "n_skits": 253
+    },
+    "stagnation_analysis": {
+      "definition": "skits whose three generated blocks all name the SAME `add` value",
+      "n_stagnant": 32,
+      "n_total": 256,
+      "fraction": 0.125,
+      "mean_repeat_stagnant": 0.1465,
+      "mean_repeat_varied": 0.0454,
+      "corr_add_hit_rate_with_repeat": 0.0389,
+      "corr_block_stagnation_with_repeat": 0.2833,
+      "test_excluding_stagnant_skits": {
+        "mean_delta": 0.0219,
+        "sd": 0.1217,
+        "se": 0.0081,
+        "t": 2.699,
+        "direction": "lower",
+        "signs_pos": 65,
+        "signs_neg": 37,
+        "signs_zero": 122,
+        "n": 224,
+        "critical_t": 2.843,
+        "alpha": 0.004545454545454546,
+        "verdict": "NOT INTERPRETABLE"
+      },
+      "note": "Read the excluded-stagnant test and the two correlations before blaming think-blocks for looping: if it falls below the critical t, the degeneration finding is carried by the minority of skits where the plan stopped varying \u2014 stagnation, not plan-following. The fix that follows is to score blocks for NOVELTY across turns, not to remove the blocks."
+    },
+    "note": "4-gram repeat rate ACROSS a skit's three model turns (within-turn scoring would report ~0 for a model that writes the same sentence three times). The headline number INCLUDES the contaminated turns listed under `contamination`; `excluding_contaminated_turns` is the same test without them and is the number to quote when the effect size matters."
   },
   "bonferroni": {
     "alpha": 0.004545454545454546,
@@ -472,9 +559,13 @@
     "swap_test_shows_continuations_do_change": true,
     "all_criteria_met": false,
     "supplementary_plan_following_survives_the_context_only_control": {
-      "n_slots": 3,
+      "n_slots": 2,
+      "slots": [
+        "accept",
+        "add"
+      ],
       "passed": true,
-      "note": "Not part of `all_criteria_met` \u2014 the plan's gate was written before this control existed. handback_anticipation cannot contribute here: its context-only floor is degenerate by construction (see the slot table)."
+      "note": "Not part of `all_criteria_met` \u2014 the plan's gate was written before this control existed. Counts only slots whose claim SURVIVES the arm-quality decomposition: handback_anticipation cannot contribute (degenerate control) and stakes is withdrawn (mostly confounded)."
     }
   },
   "held_out": {
@@ -9642,5 +9733,74 @@
       "pad_token_id": 3
     },
     "warm_start_header_source": "artifacts/checkpoints-v077-beta2-control/tt_tnt_step00010764.pkl"
+  },
+  "contamination": {
+    "n_unparsed_blocks": 7,
+    "n_turns_leaking_template_text": 5,
+    "n_turns": 5,
+    "detail": [
+      {
+        "index": 4,
+        "story_id": 197306,
+        "turn": 0,
+        "turn_text": "<think>\noffer: billy little girl only three years old\naccept: billy\nadd: tim's\nstakes: level\nhandback: tim's\n</think>\n S"
+      },
+      {
+        "index": 96,
+        "story_id": 198213,
+        "turn": 0,
+        "turn_text": "<think>\noffer: jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim j"
+      },
+      {
+        "index": 96,
+        "story_id": 198213,
+        "turn": 2,
+        "turn_text": "<think>\noffer: jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim j"
+      },
+      {
+        "index": 96,
+        "story_id": 198213,
+        "turn": 4,
+        "turn_text": "<think>\noffer jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim jim ji"
+      },
+      {
+        "index": 140,
+        "story_id": 198752,
+        "turn": 4,
+        "turn_text": "<think>\noffer: Chloe mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia mia"
+      }
+    ],
+    "note": "`n_unparsed_blocks` counts model turns whose block did not parse (they are excluded from every slot measurement). A SUBSET of them (`n_turns_leaking_template_text`) opened a think-block and never closed it, so `split_generation` found no `</think>` to split on and the 'turn' it returned is raw template text. These leak into the cross-arm test, the failure scorers and degeneration. They are REPORTED rather than silently dropped, and every affected conclusion is restated without them \u2014 see `degeneration.excluding_contaminated_turns`."
+  },
+  "rescoring": {
+    "source_artifact": "/tmp/claude-1000/-home-ttuser-code-tt-kernel-package-manager/04c9a1a4-1e71-41fc-809e-6701c00b8a3a/scratchpad/run3-generation.json",
+    "what_was_recomputed": [
+      "adherence",
+      "contamination",
+      "degeneration",
+      "failure_modes",
+      "limitations",
+      "slots_model_generated_blocks",
+      "slots_reference_block_across_arms",
+      "success_criteria",
+      "verdict"
+    ],
+    "what_was_carried_over": [
+      "adherence.nothink_by_turn",
+      "bonferroni",
+      "derivation",
+      "examples",
+      "generated_turns",
+      "generation_settings",
+      "held_out",
+      "hf_conversion",
+      "manifests_used",
+      "power",
+      "swap_test",
+      "swap_test_detail",
+      "tokenization_parity"
+    ],
+    "reproduction_check": "every pre-existing number recomputed identically from the stored turns",
+    "note": "No model was loaded and no token was generated: this is scoring re-run over the turns the generation run stored. The generation itself is greedy and was verified byte-identical across three independent runs."
   }
 }
