@@ -131,6 +131,9 @@ WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
 TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
 
+#: Corpus record separator — NOT a blank line (see scripts/derive_skits.py).
+STORY_SEP = "</s>"
+
 _THINK_RE = re.compile(r"<think>\s*.*?\s*</think>", re.S)
 _WORD_RE = re.compile(r"[A-Za-z']+")
 
@@ -154,11 +157,133 @@ AUX_DIRECTIONS = {"adherence": "higher", "degeneration": "lower"}
 CONFOUND_WITHDRAW_SHARE = 0.5
 
 
+def stamp_slot_disclosures(table: Dict[str, Dict[str, Any]],
+                           own_vs_foreign: Dict[str, Dict[str, object]],
+                           own_vs_context_only: Dict[str, Dict[str, object]],
+                           decomposition: Dict[str, Dict[str, object]],
+                           *, add_handback_identity: Optional[float]) -> None:
+    """Attach every slot-level caveat INSIDE the rows a reader will actually look at.
+
+    Two review findings, one fix. `handback_anticipation` already carried its structural and
+    its degenerate-control warnings in-row, while `stakes` — the slot actually WITHDRAWN from
+    the plan-following claim — had rows reading "think better" with nothing attached: its
+    `own_block_vs_context_only_control` entry says t = 4.158, and a reader stopping there
+    would publish what the decomposition withdrew. The same standard now applies to both.
+
+    `add_handback_identity` is the third handback degeneracy, and unlike the other two it is
+    EMPIRICAL: in this run 97.24% of generated blocks put the identical word in `add` and
+    `handback`, and the two slots' top-10 word lists are the same list. So handback's matched
+    rate is very largely the `add` word re-tested against the next partner turn — not an
+    independent anticipation plan, and a near-duplicate component inside
+    `pooled_slot_accuracy`. It STRENGTHENS the `add` headline (the model has one salient word
+    per block) which is exactly why disclosing it costs the result nothing.
+    """
+    for slot in SLOT_NAMES:
+        claim = decomposition.get(slot, {}).get("claim")
+        if claim in ("withdrawn", "no signal", "not measurable"):
+            marker = {
+                "plan_following_claim": claim,
+                "do_not_read_this_row_as_plan_following": decomposition[slot].get("why"),
+            }
+            table[slot]["plan_following_claim"] = claim
+            table[slot]["claim_why"] = decomposition[slot].get("why")
+            for d in (own_vs_foreign.get(slot), own_vs_context_only.get(slot)):
+                if isinstance(d, dict):
+                    d.update(marker)
+    if add_handback_identity is not None:
+        msg = (f"THIRD DEGENERACY, EMPIRICAL: {add_handback_identity:.2%} of this run's "
+               f"generated blocks put the IDENTICAL word in `add` and `handback`, and the "
+               f"two slots' top-10 word lists are the same list. handback's matched rate is "
+               f"therefore very largely the `add` word re-tested against the next partner "
+               f"turn rather than an independent anticipation plan, and it is a "
+               f"near-duplicate component inside pooled_slot_accuracy. It strengthens the "
+               f"`add` headline — one salient word per block — so disclosing it costs the "
+               f"result nothing.")
+        table["handback_anticipation"]["add_and_handback_are_the_same_word_rate"] = round(
+            add_handback_identity, 4)
+        table["handback_anticipation"]["duplicates_the_add_slot"] = msg
+        for d in (own_vs_foreign.get("handback_anticipation"),
+                  own_vs_context_only.get("handback_anticipation")):
+            if isinstance(d, dict):
+                d["duplicates_the_add_slot"] = msg
+
+
+def add_handback_identity_rate(slots_think: Sequence[Sequence[Any]]) -> Optional[float]:
+    """Share of generated blocks whose `add` and `handback` values are the same word."""
+    vals = [_block_dict(b) for row in slots_think for b in row]
+    blocks = [b for b in vals if b]
+    if not blocks:
+        return None
+    same = sum(1 for b in blocks
+               if (b.get("add") or "").strip().lower() == (b.get("handback") or "").strip().lower())
+    return same / len(blocks)
+
+
+def dialogue_selection_bias(corpus_path: Path, skits: Sequence[dict], *, n_stories: int
+                            ) -> Dict[str, Any]:
+    """How much dialogue the splitter's drop rule removed from the eval population.
+
+    The spec requires a drop rate above 50% to be reported WITH the result, because past
+    that point the FILTER is choosing the behaviour rather than the model. The rate here is
+    0.907, and the drop is not uniform: `train/skit.py`'s documented limitation is that
+    `split_sentences` fragments dialogue-with-attribution ('"It's mine!" said Ann.' becomes
+    two sentences), so a model turn following such a partner turn shares no content word
+    with it and the whole skit drops. This measures the resulting bias instead of describing
+    it, over the SAME story slice derivation read.
+    """
+    stories: List[str] = []
+    buf = ""
+    with corpus_path.open(errors="ignore") as fh:
+        while len(stories) < n_stories:
+            chunk = fh.read(1 << 24)
+            if not chunk:
+                break
+            buf += chunk
+            parts = buf.split(STORY_SEP)
+            buf = parts.pop()
+            for part in parts:
+                text = part.strip()
+                if text:
+                    stories.append(text)
+                if len(stories) >= n_stories:
+                    break
+    stories = stories[:n_stories]
+    c_units = sum(1 for s in stories if '"' in s)
+    c_sents = c_quoted = 0
+    for s in stories:
+        sents = split_sentences(s)
+        c_sents += len(sents)
+        c_quoted += sum(1 for x in sents if '"' in x)
+    k_units = sum(1 for k in skits
+                  if '"' in k["prefix"] or any('"' in t for t in k["turns"]))
+    turns = [t for k in skits for t in k["turns"]]
+    k_quoted = sum(1 for t in turns if '"' in t)
+    cu, ku = c_units / max(len(stories), 1), k_units / max(len(skits), 1)
+    cs, ks = c_quoted / max(c_sents, 1), k_quoted / max(len(turns), 1)
+    return {
+        "n_corpus_stories_scanned": len(stories), "n_kept_skits": len(skits),
+        "units_with_dialogue_corpus": round(cu, 4),
+        "units_with_dialogue_kept": round(ku, 4),
+        "units_relative_change": round(ku / cu - 1, 4) if cu else None,
+        "sentences_with_dialogue_corpus": round(cs, 4),
+        "turns_with_dialogue_kept": round(ks, 4),
+        "sentences_relative_change": round(ks / cs - 1, 4) if cs else None,
+        "dialogue_marker": 'a double-quote character anywhere in the unit',
+        "note": ("The eval population is the RESIDUE left by a splitter that fragments "
+                 "dialogue-with-attribution. Dialogue-heavy stories are systematically "
+                 "under-represented, so every number in this artifact describes model "
+                 "behaviour on the flatter, more narrative 9.3% of the corpus that survived "
+                 "derivation — not on the corpus."),
+    }
+
+
+
 def evaluate_success_criteria(*, adherence_think: Sequence[float],
                               gaps: Dict[str, Optional[float]],
                               contrasts: Dict[str, Dict[str, object]],
                               degeneration_test: Dict[str, object],
-                              swap_is_load_bearing: bool) -> Dict[str, object]:
+                              swap_is_load_bearing: bool,
+                              claims: Optional[Dict[str, str]] = None) -> Dict[str, object]:
     """The plan's four gates, as a called function rather than inline driver code.
 
     Every one of these is a one-token edit away from inverting: `>= 2` to `>= 1`, `!=` to
@@ -166,10 +291,11 @@ def evaluate_success_criteria(*, adherence_think: Sequence[float],
     mutation of exactly this kind (the degeneration direction) turned a PARTIAL verdict into
     "STAGE 2 SUCCESS" while all 27 tests stayed green.
     """
-    materially_positive = sum(1 for slot in SLOT_NAMES
-                              if (gaps.get(slot) or 0.0) > 0.05
-                              and contrasts[slot].get("verdict") not in
-                              ("NOT INTERPRETABLE", "NO DATA"))
+    materially_positive_slots = [slot for slot in SLOT_NAMES
+                                 if (gaps.get(slot) or 0.0) > 0.05
+                                 and contrasts[slot].get("verdict") not in
+                                 ("NOT INTERPRETABLE", "NO DATA")]
+    materially_positive = len(materially_positive_slots)
     success: Dict[str, object] = {
         "adherence_at_least_0_80_at_every_turn": all(a >= 0.80 for a in adherence_think),
         "shuffled_gap_materially_positive_on_at_least_2_of_4_slots": materially_positive >= 2,
@@ -178,6 +304,25 @@ def evaluate_success_criteria(*, adherence_think: Sequence[float],
         "swap_test_shows_continuations_do_change": bool(swap_is_load_bearing),
     }
     success["all_criteria_met"] = all(bool(v) for v in success.values())
+    # BLOCKER 6: which slots carried that gate, named rather than counted. The gate is the
+    # PRE-DECLARED one and is deliberately left as declared — it asks a different question
+    # from the confound decomposition (does the model's own block beat a FOREIGN block,
+    # which no arm-identity term touches), so a slot withdrawn from the plan-following claim
+    # can still legitimately answer it. But a reader must be able to see that two of the
+    # four slots counted here are elsewhere marked "withdrawn" and "not measurable", so the
+    # list and the claim-filtered count are emitted beside it.
+    success["materially_positive_slots"] = materially_positive_slots
+    if claims:
+        publishable = [s for s in materially_positive_slots
+                       if claims.get(s) in ("headline", "bounded")]
+        success["materially_positive_slots_restricted_to_publishable_claims"] = {
+            "slots": publishable, "n": len(publishable),
+            "would_still_pass": len(publishable) >= 2,
+            "note": ("The same gate counting only slots whose plan-following claim survives "
+                     "the arm-quality decomposition. Reported for disclosure; the gate "
+                     "itself is the pre-declared one above and is not silently retightened "
+                     "after seeing the data."),
+        }
     return success
 
 
@@ -217,6 +362,17 @@ def decompose_confound(context_only_gaps: Dict[str, Optional[float]],
                                  "conditions, so the gap is forced to 0.0000")}
             continue
         residual = round(gap - float(proxy), 4)
+        if gap <= 0:
+            # Found by the three-skit fixture, not by the real data (where every gap is
+            # positive): with gap <= 0 there is no plan-following to attribute, and the
+            # `proxy < 0` branch below would have labelled it "headline" — publishing a slot
+            # whose own control beat it.
+            out[slot] = {"context_only_gap": gap, "arm_quality_proxy": round(float(proxy), 4),
+                         "residual": residual, "claim": "no signal",
+                         "why": (f"the context-only gap is {gap:+.4f} — the block's own "
+                                 f"control did at least as well, so there is nothing to "
+                                 f"publish regardless of the confound")}
+            continue
         if float(proxy) >= CONFOUND_WITHDRAW_SHARE * gap:
             claim, why = "withdrawn", (
                 f"the arm-quality proxy ({proxy:+.4f}) explains at least "
@@ -475,8 +631,9 @@ def manifests_block(think: Dict[str, Any], nothink: Dict[str, Any]) -> Dict[str,
     scrolled straight to the losses never sees.
     """
     return {
-        "think": think,
-        "nothink": nothink,
+        # The note comes FIRST in key order, deliberately: it is the thing a reader must see
+        # before the numbers it protects, and this docstring said so while the code put it
+        # last.
         "loss_comparability": (
             "DO NOT compare the two arms' `loss_end` (think 0.504 vs nothink 1.227). They "
             "supervise DIFFERENT TOKEN SETS: 168.1 vs 43.4 supervised label positions per "
@@ -485,11 +642,63 @@ def manifests_block(think: Dict[str, Any], nothink: Dict[str, Any]) -> Dict[str,
             "free prose. The gap is an easier token mixture, not an arm effect. `paired_with` "
             "in these manifests means the two runs share data order, seed and schedule — it "
             "does NOT mean their losses are on a common scale. The only valid arm comparison "
-            "is the scorers applied to MODEL TURNS, which is what the rest of this file is."),
+            "is the scorers applied to MODEL TURNS, which is what the rest of this file is. "
+            "THE SAME APPLIES TO `val_loss_first` / `val_loss_last` / the whole val curve "
+            "(think 1.009 -> 0.639 vs nothink 1.580 -> 1.552): held-out loss is averaged "
+            "over the same arm-specific token mixture, so cross-arm val comparisons are "
+            "invalid for exactly the same reason. Within one arm, across steps, the "
+            "trajectory IS meaningful — that is how we know the think arm was still "
+            "improving at step 3000 and the no-think arm had nearly stopped."),
+        "think": think,
+        "nothink": nothink,
     }
 
 
-def build_limitations(*, eval_set: str, n_skits: int) -> Dict[str, str]:
+def _drop_rate_limitation(derivation: Optional[Dict[str, Any]],
+                          bias: Optional[Dict[str, Any]]) -> str:
+    """The drop-rate disclosure the spec makes mandatory above 50%.
+
+    Spec §1: "warn above 50% — past that the FILTER rather than the model is choosing the
+    behaviour, and any result must be reported with that fact attached." The rate is 0.907
+    and it was in the artifact only as a bare `derivation.drop_rate`, with none of the eight
+    limitation entries mentioning it. It is also the strongest attack a hostile reader has,
+    so it gets the numbers rather than a hedge.
+    """
+    if not derivation:
+        return ("derivation manifest not found, so the drop rate could not be reported — "
+                "which is itself disqualifying: the spec requires it WITH the result.")
+    rate = derivation.get("drop_rate")
+    rules = derivation.get("drops_by_rule", {})
+    parts = [
+        f"DROP RATE {rate:.1%} ({derivation.get('kept'):,} skits kept of "
+        f"{derivation.get('stories'):,} corpus stories). The spec's own rule is that above "
+        f"50% the FILTER rather than the model is choosing the behaviour, and any result "
+        f"must carry that fact — so: this eval measures the model on the "
+        f"{1 - rate:.1%} of the corpus that survived derivation, not on the corpus. "
+        f"Drops by rule: "
+        + ", ".join(f"{k} {v:,}" for k, v in sorted(rules.items(), key=lambda kv: -kv[1]))
+        + ".",
+        "The drop is NOT uniform, which is the part that bites: train/skit.py's documented "
+        "limitation is that split_sentences fragments dialogue-with-attribution ('\"It's "
+        "mine!\" said Ann.' becomes two sentences), so a model turn following such a partner "
+        "turn shares no content word with it and the entire skit drops.",
+    ]
+    if bias:
+        parts.append(
+            f"MEASURED SELECTION BIAS (same story slice derivation read): units containing "
+            f"dialogue {bias['units_with_dialogue_corpus']:.1%} in the corpus -> "
+            f"{bias['units_with_dialogue_kept']:.1%} in the kept skits "
+            f"({bias['units_relative_change']:+.0%} relative); sentences/turns containing "
+            f"dialogue {bias['sentences_with_dialogue_corpus']:.1%} -> "
+            f"{bias['turns_with_dialogue_kept']:.1%} ({bias['sentences_relative_change']:+.0%} "
+            f"relative). The eval population is the residue left by that splitter: flatter, "
+            f"more narrative prose with systematically less dialogue. Any claim about "
+            f"conversational improv skill inherits that bias.")
+    return " ".join(parts)
+
+
+def build_limitations(*, eval_set: str, n_skits: int, derivation: Optional[Dict[str, Any]],
+                     selection_bias: Optional[Dict[str, Any]]) -> Dict[str, str]:
     """What this measurement can and cannot support, carried IN the artifact.
 
     Burying these in a report nobody re-reads is how stage 1 published a metric without its
@@ -542,6 +751,8 @@ def build_limitations(*, eval_set: str, n_skits: int) -> Dict[str, str]:
             f"{n_skits} held-out skits of {eval_set} only. They say nothing about "
             "run-to-run variance; a retrain could land elsewhere."
         ),
+        "the_eval_population_is_a_90_7_percent_filtered_residue": _drop_rate_limitation(
+            derivation, selection_bias),
         "generation_is_cpu_only": (
             "Generation runs on the CPU through transformers (torch is a +cpu build on this "
             "host and ttml is a training-only path in this repo), so this eval opens no "
@@ -980,6 +1191,9 @@ def score_and_assemble(*, val_skits: Sequence[dict], turns_think: Sequence[Seque
     # ---- The confound decomposition (FIX 2) --------------------------------------------
     ctx_gaps = {slot: table[slot].get("gap_over_context_only") for slot in SLOT_NAMES}
     decomposition = decompose_confound(ctx_gaps, slot_arm_tests)
+    identity_rate = add_handback_identity_rate(slots_think)
+    stamp_slot_disclosures(table, own_vs_foreign, own_vs_context_only, decomposition,
+                           add_handback_identity=identity_rate)
     for slot in SLOT_NAMES:
         decomposition[slot]["slot_value_already_visible_in_context"] = slot_value_visibility(
             val_skits, slots_think, slot if slot != "handback_anticipation" else "handback")
@@ -989,7 +1203,8 @@ def score_and_assemble(*, val_skits: Sequence[dict], turns_think: Sequence[Seque
         adherence_think=adherence_think,
         gaps={s: table[s].get("gap_over_shuffled") for s in SLOT_NAMES},
         contrasts=own_vs_foreign, degeneration_test=degeneration_test,
-        swap_is_load_bearing=swap_is_load_bearing)
+        swap_is_load_bearing=swap_is_load_bearing,
+        claims={s: str(decomposition[s]["claim"]) for s in SLOT_NAMES})
     survives_context_only = sum(
         1 for slot in SLOT_NAMES
         if own_vs_context_only[slot].get("verdict") == "think better"
@@ -1022,6 +1237,8 @@ def score_and_assemble(*, val_skits: Sequence[dict], turns_think: Sequence[Seque
             "own_block_vs_context_only_control": own_vs_context_only,
             "confound_decomposition": decomposition,
             "publishable_plan_following_slots": publishable,
+            "add_and_handback_are_the_same_word_rate": (round(identity_rate, 4)
+                                                       if identity_rate is not None else None),
             "note": (
                 "`matched` is the model's OWN block scored against the turn it then wrote. "
                 "`shuffled_floor` is that same block scored against another skit's model "
@@ -1093,6 +1310,20 @@ def score_and_assemble(*, val_skits: Sequence[dict], turns_think: Sequence[Seque
     }
 
 
+def _md5(path: Path) -> Optional[str]:
+    """Streaming md5 of a file, or None if unreadable. Paired with every recorded path so a
+    later reader can tell whether the file they have is the file that was measured."""
+    import hashlib
+    try:
+        h = hashlib.md5()
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 22), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
 def _repo_relative(path: Path) -> str:
     """Repo-relative when possible, else the path as given. An absolute worktree path baked
     into a committed artifact stops resolving the moment the worktree is removed."""
@@ -1100,6 +1331,45 @@ def _repo_relative(path: Path) -> str:
         return str(path.resolve().relative_to(ROOT))
     except ValueError:
         return str(path)
+
+
+def measure_selection_bias(derivation: Optional[Dict[str, Any]],
+                           kept_skits: Sequence[dict]) -> Optional[Dict[str, Any]]:
+    """`dialogue_selection_bias` over the SAME story slice derivation actually read.
+
+    The story count comes from the derive manifest rather than a hardcoded number, so the
+    corpus side of the comparison can never silently be a different slice from the one the
+    kept skits were drawn from — which would make the two percentages incomparable while
+    looking fine.
+    """
+    if not derivation:
+        return None
+    corpus = ROOT / derivation["corpus"] if not Path(derivation["corpus"]).is_absolute() \
+        else Path(derivation["corpus"])
+    if not corpus.is_file():
+        return None
+    return dialogue_selection_bias(corpus, kept_skits,
+                                   n_stories=int(derivation.get("stories", 0)))
+
+
+def derivation_block(path: Path = DERIVE_MANIFEST_PATH) -> Optional[Dict[str, Any]]:
+    """The derive manifest, with `corpus` rewritten repo-relative and md5'd.
+
+    `_repo_relative` existed to stop absolute worktree paths leaking into a committed
+    artifact and was simply not applied here, so `derivation.corpus` shipped as
+    /home/ttuser/code/tt-tnt/... — a path that stops resolving the moment the worktree is
+    gone, and that tells a later reader nothing about WHICH corpus file it was.
+    """
+    if not path.is_file():
+        return None
+    m = dict(json.loads(path.read_text()))
+    corpus = Path(m.get("corpus", ""))
+    if corpus.name:
+        m["corpus"] = _repo_relative(corpus)
+        m["corpus_md5"] = _md5(corpus)
+        m["corpus_bytes"] = corpus.stat().st_size if corpus.is_file() else None
+    m["manifest_path"] = _repo_relative(path)
+    return m
 
 
 def rescore_from_artifact(source: Path, out: Path, *, skits_path: Path,
@@ -1204,18 +1474,31 @@ def rescore_from_artifact(source: Path, out: Path, *, skits_path: Path,
         "success_criteria": sections["success_criteria"],
         "verdict": sections["verdict_core"],
     })
+    derivation = derivation_block()
+    selection_bias = measure_selection_bias(derivation, all_skits)
+    report["derivation"] = derivation
+    report["selection_bias"] = selection_bias
+    # Rebuilt, not carried over: the note that protects these numbers (and now the val-loss
+    # curve too) lives in `manifests_block`, and a carried-over copy would freeze whatever
+    # wording the generation run happened to ship.
+    report["manifests_used"] = manifests_block(manifest_think, manifest_nothink)
     report["limitations"] = build_limitations(
-        eval_set=str(skits_path.relative_to(ROOT)), n_skits=len(val_skits))
+        eval_set=str(skits_path.relative_to(ROOT)), n_skits=len(val_skits),
+        derivation=derivation, selection_bias=selection_bias)
     report["rescoring"] = {
         "source_artifact": _repo_relative(source),
+        "source_artifact_md5": _md5(source),
+        "skits_file": _repo_relative(skits_path), "skits_file_md5": _md5(skits_path),
         "what_was_recomputed": sorted(["slots_model_generated_blocks",
                                        "slots_reference_block_across_arms", "failure_modes",
                                        "adherence", "degeneration", "contamination",
-                                       "success_criteria", "verdict", "limitations"]),
+                                       "success_criteria", "verdict", "limitations",
+                                       "derivation", "selection_bias",
+                                       "manifests_used"]),
         "what_was_carried_over": sorted(["swap_test", "swap_test_detail", "power",
                                          "held_out", "generation_settings", "examples",
-                                         "generated_turns", "manifests_used",
-                                         "tokenization_parity", "derivation",
+                                         "generated_turns",
+                                         "tokenization_parity",
                                          "hf_conversion", "bonferroni",
                                          "adherence.nothink_by_turn"]),
         "reproduction_check": ("every pre-existing number recomputed identically from the "
@@ -1445,7 +1728,9 @@ def main() -> int:
     # ---------------------------------------------------------------------------------
     # [7/8] Verdict.
     # ---------------------------------------------------------------------------------
-    print("[7/8] assembling verdict ...")
+    print("[7/8] assembling verdict, drop-rate disclosure and selection bias ...")
+    derivation = derivation_block()
+    selection_bias = measure_selection_bias(derivation, all_skits)
     success = sections["success_criteria"]
     table = sections["slots_model_generated_blocks"]["table"]
     own_vs_foreign = sections["slots_model_generated_blocks"]["own_block_vs_foreign_block"]
@@ -1463,7 +1748,8 @@ def main() -> int:
     report = {
         "verdict": verdict,
         "limitations": build_limitations(eval_set=str(args.skits.relative_to(ROOT)),
-                                         n_skits=len(val_skits)),
+                                         n_skits=len(val_skits), derivation=derivation,
+                                         selection_bias=selection_bias),
         "power": power,
         "swap_test": swap,
         "swap_test_detail": {"n": n_swap, "divergence_positions": divergence,
@@ -1528,8 +1814,8 @@ def main() -> int:
         },
         "manifests_used": manifests_block(manifest_think, manifest_nothink),
         "tokenization_parity": tokenization_parity,
-        "derivation": (json.loads(DERIVE_MANIFEST_PATH.read_text())
-                       if DERIVE_MANIFEST_PATH.is_file() else None),
+        "derivation": derivation,
+        "selection_bias": selection_bias,
         "hf_conversion": {"config": cfg_think,
                           "warm_start_header_source": str(WARM_START_CKPT.relative_to(ROOT))},
     }

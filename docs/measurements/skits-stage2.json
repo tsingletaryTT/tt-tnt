@@ -8,6 +8,7 @@
     "step_3000_is_an_inherited_budget_not_convergence": "Held-out loss was still falling at step 3000 in the think arm (1.009 at step 250 -> 0.639 at step 3000, monotone, no upturn). 3000 steps was an inherited budget, not a convergence point, so every number here describes an under-trained pair of arms and a longer run could move them.",
     "nothink_val_curve_is_nearly_flat": "The no-think arm's validation loss moved 1.8% over 3000 steps (1.580 -> 1.552) while its train loss fell 32%. Read its scores here as those of an arm that barely generalised beyond its warm start.",
     "single_training_run_per_arm": "One SFT run per arm, one seed. The paired tests capture ITEM variance over the 256 held-out skits of artifacts/skits-200k/skits.jsonl only. They say nothing about run-to-run variance; a retrain could land elsewhere.",
+    "the_eval_population_is_a_90_7_percent_filtered_residue": "DROP RATE 90.7% (18,610 skits kept of 200,000 corpus stories). The spec's own rule is that above 50% the FILTER rather than the model is choosing the behaviour, and any result must carry that fact \u2014 so: this eval measures the model on the 9.3% of the corpus that survived derivation, not on the corpus. Drops by rule: turn_derivation_failed_other 147,538, turn_derivation_failed_dialogue_pattern 33,449, too_few_sentences 403. The drop is NOT uniform, which is the part that bites: train/skit.py's documented limitation is that split_sentences fragments dialogue-with-attribution ('\"It's mine!\" said Ann.' becomes two sentences), so a model turn following such a partner turn shares no content word with it and the entire skit drops. MEASURED SELECTION BIAS (same story slice derivation read): units containing dialogue 53.5% in the corpus -> 31.2% in the kept skits (-42% relative); sentences/turns containing dialogue 17.3% -> 11.6% (-33% relative). The eval population is the residue left by that splitter: flatter, more narrative prose with systematically less dialogue. Any claim about conversational improv skill inherits that bias.",
     "generation_is_cpu_only": "Generation runs on the CPU through transformers (torch is a +cpu build on this host and ttml is a training-only path in this repo), so this eval opens no /dev/tenstorrent device and holds no chip lease. The arms it evaluates WERE trained on Tenstorrent hardware; nothing about the measurement depends on where the forward passes ran."
   },
   "power": {
@@ -120,7 +121,9 @@
         "context_only_floor": 0.8580814717477004,
         "gap_over_context_only": 0.0486,
         "headroom_above_chance": 0.262,
-        "note": "chance is the majority class 'level' (0.738), not 0.5 \u2014 the entire detectable band is 26.2 points"
+        "note": "chance is the majority class 'level' (0.738), not 0.5 \u2014 the entire detectable band is 26.2 points",
+        "plan_following_claim": "withdrawn",
+        "claim_why": "the arm-quality proxy (+0.0312) explains at least 50% of the +0.0486 gap \u2014 this slot must NOT be published as plan-following"
       },
       "handback_anticipation": {
         "matched": 0.10826771653543307,
@@ -132,7 +135,11 @@
         "corpus_ceiling": 0.119,
         "max_detectable_band": 0.098,
         "note": "ground-truth blocks themselves only hit 0.119 here, floor 0.021 \u2014 a null inside this ~0.10 band means 'within a 10-point band', NOT 'no effect'",
-        "context_only_floor_is_degenerate_for_this_slot": "score_block() reads only the block's `handback` value and the NEXT PARTNER turn, never the model's own turn. The context-only control holds the partner turn fixed, so this floor is identical to `matched` BY CONSTRUCTION and `gap_over_context_only` is necessarily 0.0000. It is not evidence of no effect. Use `gap_over_shuffled` for this slot."
+        "context_only_floor_is_degenerate_for_this_slot": "score_block() reads only the block's `handback` value and the NEXT PARTNER turn, never the model's own turn. The context-only control holds the partner turn fixed, so this floor is identical to `matched` BY CONSTRUCTION and `gap_over_context_only` is necessarily 0.0000. It is not evidence of no effect. Use `gap_over_shuffled` for this slot.",
+        "plan_following_claim": "not measurable",
+        "claim_why": "the context-only control is degenerate for this slot \u2014 score_block reads only the block's handback value and the corpus next-partner turn, which is identical in both conditions, so the gap is forced to 0.0000",
+        "add_and_handback_are_the_same_word_rate": 0.9724,
+        "duplicates_the_add_slot": "THIRD DEGENERACY, EMPIRICAL: 97.24% of this run's generated blocks put the IDENTICAL word in `add` and `handback`, and the two slots' top-10 word lists are the same list. handback's matched rate is therefore very largely the `add` word re-tested against the next partner turn rather than an independent anticipation plan, and it is a near-duplicate component inside pooled_slot_accuracy. It strengthens the `add` headline \u2014 one salient word per block \u2014 so disclosing it costs the result nothing."
       }
     },
     "own_block_vs_foreign_block": {
@@ -176,7 +183,9 @@
         "n": 761,
         "critical_t": 2.843,
         "alpha": 0.004545454545454546,
-        "verdict": "think better"
+        "verdict": "think better",
+        "plan_following_claim": "withdrawn",
+        "do_not_read_this_row_as_plan_following": "the arm-quality proxy (+0.0312) explains at least 50% of the +0.0486 gap \u2014 this slot must NOT be published as plan-following"
       },
       "handback_anticipation": {
         "mean_delta": 0.0965,
@@ -190,7 +199,10 @@
         "n": 508,
         "critical_t": 2.843,
         "alpha": 0.004545454545454546,
-        "verdict": "think better"
+        "verdict": "think better",
+        "plan_following_claim": "not measurable",
+        "do_not_read_this_row_as_plan_following": "the context-only control is degenerate for this slot \u2014 score_block reads only the block's handback value and the corpus next-partner turn, which is identical in both conditions, so the gap is forced to 0.0000",
+        "duplicates_the_add_slot": "THIRD DEGENERACY, EMPIRICAL: 97.24% of this run's generated blocks put the IDENTICAL word in `add` and `handback`, and the two slots' top-10 word lists are the same list. handback's matched rate is therefore very largely the `add` word re-tested against the next partner turn rather than an independent anticipation plan, and it is a near-duplicate component inside pooled_slot_accuracy. It strengthens the `add` headline \u2014 one salient word per block \u2014 so disclosing it costs the result nothing."
       }
     },
     "own_block_vs_context_only_control": {
@@ -234,7 +246,9 @@
         "n": 761,
         "critical_t": 2.843,
         "alpha": 0.004545454545454546,
-        "verdict": "think better"
+        "verdict": "think better",
+        "plan_following_claim": "withdrawn",
+        "do_not_read_this_row_as_plan_following": "the arm-quality proxy (+0.0312) explains at least 50% of the +0.0486 gap \u2014 this slot must NOT be published as plan-following"
       },
       "handback_anticipation": {
         "mean_delta": 0.0,
@@ -248,7 +262,10 @@
         "n": 508,
         "critical_t": 2.843,
         "alpha": 0.004545454545454546,
-        "verdict": "NOT INTERPRETABLE"
+        "verdict": "NOT INTERPRETABLE",
+        "plan_following_claim": "not measurable",
+        "do_not_read_this_row_as_plan_following": "the context-only control is degenerate for this slot \u2014 score_block reads only the block's handback value and the corpus next-partner turn, which is identical in both conditions, so the gap is forced to 0.0000",
+        "duplicates_the_add_slot": "THIRD DEGENERACY, EMPIRICAL: 97.24% of this run's generated blocks put the IDENTICAL word in `add` and `handback`, and the two slots' top-10 word lists are the same list. handback's matched rate is therefore very largely the `add` word re-tested against the next partner turn rather than an independent anticipation plan, and it is a near-duplicate component inside pooled_slot_accuracy. It strengthens the `add` headline \u2014 one salient word per block \u2014 so disclosing it costs the result nothing."
       }
     },
     "confound_decomposition": {
@@ -289,6 +306,7 @@
       "accept",
       "add"
     ],
+    "add_and_handback_are_the_same_word_rate": 0.9724,
     "note": "`matched` is the model's OWN block scored against the turn it then wrote. `shuffled_floor` is that same block scored against another skit's model turn (the task-3 control). `context_only_floor` is that same block scored against the NO-THINK arm's turn for the same skit and position. DO NOT read the context-only contrast as plan-presence alone: the no-think arm is a SEPARATELY TRAINED MODEL, so the contrast is plan-presence PLUS arm identity, and it is strictly same-context only at turn position 0 (each arm is fed its own prior turns thereafter; the gap was checked at position 0 and holds, so this weakens the wording, not the result). `confound_decomposition` bounds the arm-identity part using the cross-arm reference test as a proxy. THE CLAIM IS NOT 'all four slots move': `add` is the headline (its confound has the opposite sign, so it is biased downward), `accept` is bounded, `stakes` is WITHDRAWN, and `handback_anticipation`'s control is degenerate by construction. These eight contrasts sit OUTSIDE the pre-declared family of 11 and are reported at the same critical t; counted as tests the family is 19 and the critical value would be 3.01 \u2014 any |t| in 2.843-3.01 is borderline."
   },
   "slots_reference_block_across_arms": {
@@ -558,6 +576,21 @@
     "degeneration_no_worse_than_the_no_think_arm": false,
     "swap_test_shows_continuations_do_change": true,
     "all_criteria_met": false,
+    "materially_positive_slots": [
+      "accept",
+      "add",
+      "stakes",
+      "handback_anticipation"
+    ],
+    "materially_positive_slots_restricted_to_publishable_claims": {
+      "slots": [
+        "accept",
+        "add"
+      ],
+      "n": 2,
+      "would_still_pass": true,
+      "note": "The same gate counting only slots whose plan-following claim survives the arm-quality decomposition. Reported for disclosure; the gate itself is the pre-declared one above and is not silently retightened after seeing the data."
+    },
     "supplementary_plan_following_survives_the_context_only_control": {
       "n_slots": 2,
       "slots": [
@@ -9276,6 +9309,7 @@
     ]
   },
   "manifests_used": {
+    "loss_comparability": "DO NOT compare the two arms' `loss_end` (think 0.504 vs nothink 1.227). They supervise DIFFERENT TOKEN SETS: 168.1 vs 43.4 supervised label positions per example (236.8 vs 111.8 tokens), and 74.2% of the think arm's supervised positions are the fixed five-line template, which is far more predictable than free prose. The gap is an easier token mixture, not an arm effect. `paired_with` in these manifests means the two runs share data order, seed and schedule \u2014 it does NOT mean their losses are on a common scale. The only valid arm comparison is the scorers applied to MODEL TURNS, which is what the rest of this file is. THE SAME APPLIES TO `val_loss_first` / `val_loss_last` / the whole val curve (think 1.009 -> 0.639 vs nothink 1.580 -> 1.552): held-out loss is averaged over the same arm-specific token mixture, so cross-arm val comparisons are invalid for exactly the same reason. Within one arm, across steps, the trajectory IS meaningful \u2014 that is how we know the think arm was still improving at step 3000 and the no-think arm had nearly stopped.",
     "think": {
       "arm": "think",
       "paired_with": "nothink",
@@ -9667,8 +9701,7 @@
           }
         }
       }
-    },
-    "loss_comparability": "DO NOT compare the two arms' `loss_end` (think 0.504 vs nothink 1.227). They supervise DIFFERENT TOKEN SETS: 168.1 vs 43.4 supervised label positions per example (236.8 vs 111.8 tokens), and 74.2% of the think arm's supervised positions are the fixed five-line template, which is far more predictable than free prose. The gap is an easier token mixture, not an arm effect. `paired_with` in these manifests means the two runs share data order, seed and schedule \u2014 it does NOT mean their losses are on a common scale. The only valid arm comparison is the scorers applied to MODEL TURNS, which is what the rest of this file is."
+    }
   },
   "tokenization_parity": {
     "checked_against": "scripts/derive_skits.py:build_skit_example on a held-out skit",
@@ -9698,7 +9731,7 @@
     "note": "This eval builds every prompt segment-wise (tok.encode per segment, ids concatenated, add_special_tokens only on the first) \u2014 the construction training used. Whole-string tokenization is shown here only to record that it does NOT match."
   },
   "derivation": {
-    "corpus": "/home/ttuser/code/tt-tnt/artifacts/corpus/tinystories.txt",
+    "corpus": "artifacts/corpus/tinystories.txt",
     "separator": "</s>",
     "tile": 32,
     "stories": 200000,
@@ -9708,7 +9741,10 @@
       "turn_derivation_failed_dialogue_pattern": 33449,
       "turn_derivation_failed_other": 147538,
       "too_few_sentences": 403
-    }
+    },
+    "corpus_md5": "cb79377db23e71515983c26beaef3da3",
+    "corpus_bytes": 1915976329,
+    "manifest_path": "artifacts/skits-200k/derive_manifest.json"
   },
   "hf_conversion": {
     "config": {
@@ -9773,13 +9809,19 @@
     "note": "`n_unparsed_blocks` counts model turns whose block did not parse (they are excluded from every slot measurement). A SUBSET of them (`n_turns_leaking_template_text`) opened a think-block and never closed it, so `split_generation` found no `</think>` to split on and the 'turn' it returned is raw template text. These leak into the cross-arm test, the failure scorers and degeneration. They are REPORTED rather than silently dropped, and every affected conclusion is restated without them \u2014 see `degeneration.excluding_contaminated_turns`."
   },
   "rescoring": {
-    "source_artifact": "/tmp/claude-1000/-home-ttuser-code-tt-kernel-package-manager/04c9a1a4-1e71-41fc-809e-6701c00b8a3a/scratchpad/run3-generation.json",
+    "source_artifact": "docs/measurements/skits-stage2.json",
+    "source_artifact_md5": "1beb594347dd1dc35835fa4b175c4bae",
+    "skits_file": "artifacts/skits-200k/skits.jsonl",
+    "skits_file_md5": "18de07ee460c45b39ea2cccde261067d",
     "what_was_recomputed": [
       "adherence",
       "contamination",
       "degeneration",
+      "derivation",
       "failure_modes",
       "limitations",
+      "manifests_used",
+      "selection_bias",
       "slots_model_generated_blocks",
       "slots_reference_block_across_arms",
       "success_criteria",
@@ -9788,13 +9830,11 @@
     "what_was_carried_over": [
       "adherence.nothink_by_turn",
       "bonferroni",
-      "derivation",
       "examples",
       "generated_turns",
       "generation_settings",
       "held_out",
       "hf_conversion",
-      "manifests_used",
       "power",
       "swap_test",
       "swap_test_detail",
@@ -9802,5 +9842,17 @@
     ],
     "reproduction_check": "every pre-existing number recomputed identically from the stored turns",
     "note": "No model was loaded and no token was generated: this is scoring re-run over the turns the generation run stored. The generation itself is greedy and was verified byte-identical across three independent runs."
+  },
+  "selection_bias": {
+    "n_corpus_stories_scanned": 200000,
+    "n_kept_skits": 18610,
+    "units_with_dialogue_corpus": 0.5348,
+    "units_with_dialogue_kept": 0.3117,
+    "units_relative_change": -0.4171,
+    "sentences_with_dialogue_corpus": 0.1732,
+    "turns_with_dialogue_kept": 0.1163,
+    "sentences_relative_change": -0.3281,
+    "dialogue_marker": "a double-quote character anywhere in the unit",
+    "note": "The eval population is the RESIDUE left by a splitter that fragments dialogue-with-attribution. Dialogue-heavy stories are systematically under-represented, so every number in this artifact describes model behaviour on the flatter, more narrative 9.3% of the corpus that survived derivation \u2014 not on the corpus."
   }
 }

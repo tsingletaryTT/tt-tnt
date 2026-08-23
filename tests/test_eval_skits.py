@@ -198,8 +198,19 @@ def test_slot_table_prints_the_floor_beside_every_matched_rate():
     assert rows["handback_anticipation"]["max_detectable_band"] == round(0.119 - 0.021, 4)
 
 
+DERIVATION_FIXTURE = {"stories": 200000, "kept": 18610, "drop_rate": 0.907,
+                      "drops_by_rule": {"turn_derivation_failed_other": 147538,
+                                        "turn_derivation_failed_dialogue_pattern": 33449,
+                                        "too_few_sentences": 403}}
+BIAS_FIXTURE = {"units_with_dialogue_corpus": 0.535, "units_with_dialogue_kept": 0.312,
+                "units_relative_change": -0.4168,
+                "sentences_with_dialogue_corpus": 0.173,
+                "turns_with_dialogue_kept": 0.116, "sentences_relative_change": -0.3295}
+
+
 def test_limitations_name_the_by_construction_caveat_and_the_handback_band():
-    lim = build_limitations(eval_set="artifacts/skits-200k/skits.jsonl tail", n_skits=256)
+    lim = build_limitations(eval_set="artifacts/skits-200k/skits.jsonl tail", n_skits=256,
+                            derivation=DERIVATION_FIXTURE, selection_bias=BIAS_FIXTURE)
     blob = " ".join(str(v) for v in lim.values()).lower()
     assert "by construction" in blob
     assert "wiring check" in blob
@@ -207,6 +218,32 @@ def test_limitations_name_the_by_construction_caveat_and_the_handback_band():
     assert "0.738" in blob
     assert "still falling" in blob, "step 3000 was an inherited budget, not convergence"
     assert "training loss" in blob, "the two arms' losses must be declared incomparable"
+
+
+def test_limitations_must_disclose_the_drop_rate_and_the_dialogue_selection_bias():
+    """The spec makes this mandatory: "warn above 50% — past that the FILTER rather than the
+    model is choosing the behaviour, and any result must be reported with that fact
+    attached." The rate is 0.907 and eight limitation entries managed not to mention it. The
+    measured bias (dialogue-bearing units 53.5% of the corpus -> 31.2% of the kept skits) is
+    the specific shape of the filtering, and it is the strongest attack a hostile reader has.
+    """
+    lim = build_limitations(eval_set="x", n_skits=256, derivation=DERIVATION_FIXTURE,
+                            selection_bias=BIAS_FIXTURE)
+    blob = " ".join(str(v) for v in lim.values())
+    assert "90.7%" in blob, "the drop rate itself must appear, not a hedge about it"
+    assert "147,538" in blob and "33,449" in blob, "drops_by_rule counts must appear"
+    assert "dialogue" in blob.lower()
+    assert "53.5%" in blob and "31.2%" in blob, "the measured unit-level bias must appear"
+    assert "17.3%" in blob and "11.6%" in blob, "the sentence-level bias must appear"
+    assert "residue" in blob.lower(), (
+        "the artifact must say plainly that the eval population is the residue left by the "
+        "splitter, not the corpus")
+
+
+def test_limitations_refuse_to_go_quiet_when_the_derive_manifest_is_missing():
+    """A missing manifest must read as disqualifying, not as an absent caveat."""
+    lim = build_limitations(eval_set="x", n_skits=256, derivation=None, selection_bias=None)
+    assert "disqualifying" in " ".join(str(v) for v in lim.values()).lower()
 
 
 # ---------------------------------------------------------------------------------------
@@ -313,10 +350,19 @@ def test_manifests_carry_the_loss_incomparability_note_beside_the_losses():
     block = manifests_block({"loss_end": 0.504, "paired_with": "nothink"},
                             {"loss_end": 1.227, "paired_with": "think"})
     assert set(block) == {"think", "nothink", "loss_comparability"}
+    assert list(block)[0] == "loss_comparability", (
+        "the warning must come BEFORE the numbers it protects in key order — this module's "
+        "own docstring says so, and the code shipped it last")
     note = block["loss_comparability"].lower()
     assert "do not compare" in note
     assert "0.504" in note and "1.227" in note
     assert "supervise" in note and "template" in note
+    # The val curve needs the same protection: adjacent limitation entries quote
+    # 1.009 -> 0.639 against 1.580 -> 1.552 with nothing stopping the subtraction.
+    assert "val_loss_first" in note and "val_loss_last" in note
+    assert "within one arm" in note, (
+        "the note must also say which comparison IS legitimate, or the honest use of the "
+        "curve (the trajectory within an arm) reads as forbidden too")
 
 
 def test_slot_table_carries_the_context_only_floor_as_a_separate_control():
@@ -384,49 +430,67 @@ def test_a_control_identical_to_the_treatment_is_refused_not_reported():
 # ---------------------------------------------------------------------------------------
 
 
-def _fixture_skit(story_id, turns, add_words):
-    return {"story_id": story_id, "prefix": "A girl named Mia lived by the river.",
-            "turns": turns,
-            "blocks": [{"offer": "mia river", "accept": "mia", "add": add_words[i],
-                        "stakes": "level", "handback": "river"} for i in range(3)]}
+def _fixture_skit(story_id, k, ref_block):
+    """One synthetic skit. `ref_block` is the GROUND-TRUTH block (what the corpus turn
+    would have yielded); the generated block is passed separately, so the fixture can drive
+    the arm-quality proxy and the plan-following gap INDEPENDENTLY — which is what makes the
+    publication layer testable at all."""
+    return {"story_id": story_id,
+            "prefix": f"A girl named Mia lived by the river {k}.",
+            "turns": [f"Mia found a stone by the river {k}.",
+                      f"Her friend laughed at the stone {k}.",
+                      f"Mia threw the stone into the river {k}.",
+                      f"The water splashed on her friend {k}.",
+                      f"Mia laughed with her friend {k}."],
+            "blocks": [dict(ref_block) for _ in range(3)]}
 
 
 def _assembler_fixture():
-    """Three skits where the think arm LOOPS and the no-think arm does not.
+    """Three skits engineered so that EVERY published claim is pinned by a fixture.
 
-    Deliberately unambiguous: within a skit the think arm writes the same sentence three
-    times (4-gram repeat high) while the no-think arm writes three different ones (repeat
-    0.0). BETWEEN skits every turn uses different content words, so the shuffled control is
-    genuinely a control — a uniform fixture would trip
-    `assert_control_is_not_the_treatment`, which is itself the point of that guard.
+    The generated block and the ground-truth block are deliberately different objects, so
+    the two quantities the publication layer depends on move independently:
+
+      context-only gap  = generated block vs THINK turn  -  generated block vs NO-THINK turn
+      arm-quality proxy = ground-truth block vs THINK turn - ground-truth block vs NO-THINK turn
+
+    Engineered outcomes, one per claim branch:
+      accept  gap +0.889, proxy +0.333 (< half the gap)     -> bounded
+      add     gap +1.000, proxy negative (confound inverts) -> headline
+      stakes  gap +1.000, proxy +1.000 (>= half the gap)    -> withdrawn
+      handback                                              -> not measurable (structural)
+      publishable_plan_following_slots == ["accept", "add"]
+
+    The think arm also LOOPS (one sentence three times) while the no-think arm does not, so
+    the degeneration and adherence directions stay pinned too. Between skits every turn uses
+    different content words, or `assert_control_is_not_the_treatment` would refuse the whole
+    fixture — as it did to my first attempt at it.
     """
     from scripts.eval_skits import score_and_assemble
 
     loops = ["Mia ran to the river and shouted at the cold water.",
-             "Mia climbed the tall ladder and dropped her striped hat.",
-             "Mia baked a plum cake for her cheerful father."]
-    adds = [["river", "water", "cold"], ["ladder", "hat", "tall"],
-            ["cake", "plum", "father"]]
-    quiet = [["Mia found a smooth pebble.", "She showed it to her mother.",
+             "Mia climbed the tall ladder and shouted at her striped hat.",
+             "Mia baked a plum cake and shouted for her cheerful father."]
+    gen_add = ["river", "ladder", "cake"]
+    quiet = [["Mia found a smooth pebble.", "She showed the pebble to her mother.",
               "They walked home slowly."],
-             ["Mia opened the wooden gate.", "A brown puppy trotted past.",
+             ["The gate opened with a creak.", "A brown puppy trotted past the pebble.",
               "She counted the daisies."],
-             ["Mia drew a yellow sun.", "Her crayon snapped in half.",
+             ["The crayon snapped in half.", "A yellow sun dried the pebble.",
               "She started a new picture."]]
-    skits = [_fixture_skit(1000 + k,
-                           [f"Mia found a stone by the river {k}.",
-                            f"Her friend laughed at the stone {k}.",
-                            f"Mia threw the stone into the river {k}.",
-                            f"The water splashed on her friend {k}.",
-                            f"Mia laughed with her friend {k}."],
-                           adds[k])
-             for k in range(3)]
+    # Ground truth: `water` (only skit 0's think turn has it), `pebble` (only the no-think
+    # turns have it), stakes `up` (only the think turns escalate).
+    ref_block = {"offer": "mia river", "accept": "water", "add": "pebble",
+                 "stakes": "up", "handback": "river"}
+    skits = [_fixture_skit(1000 + k, k, ref_block) for k in range(3)]
+    gen_blocks = [[{"offer": f"mia river {k}", "accept": "mia", "add": gen_add[k],
+                    "stakes": "up", "handback": gen_add[k]} for _ in range(3)]
+                  for k in range(3)]
     turns_think = [[loops[k]] * 3 for k in range(3)]
     turns_nothink = quiet
-    blocks = [[dict(s["blocks"][i]) for i in range(3)] for s in skits]
     return score_and_assemble(
         val_skits=skits, turns_think=turns_think, turns_nothink=turns_nothink,
-        slots_think=blocks, adherence_think=[1.0, 1.0, 1.0],
+        slots_think=gen_blocks, adherence_think=[1.0, 1.0, 1.0],
         adherence_nothink=[0.0, 0.0, 0.0],
         adherence_series_think=[1.0] * 9, adherence_series_nothink=[0.0] * 9,
         swap_is_load_bearing=True,
@@ -517,3 +581,113 @@ def test_context_for_names_the_previous_turn_and_the_FOLLOWING_partner_turn():
     assert _context_for(skit, 4) == ("t3", None), (
         "the last model turn has NO following partner turn; anything but None here turns an "
         "undefined observation into a scored one")
+
+
+# ---------------------------------------------------------------------------------------
+# The PUBLICATION layer. Last round's fix pulled the VERDICT wiring into a tested function
+# and left the withdrawal/publication machinery — added in the same commit — with no test at
+# all: a grep of this file for `decompose_confound`, `CONFOUND_WITHDRAW_SHARE`,
+# `publishable`, `slot_value_visibility`, `score_pair`, `ref_hits` or `slots_reference`
+# returned zero hits. These are whole DECISION FUNCTIONS, exercised only through a driver,
+# and each of the three mutations below silently rewrites a published claim.
+# ---------------------------------------------------------------------------------------
+
+
+def test_fixture_pins_every_published_claim_and_the_publishable_slot_list():
+    """Catches swapping `ref_hits_think`/`ref_hits_nothink`: that flips every arm-quality
+    proxy's sign, turns `stakes` from withdrawn into HEADLINE, demotes `add`, and makes
+    `publishable_plan_following_slots` == ["accept", "add", "stakes"] — re-publishing the
+    exact claim the review made us withdraw, with every other number unchanged.
+    """
+    sec = _assembler_fixture()["slots_model_generated_blocks"]
+    claims = {k: v["claim"] for k, v in sec["confound_decomposition"].items()}
+    assert claims == {"accept": "bounded", "add": "headline", "stakes": "withdrawn",
+                      "handback_anticipation": "not measurable"}, (
+        "each branch is engineered by the fixture: accept's proxy is under half its gap, "
+        "add's proxy is NEGATIVE, stakes' proxy equals its gap, handback's control is "
+        "degenerate")
+    assert sec["publishable_plan_following_slots"] == ["accept", "add"], (
+        "stakes must NOT appear in the publishable list; if it does, the arm-quality proxy "
+        "is being computed with the arms the wrong way round")
+
+
+def test_confound_withdrawal_share_is_the_declared_half_not_something_looser():
+    """`CONFOUND_WITHDRAW_SHARE` 0.5 -> 0.9 moves `stakes` from withdrawn to bounded while
+    the adjacent artifact note still reads "stakes is withdrawn (mostly confounded)" — a
+    self-contradicting artifact, and nothing in the suite noticed."""
+    from scripts.eval_skits import CONFOUND_WITHDRAW_SHARE, decompose_confound
+
+    assert CONFOUND_WITHDRAW_SHARE == 0.5
+    gaps = {"accept": 0.10, "add": 0.10, "stakes": 0.0486,
+            "handback_anticipation": 0.10}
+    arms = {"accept": {"mean_delta": 0.06}, "add": {"mean_delta": 0.02},
+            "stakes": {"mean_delta": 0.0312},
+            "handback_anticipation": {"mean_delta": 0.0}}
+    out = decompose_confound(gaps, arms)
+    assert out["accept"]["claim"] == "withdrawn", "0.06 is 60% of 0.10 -> withdrawn"
+    assert out["add"]["claim"] == "bounded", "0.02 is 20% of 0.10 -> bounded"
+    assert out["stakes"]["claim"] == "withdrawn", (
+        "the REAL stakes numbers (+0.0486 gap, +0.0312 proxy = 64%) must come out withdrawn")
+
+
+def test_a_nonpositive_gap_is_no_signal_and_never_a_headline():
+    """Found by the fixture, not by the data: with a negative gap the `proxy < 0` branch
+    would have labelled a slot HEADLINE whose own control beat it."""
+    from scripts.eval_skits import decompose_confound
+
+    out = decompose_confound({"accept": -0.20}, {"accept": {"mean_delta": -0.30}})
+    assert out["accept"]["claim"] == "no signal"
+
+
+def test_failure_scorers_read_the_preceding_text_then_the_turn_not_the_reverse():
+    """Reversing `score_pair(prev, turn, ...)`'s two positional arguments leaves every
+    scorer running and every t finite: on the real data `new_harm` falls 3.379 -> 0.895 and
+    `groundedness` 3.958 -> 2.083 (both lose significance) while `affordance` goes
+    0.0 -> 3.07 and MANUFACTURES a significant "no-think better". Here the think arm's turns
+    introduce the only harm word, so the correct order must show harm ARRIVING in them.
+    """
+    fm = _assembler_fixture()["failure_modes"]
+    assert fm["new_harm"]["mean_delta"] == 1.0, (
+        "the think arm's turns carry the harm word and the preceding text does not, so "
+        "new_harm must fire on every think observation and none of the no-think ones; a "
+        "mean delta of 0.0 means prefix and continuation were passed the wrong way round")
+    assert fm["new_harm"]["verdict"] == "no-think better", (
+        "new_harm is lower-is-better, so the arm that introduces harm must LOSE")
+
+
+def test_withdrawn_slots_carry_the_marker_inside_their_own_rows():
+    """`stakes` was the only slot whose own rows read as an unqualified "think better"
+    (t 4.158 context-only, t 6.28 shuffled) while the decomposition withdrew it — the same
+    standard handback already got in-row had to apply to the slot we actually withdrew."""
+    sec = _assembler_fixture()["slots_model_generated_blocks"]
+    for row in (sec["table"]["stakes"], sec["own_block_vs_foreign_block"]["stakes"],
+                sec["own_block_vs_context_only_control"]["stakes"]):
+        assert row.get("plan_following_claim") == "withdrawn", row
+    assert "do_not_read_this_row_as_plan_following" in sec[
+        "own_block_vs_context_only_control"]["stakes"]
+    # ... and a slot that survived must NOT be stamped, or the marker means nothing.
+    assert "plan_following_claim" not in sec["own_block_vs_context_only_control"]["add"]
+
+
+def test_handback_rows_disclose_that_it_reuses_the_add_word():
+    """The third handback degeneracy, and the only empirical one: 97.24% of the real run's
+    generated blocks put the identical word in `add` and `handback`. The fixture makes them
+    identical in 100% of blocks, so the disclosure must appear."""
+    sec = _assembler_fixture()["slots_model_generated_blocks"]
+    hb = sec["table"]["handback_anticipation"]
+    assert hb["add_and_handback_are_the_same_word_rate"] == 1.0
+    assert "duplicates_the_add_slot" in hb
+    assert "pooled" in hb["duplicates_the_add_slot"].lower(), (
+        "the disclosure must say it also duplicates a component of pooled_slot_accuracy")
+    assert sec["add_and_handback_are_the_same_word_rate"] == 1.0
+
+
+def test_success_gate_names_the_slots_it_counted():
+    """The gate counted all four slots while the artifact elsewhere marks two of them
+    withdrawn / not measurable. It must at least SAY which ones carried it."""
+    sec = _assembler_fixture()
+    crit = sec["success_criteria"]
+    assert crit["materially_positive_slots"], "the gate must name its slots, not just count"
+    restricted = crit["materially_positive_slots_restricted_to_publishable_claims"]
+    assert set(restricted["slots"]) <= {"accept", "add"}
+    assert restricted["n"] == len(restricted["slots"])
