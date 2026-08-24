@@ -7,7 +7,7 @@ pipeline would make every downstream number unattributable.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, fields
 from typing import Callable, Dict, List, Optional
 
 from train.dialogue import split_sentences_dialogue
@@ -63,8 +63,24 @@ def content_words(text: str) -> List[str]:
     return [w.lower() for w in _WORD.findall(text) if w.lower() not in STOPWORDS]
 
 
-def render_think(slots: Slots) -> str:
-    body = "\n".join(f"{name}: {getattr(slots, name)}" for name in SLOT_NAMES)
+def render_think(slots) -> str:
+    """Render a think-block from any slots dataclass, in its OWN field order.
+
+    GENERALISED 2026-08-23 (reach dial, task 2). This used to iterate the module-level
+    `SLOT_NAMES`, which is exactly the five fields of `Slots`; it now reads the field order
+    off the object, so `train.reach.ReachSlots` (six slots, `reach` ahead of `add`) renders
+    through the same function. Behaviour for `Slots` is unchanged --
+    `test_render_think_reads_the_dataclass_field_order` pins
+    ``fields(Slots) == SLOT_NAMES``, so the generalisation cannot drift into a different
+    rendering of the published schema.
+
+    Why generalise rather than add a second renderer: `train.skit.skit_segments` and
+    `scripts.derive_skits.build_skit_example` reach the block through this one name, and the
+    pre-shifted label rule and the positional nine-segment supervision mask must stay
+    byte-identical between the two schemas. One renderer is how that is guaranteed instead of
+    asserted.
+    """
+    body = "\n".join(f"{f.name}: {getattr(slots, f.name)}" for f in fields(slots))
     return f"<think>\n{body}\n</think>\n"
 
 

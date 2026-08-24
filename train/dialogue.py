@@ -277,6 +277,129 @@ def is_tag_only_gap(gap: str) -> bool:
     return any(w.lower() in SPEECH_VERBS for w in words)
 
 
+#: Words that are capitalised only because they open a clause, never because they name
+#: anyone. Every entry is also in `train.improv.STOPWORDS` -- and
+#: `test_non_name_capitals_is_a_stopword_subset` pins that -- but it is spelled out here
+#: rather than imported because `train.improv` imports THIS module, so importing back
+#: would be a cycle. Kept short and auditable, same reasoning as SPEECH_VERBS.
+_NON_NAME_CAPITALS = frozenset("""
+the a an he she they it we you i and but then so there this that his her their my your
+""".split())
+
+
+def tag_identifies_a_subject(gap: str) -> bool:
+    """Does `gap` contain a word that could be the tag's SUBJECT -- anybody at all?
+
+    BLIND TO WHO, DELIBERATELY. It answers "is there a subject here", never "whose voice is
+    this". Swap every name in the gap for a different name and the answer is unchanged
+    (`test_subject_detection_is_blind_to_which_name`), which is the property that keeps this
+    out of the speaker attribution that got an earlier probe's speakers BACKWARDS.
+
+    True  ->  ``said Amy.``  ``Amy said.``  ``The fox replied,``  ``Her mom said,``
+    False ->  ``he said.``   ``she asked.``  ``they said,``
+
+    A "subject" is any word that is neither a stopword-shaped function word nor a verb of
+    speech. That admits some non-subjects (``they asked together.`` qualifies on
+    ``together``), which errs toward KEEPING a pair -- the direction that costs data rather
+    than corrupting it.
+    """
+    for w in _WORD_RE.findall(gap):
+        lw = w.lower()
+        if lw in _NON_NAME_CAPITALS or lw in SPEECH_VERBS:
+            continue
+        return True
+    return False
+
+
+def tag_names_a_proper_noun(gap: str) -> bool:
+    """Stricter variant: does `gap` carry a CAPITALISED token that is not a clause-opener?
+
+    NOT the filter this module gates on -- `same_voice_risk` uses
+    `tag_identifies_a_subject`. This exists because the literal wording of the filter
+    proposed in task 1 was "no NEW CAPITALISED token", and the two readings cost very
+    different amounts of data, so both are measured and the choice is recorded in the
+    manifest rather than asserted.
+
+    Measured on 200,000 stories: gating on this one drops 28.9% of skits against 3.6% for
+    `tag_identifies_a_subject` -- and its drops include scenes that alternate perfectly, e.g.
+    the fox/rabbit exchange whose four gaps are ``The rabbit looked up and said,`` /
+    ``The fox replied,`` / ``The rabbit said,`` / ``The fox smiled and said,``. Those name a
+    speaker with a common noun, so this variant is closer to a GENRE filter (it discards
+    animal dialogue) than to a voice-safety one. Kept callable, and reported, not used.
+    """
+    for w in _WORD_RE.findall(gap):
+        lw = w.lower()
+        if w[0].isupper() and lw not in _NON_NAME_CAPITALS and lw not in SPEECH_VERBS:
+            return True
+    return False
+
+
+def same_voice_risk(gap: str, *, strict_names: bool = False) -> bool:
+    """Does the text between two ADJACENT utterances fail to evidence a change of voice?
+
+    THE CONSERVATIVE FILTER. `is_tag_only_gap` is the diagnostic that measures the risk;
+    this is the gate that acts on it, and `scripts/derive_dialogue_skits.py` drops the whole
+    skit when any of its four adjacent gaps trips it. The premise of the dialogue path is
+    that the partner turn is a DIFFERENT VOICE, so a pair with no evidence of a change is
+    dropped rather than trained on.
+
+    True (no evidence of a change) when the gap is nothing but an attribution tag
+    (`is_tag_only_gap`) whose subject cannot distinguish anybody: ``he said.``,
+    ``she asked.``, ``they said,``.
+
+    False (keep) when the gap carries narrative, or names a subject.
+
+    AN EMPTY GAP IS NOT A RISK, and that is a measured decision rather than an oversight.
+    Two quotes flush against each other look like one speaker continuing, but in this corpus
+    the attribution frequently sits AFTER the second utterance instead of between the two:
+    ``"Can we make a boat with it?" "Sure, Ben, that's a great log ..." dad said, smiling.``
+    is a genuine change of voice with nothing at all in the gap (story 760 of the kept
+    population). `is_tag_only_gap` already returns False for a wordless gap, so this function
+    inherits the right answer; an earlier draft special-cased it as risky and dropped
+    `STORY_B` -- the interrupted-quote fixture -- for it.
+
+    `strict_names=True` swaps the subject test for `tag_names_a_proper_noun`; see there for
+    why that is measured but not the default.
+
+    WHAT THIS CANNOT DO, and it is the honest limit of an attribution-free filter: a gap that
+    carries narrative and then RE-INTRODUCES THE SAME SPEAKER is invisible to it. Real
+    example from the kept population (story 685): ``"I already did, Mommy! Can we go now?"``
+    then ``They went to the airport ... Lily got bored and said,`` then ``"Mommy, can we bake
+    cookies while we wait?"`` -- both Lily, so parity puts `model` on the daughter at turn 2
+    having put it on the mother at turn 0. Separating that from a genuine change needs the
+    tag's subject compared against the PREVIOUS tag's subject, which is speaker attribution.
+    Published as a limitation; see the manifest's `same_speaker_filter` block.
+    """
+    if not is_tag_only_gap(gap):
+        return False
+    names = tag_names_a_proper_noun if strict_names else tag_identifies_a_subject
+    return not names(gap)
+
+
+def adjacent_gaps(story: str, n_turns: int = MIN_UTTERANCES) -> List[str]:
+    """The unquoted text between each adjacent pair of the first `n_turns` utterances.
+
+    `n_turns - 1` strings, in order, or fewer if the story has fewer utterances. Shared by
+    the diagnostic (`tag_only_gap_count`) and the gate (`voice_changes_throughout`) so the
+    two cannot disagree about which spans they are looking at.
+    """
+    utts = quoted_utterances(story)[:n_turns]
+    return [story[utts[k].end:utts[k + 1].start] for k in range(len(utts) - 1)]
+
+
+def voice_changes_throughout(story: str, *, n_turns: int = MIN_UTTERANCES,
+                             strict_names: bool = False) -> bool:
+    """Does EVERY adjacent pair among the first `n_turns` utterances evidence a new voice?
+
+    Whole-or-nothing, matching `derive_skit_from_turns`' drop rule: all four pairs of a
+    five-turn skit carry supervision on one side or the other, so one bad pair is one bad
+    skit. Returns True for a story with fewer than two utterances (no pair can fail); the
+    caller has already gated on `MIN_UTTERANCES` long before this.
+    """
+    return not any(same_voice_risk(g, strict_names=strict_names)
+                   for g in adjacent_gaps(story, n_turns))
+
+
 def quoted_utterances(text: str) -> List[Utterance]:
     """Every spoken turn in `text`, in order, quotes stripped, interruptions rejoined.
 

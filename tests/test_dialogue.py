@@ -27,11 +27,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from train.dialogue import (MIN_UTTERANCES, continues_as_attribution,  # noqa: E402
+from train.dialogue import (MIN_UTTERANCES, _NON_NAME_CAPITALS,  # noqa: E402
+                            adjacent_gaps, continues_as_attribution,
                             dialogue_prefix, extract_dialogue_turns,
                             is_interposed_attribution, quoted_utterances,
-                            split_sentences_dialogue)
-from train.improv import split_sentences  # noqa: E402
+                            same_voice_risk, split_sentences_dialogue,
+                            tag_identifies_a_subject, tag_names_a_proper_noun,
+                            voice_changes_throughout)
+from train.improv import STOPWORDS, split_sentences  # noqa: E402
 from train.skit import MODEL_TURNS, PARTNER_TURNS, SKIT_ROLES  # noqa: E402
 
 # --------------------------------------------------------------------------------------
@@ -351,3 +354,137 @@ def test_dialogue_prefix_is_the_text_before_the_first_utterance():
 def test_dialogue_prefix_is_empty_when_the_story_opens_on_dialogue():
     assert dialogue_prefix('"Hello!" said Amy. "Hi," said Bo.') == ""
     assert dialogue_prefix("No dialogue here at all.") == ""
+
+
+# --------------------------------------------------------------------------------------
+# D. RULING A -- the conservative same-speaker filter
+# --------------------------------------------------------------------------------------
+# Same fixture, ONE gap changed: turn 1's tag becomes a bare pronoun, so there is no
+# subject in it that could distinguish anybody. Everything else -- every turn string, every
+# other tag -- is identical, which is what makes the two stories' different verdicts
+# attributable to the gap and not to the scene.
+STORY_PRONOUN_TAG = STORY.replace('" answered the rabbit. "', '" he answered. "')
+
+#: `(gap, identifies_a_subject, names_a_proper_noun, same_voice_risk)`.
+#: The rows are chosen so the two readings DISAGREE on three of them -- if they agreed
+#: everywhere the manifest's "what the alternative would have cost" would be meaningless.
+GAP_TABLE = [
+    (" said Amy. ",                          True,  True,  False),
+    (" Amy said. ",                          True,  True,  False),
+    (" he said. ",                           False, False, True),
+    (" she asked. ",                         False, False, True),
+    (" they said, ",                         False, False, True),
+    (" The fox replied, ",                   True,  False, False),
+    (" The rabbit looked up and said, ",     True,  False, False),
+    (" Her mom said, ",                      True,  False, False),
+    (" they asked together. ",               True,  False, False),
+    ("",                                     False, False, False),
+    ("   ",                                  False, False, False),
+    (" She went to Max's room and opened the door. She said, ",
+                                             True,  True,  False),
+]
+
+
+@pytest.mark.parametrize("gap,subject,proper,risk",
+                         GAP_TABLE, ids=[repr(r[0]) for r in GAP_TABLE])
+def test_gap_indicator_table(gap, subject, proper, risk):
+    assert tag_identifies_a_subject(gap) is subject
+    assert tag_names_a_proper_noun(gap) is proper
+    assert same_voice_risk(gap) is risk
+
+
+def test_the_two_readings_really_do_disagree():
+    """Guards GAP_TABLE from being vacuous. If `tag_identifies_a_subject` and
+    `tag_names_a_proper_noun` agreed on every row, the strict variant would be untested and
+    the manifest's cost comparison would be comparing a function with itself."""
+    disagree = [g for g, s, p, _ in GAP_TABLE if s != p]
+    assert len(disagree) >= 3, disagree
+    strict_only = [g for g, _, _, r in GAP_TABLE
+                   if same_voice_risk(g, strict_names=True) and not r]
+    assert " The fox replied, " in strict_only
+
+
+def test_subject_detection_is_blind_to_which_name():
+    """The property that keeps ruling A's filter out of speaker attribution.
+
+    The probe that attributed by name got the speakers BACKWARDS. This filter is allowed to
+    notice that SOMEBODY is named; it must never behave differently depending on WHO, and it
+    must not care which side of the tag the name sits on.
+    """
+    variants = [" said Amy. ", " said Ben. ", " said Zog. ", " Amy said. ", " Zog said. "]
+    assert len(set(variants)) == len(variants), "the fixture must really vary the name"
+    assert {tag_identifies_a_subject(g) for g in variants} == {True}
+    assert {same_voice_risk(g) for g in variants} == {False}
+
+
+def test_non_name_capitals_is_a_stopword_subset():
+    """The local capitalised-opener list is not inventing exclusions of its own.
+
+    It cannot import `train.improv.STOPWORDS` (improv imports dialogue, so that would be a
+    cycle), so this test is what holds the hand-copied list to its source.
+    """
+    assert _NON_NAME_CAPITALS <= STOPWORDS, _NON_NAME_CAPITALS - STOPWORDS
+
+
+def test_an_empty_gap_is_not_a_same_voice_risk():
+    """MEASURED DECISION, not an oversight -- see `same_voice_risk`'s docstring.
+
+    Two quotes flush together look like one speaker continuing, but in this corpus the
+    attribution often sits AFTER the second utterance instead of between the two, and story
+    760 of the kept population is a genuine change of voice with an empty gap. An earlier
+    draft treated it as risky and dropped the interrupted-quote fixture for it.
+    """
+    story760 = ('"Look, dad, I found a big log!" Ben shouted, dragging a long piece of wood '
+                'to the shore. "Can we make a boat with it?" "Sure, Ben, that\'s a great '
+                'log for a boat," dad said, smiling.')
+    gaps = adjacent_gaps(story760, 3)
+    assert gaps[1].strip() == "", gaps
+    assert same_voice_risk(gaps[1]) is False
+    assert voice_changes_throughout(story760, n_turns=3) is True
+
+
+def test_adjacent_gaps_are_the_spans_between_the_first_five_utterances():
+    gaps = adjacent_gaps(STORY)
+    assert len(gaps) == MIN_UTTERANCES - 1
+    assert [g.strip() for g in gaps] == ["said Timmy.", "answered the rabbit.",
+                                         "said Timmy.", "grumbled the rabbit."]
+
+
+def test_voice_changes_throughout_is_whole_or_nothing():
+    """One bad pair is one bad skit: all four pairs of a five-turn scene carry supervision
+    on one side or the other, so the gate matches `derive_skit_from_turns`' drop rule."""
+    assert voice_changes_throughout(STORY) is True
+    assert voice_changes_throughout(STORY_PRONOUN_TAG) is False
+    # exactly ONE gap differs, and it is the one that trips
+    risky = [i for i, g in enumerate(adjacent_gaps(STORY_PRONOUN_TAG))
+             if same_voice_risk(g)]
+    assert risky == [1], [g for g in adjacent_gaps(STORY_PRONOUN_TAG)]
+    assert extract_dialogue_turns(STORY) == extract_dialogue_turns(STORY_PRONOUN_TAG), \
+        "the two fixtures must differ ONLY in the tag, not in the turns"
+
+
+def test_the_filter_reads_no_name_at_the_story_level_either():
+    """Swap every name OUTSIDE the quotes and the verdict must not move.
+
+    `STORY_NAMES_SWAPPED` is the same fixture task 1 used to pin that extraction attributes
+    nothing; reusing it here extends that guarantee to the filter, which is the one place a
+    name-based heuristic would be most tempting.
+    """
+    assert STORY != STORY_NAMES_SWAPPED
+    assert voice_changes_throughout(STORY) == voice_changes_throughout(STORY_NAMES_SWAPPED)
+    assert [same_voice_risk(g) for g in adjacent_gaps(STORY)] == \
+           [same_voice_risk(g) for g in adjacent_gaps(STORY_NAMES_SWAPPED)]
+
+
+def test_strict_names_is_the_stricter_gate_on_the_same_fixture():
+    """The switch really is a switch: the fox/rabbit shape survives one reading and not the
+    other, which is the whole reason both costs are recorded in the manifest."""
+    fox = ('The forest was quiet. A fox met a rabbit by the stream. '
+           '"Do you know what I study every day?" The rabbit looked up and said, '
+           '"No, I do not know, what do you study?" The fox replied, '
+           '"I like to study the animals here." The rabbit said, '
+           '"That sounds interesting! I wish I could study too." The fox smiled and said, '
+           '"You can. Come with me tomorrow."')
+    assert len(quoted_utterances(fox)) >= MIN_UTTERANCES
+    assert voice_changes_throughout(fox) is True
+    assert voice_changes_throughout(fox, strict_names=True) is False

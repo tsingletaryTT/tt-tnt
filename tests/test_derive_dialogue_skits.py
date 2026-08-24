@@ -27,13 +27,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from conftest import ROOT, needs_artifacts  # noqa: E402
 
 import scripts.derive_skits as derive_skits  # noqa: E402
-from scripts.derive_dialogue_skits import (TILE, build_skit_example,  # noqa: E402
+from scripts.derive_dialogue_skits import (TILE, association_meta,  # noqa: E402
+                                           build_skit_example,
                                            classify_turn_failure,
                                            derive_dialogue_skit, dialogue_unit_counts,
-                                           drop_rate_warning, iter_stories, main,
-                                           repo_relative, selection_bias,
-                                           tag_only_gap_count, token_length_report)
+                                           drop_rate_warning, fit_split_sizes,
+                                           iter_stories, main, reach_report,
+                                           repo_relative, ruling_c_report,
+                                           same_speaker_filter_report, screen_candidate,
+                                           selection_bias, tag_only_gap_count,
+                                           token_length_report, voice_change_audit)
 from train.dialogue import split_sentences_dialogue  # noqa: E402
+from train.improv import content_words, render_think  # noqa: E402
+from train.reach import (REACH_SLOT_NAMES, REACH_VALUES, ReachSlots,  # noqa: E402
+                         add_word_of, block_context_words, build_association,
+                         parse_stakes_delta, reach_bucket)
 from train.skit import MODEL_TURNS, PARTNER_TURNS, skit_segments  # noqa: E402
 
 # --------------------------------------------------------------------------------------
@@ -64,8 +72,21 @@ STORY_B = (
 STORY_SHORT = ('Rue opened the hatch. "Where is the lantern?" asked Rue. '
                '"Beneath the crate," said Vim.')
 
-#: Drops: no dialogue at all.
-STORY_SILENT = "Rue opened the hatch. The lantern was beneath the crate. Rue smiled."
+#: Drops: no dialogue at all -- AND it is the fixture corpus's background document.
+#:
+#: Its middle sentence is every content word of `STORY_A` and `STORY_B`, in sorted order,
+#: which is load-bearing rather than decorative. The reach metric is computed LEAVE-ONE-OUT
+#: (`train.reach.pair_counts`): a word pair whose only co-occurrence is the scored story's own
+#: has no evidence, and the skit drops under `reach_no_evidence`. A four-document fixture
+#: corpus cannot support that unless some OTHER document carries the same words, and building
+#: the list from the two stories keeps it correct when they change instead of relying on
+#: someone remembering to re-copy a word list.
+#:
+#: It is deliberately three sentences and quote-free, so `test_dialogue_unit_counts` and the
+#: drop-rule table see exactly what they saw before.
+STORY_SILENT = ("Rue opened the hatch. "
+                + " ".join(sorted(set(content_words(STORY_A + " " + STORY_B)))) + ". "
+                + "Rue smiled.")
 
 IDF = {"bellows": 3.0, "ladle": 2.0, "apron": 1.0, "kiln": 1.0, "ember": 1.0,
        "needs": 0.5, "bring": 0.5, "instead": 0.5, "wrap": 0.5}
@@ -597,3 +618,347 @@ def test_new_splitter_keeps_dialogue_whole_on_the_real_corpus():
     assert frag_old > 1000, f"the old splitter should fragment heavily, got {frag_old}"
     assert frag_new * 20 < frag_old, (frag_new, frag_old)
     assert frag_new / n_new < 0.005, (frag_new, n_new)
+
+
+# --------------------------------------------------------------------------------------
+# G. THE REACH DIAL -- rulings A, C, D, and the gate order
+# --------------------------------------------------------------------------------------
+#: `STORY_A` with ONE tag turned into a bare pronoun. The turns, the prefix and the other
+#: three tags are byte-identical, so a different verdict is attributable to the gap alone.
+STORY_A_RISKY = STORY_A.replace('" said Pip. "', '" he said. "', 1)
+
+#: A table that has seen every content word of STORY_A together, so every pair is evidenced.
+FULL_ASSOC = build_association(["nell pip kiln bellows ladle apron ember smoke bring "
+                                "wrap instead needs cracked hot stood watched"] * 4)
+#: A table that has seen none of them. Every `add` word is then no-evidence.
+BLIND_ASSOC = build_association(["zephyr quartz"] * 4)
+
+
+def test_voice_change_audit_counts_all_three_indicators():
+    clean = voice_change_audit(STORY_A)
+    risky = voice_change_audit(STORY_A_RISKY)
+    assert clean["pairs"] == risky["pairs"] == 4
+    assert clean["tag_only"] == risky["tag_only"] == 4
+    assert clean["risky_subject"] == 0
+    assert risky["risky_subject"] == 1
+    # The strict reading fires on every gap of both, because none of these tags carries a
+    # capitalised token that is not the speaker's name... except they all do, so it must be 0
+    # here and non-zero on a common-noun tag. That asymmetry is the point of measuring both.
+    assert clean["risky_strict"] == 0
+    assert voice_change_audit('A fox met a rabbit. "One?" The rabbit said, "Two?" The fox '
+                              'said, "Three?" The rabbit said, "Four?" The fox said, '
+                              '"Five?"')["risky_strict"] == 4
+
+
+def _screen(story, *, assoc=FULL_ASSOC, tok=None, max_seq_len=512, story_in_table=False):
+    skit, rule = derive_dialogue_skit(story, story_id=1, idf=IDF,
+                                      intensity_fn=lambda t: 0.0)
+    assert skit is not None, f"fixture must produce a skit, got {rule!r}"
+    return screen_candidate(skit, story, assoc=assoc, intensity_fn=lambda t: 0.0,
+                            tok=tok, pad_token_id=0, max_seq_len=max_seq_len,
+                            strict_names=False, story_in_table=story_in_table)
+
+
+def test_screen_candidate_passes_the_holdout_through():
+    """`story_in_table` must reach the metric, or the derivation silently drops leave-one-out
+    and every distance is measured partly against the scene itself.
+
+    The table here contains the fixture's words exactly ONCE, standing in for "the only
+    co-occurrence is this story's own", so the two settings give different verdicts.
+    """
+    once = build_association(["nell pip kiln bellows ladle apron bring wrap instead needs"])
+    assert _screen(STORY_A, assoc=once, story_in_table=False)[1] is None
+    assert _screen(STORY_A, assoc=once, story_in_table=True)[1] == "reach_no_evidence"
+
+
+def test_screen_candidate_passes_a_clean_skit():
+    cand, rule = _screen(STORY_A)
+    assert rule is None
+    assert cand is not None
+    assert len(cand.distances) == len(cand.deltas) == len(MODEL_TURNS)
+    assert all(0.0 <= d <= 1.0 for d in cand.distances)
+    assert cand.n_tokens is None                       # no tokenizer -> ruling C not applied
+
+
+def test_screen_candidate_reports_the_first_gate_not_the_worst():
+    """GATE ORDER, pinned by escalation on ONE fixture family.
+
+    Task 1's `classify_turn_failure` table survived a gate-order mutation because every row
+    failed exactly one gate. This walks a single story down the ladder with MORE THAN ONE
+    gate armed at each step, so swapping any two of the three checks changes an answer:
+
+      risky gap + tiny window + blind table -> same_voice_pair   (first)
+      clean gap + tiny window + blind table -> over_max_seq_len  (second)
+      clean gap + big  window + blind table -> reach_no_evidence (third)
+      clean gap + big  window + full  table -> a candidate
+    """
+    tok = _Tok()
+    assert _screen(STORY_A_RISKY, assoc=BLIND_ASSOC, tok=tok, max_seq_len=4)[1] == \
+        "same_voice_pair"
+    assert _screen(STORY_A, assoc=BLIND_ASSOC, tok=tok, max_seq_len=4)[1] == \
+        "over_max_seq_len"
+    assert _screen(STORY_A, assoc=BLIND_ASSOC, tok=tok, max_seq_len=4096)[1] == \
+        "reach_no_evidence"
+    assert _screen(STORY_A, assoc=FULL_ASSOC, tok=tok, max_seq_len=4096)[1] is None
+
+
+def test_ruling_c_excludes_rather_than_truncates():
+    """The over-length skit must be DROPPED, and must not appear truncated in the output."""
+    tok = _Tok()
+    cand, rule = _screen(STORY_A, tok=tok, max_seq_len=4)
+    assert cand is None and rule == "over_max_seq_len"
+    kept, rule2 = _screen(STORY_A, tok=tok, max_seq_len=4096)
+    assert rule2 is None and kept.n_tokens > 4
+
+
+@pytest.mark.parametrize("n,frac,want", [(100, 0.1, (90, 10)), (10, 0.0, (10, 0)),
+                                         (9, 0.5, (5, 4)), (3, 0.9, (1, 2))])
+def test_fit_split_sizes_holds_out_the_tail(n, frac, want):
+    assert fit_split_sizes(n, frac) == want
+    assert sum(fit_split_sizes(n, frac)) == n
+
+
+def test_fit_split_sizes_refuses_an_impossible_fraction():
+    for bad in (-0.1, 1.0, 1.5):
+        with pytest.raises(ValueError, match="eval_fraction"):
+            fit_split_sizes(10, bad)
+
+
+def test_ruling_c_report_says_when_it_could_not_run():
+    off = ruling_c_report([], [], 0, 512, applied=False)
+    assert off["applied"] is False and "NOT APPLIED" in off["warning"]
+    on = ruling_c_report([100, 600, 700], [100], 2, 512, applied=True)
+    assert on["applied"] is True
+    assert (on["excluded"], on["candidates_measured"]) == (2, 3)
+    assert on["excluded_fraction"] == pytest.approx(0.6667, abs=1e-4)
+    assert on["kept_max"] == 100
+
+
+def test_same_speaker_filter_report_states_both_readings_and_their_denominators():
+    counts = {"reached_filter": 100, "filter_pairs": 400, "filter_tag_only": 160,
+              "risky_pairs_subject": 10, "risky_skits_subject": 8,
+              "risky_pairs_strict": 100, "risky_skits_strict": 40}
+    rep = same_speaker_filter_report(counts, mode="subject")
+    assert rep["applied"] == "subject"
+    assert rep["subject_reading"]["skit_drop_fraction"] == 0.08
+    assert rep["strict_names_reading"]["skit_drop_fraction"] == 0.40
+    assert rep["subject_reading"]["risky_pair_fraction"] == 0.025
+    assert rep["tag_only_pair_fraction"] == 0.4
+    # the limitation is published in the manifest, not only in a docstring
+    assert "attribution" in rep["what_this_filter_CANNOT_catch"]
+    assert "685" in rep["what_this_filter_CANNOT_catch"]
+
+
+def test_reach_report_records_everything_eval_must_not_refit():
+    rep = reach_report([0.1, 0.5, 0.9], [0.1, 0.5, 0.9, 0.95],
+                       ["near", "mid", "far"], ["far"], 0.5, 0.9,
+                       zero_evidence_skits=3, zero_evidence_observations=4,
+                       observations_examined=1000,
+                       assoc_meta={"documents": 7})
+    assert rep["cut_points"]["lo"] == 0.5 and rep["cut_points"]["hi"] == 0.9
+    assert rep["cut_points"]["n_fitted_on"] == 3
+    assert rep["cut_points"]["npmi_equivalents"] == {"lo": 0.5, "hi": 0.1}
+    assert rep["zero_evidence"]["observation_fraction"] == 0.004
+    assert rep["zero_evidence"]["skits_dropped"] == 3
+    assert rep["bucket_balance_train"]["counts"] == {"near": 1, "mid": 1, "far": 1}
+    assert rep["bucket_balance_eval"]["counts"] == {"near": 0, "mid": 0, "far": 1}
+    assert rep["slot_order"] == list(REACH_SLOT_NAMES)
+    assert rep["distance_distribution"]["distinct"] == 4
+
+
+def test_association_meta_fingerprints_the_table_it_describes():
+    a = build_association(["dog bark"] * 3)
+    b = build_association(["dog bark"] * 3 + ["cat meow"])
+    ma = association_meta(a, population="p", corpus_md5="x")
+    mb = association_meta(b, population="p", corpus_md5="x")
+    assert ma["documents"] == 3 and mb["documents"] == 4
+    assert ma["fingerprint_md5"] != mb["fingerprint_md5"]
+    # ...and the same table fingerprints the same, so eval can check its rebuild.
+    assert ma["fingerprint_md5"] == association_meta(
+        build_association(["dog bark"] * 3), population="p", corpus_md5="x")[
+            "fingerprint_md5"]
+
+
+# --------------------------------------------------------------------------------------
+# H. end to end, with the dial
+# --------------------------------------------------------------------------------------
+def test_end_to_end_emits_the_reach_slot_and_records_the_cut_points(tmp_path):
+    out, man = _run(tmp_path)
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    assert rows, "fixture must keep at least one skit"
+    for row in rows:
+        assert row["split"] in ("train", "eval")
+        assert len(row["reach_distances"]) == len(MODEL_TURNS)
+        assert len(row["stakes_deltas"]) == len(MODEL_TURNS)
+        for block in row["blocks"]:
+            assert list(block) == list(REACH_SLOT_NAMES), "rendered slot order"
+            assert block["reach"] in REACH_VALUES
+            assert parse_stakes_delta(block["stakes"]) is not None, block["stakes"]
+    r = man["reach"]
+    assert r["cut_points"]["lo"] <= r["cut_points"]["hi"]
+    assert r["cut_points"]["fitted_on"].startswith("training split only")
+    assert r["cut_points"]["n_fitted_on"] == man["split"]["n_train"] * len(MODEL_TURNS)
+    assert "eval_must_not_refit" in r["cut_points"]
+    assert r["association_table"]["document"].startswith("ONE WHOLE STORY")
+    assert r["zero_evidence"]["observation_fraction"] is not None
+    assert man["same_speaker_filter"]["applied"] == "subject"
+    assert man["ruling_c"]["applied"] is False          # _run passes no tokenizer
+    assert man["gate_order"][3].startswith("same_voice_pair")
+
+
+def test_the_rendered_block_in_the_output_matches_the_slot_order(tmp_path):
+    """The JSON row and the RENDERED think-block must agree, because the trainer sees the
+    rendered form and a scorer sees the row."""
+    out, _ = _run(tmp_path)
+    row = json.loads(out.read_text().splitlines()[0])
+    block = row["blocks"][0]
+    rendered = render_think(ReachSlots(**block))
+    assert rendered.index("reach:") < rendered.index("add:")
+    for name in REACH_SLOT_NAMES:
+        assert f"{name}: {block[name]}" in rendered
+
+
+def test_a_dropped_gate_appears_in_the_drop_table_by_name(tmp_path):
+    """The same-voice gate must be VISIBLE when it fires, not folded into another rule."""
+    corpus = tmp_path / "c.txt"
+    corpus.write_text("\n</s>\n".join([STORY_A, STORY_A_RISKY, STORY_B, STORY_SILENT])
+                      + "\n</s>\n")
+    out = tmp_path / "o" / "skits.jsonl"
+    assert main(["--corpus", str(corpus), "--limit", "10", "--out", str(out)]) == 0
+    man = json.loads((out.parent / "derive_manifest.json").read_text())
+    assert man["drops_by_rule"].get("same_voice_pair") == 1
+    assert man["drops_by_rule"].get("no_dialogue") == 1      # the background document
+    assert man["kept"] == 2
+    assert man["same_speaker_filter"]["skits_reaching_the_filter"] == 3
+    assert man["same_speaker_filter"]["subject_reading"]["skits_dropped"] == 1
+
+
+# --------------------------------------------------------------------------------------
+# I. SCALE -- the dial's properties are properties of the real distribution
+# --------------------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def reach_scale(tmp_path_factory):
+    """A real derivation with ruling C ARMED, which the synthetic fixtures cannot exercise
+    (main builds its tokenizer from a path, so a mock cannot reach it)."""
+    d = tmp_path_factory.mktemp("reach_scale")
+    out = d / "skits.jsonl"
+    assert main(["--corpus", str(ROOT / CORPUS), "--limit", "20000", "--out", str(out),
+                 "--tokenizer", str(ROOT / TOKENIZER)]) == 0
+    man = json.loads((d / "derive_manifest.json").read_text())
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    return man, rows
+
+
+TOKENIZER = "artifacts/hf-tt-tnt-1024-dialogue"
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="bucket balance is a property of scale")
+def test_bucket_balance_on_the_real_artifact(reach_scale):
+    """SPEC REQUIREMENT 4. `stakes` died of being 85.3% one class and nobody noticed until
+    the balance was printed; terciles are supposed to be balanced BY CONSTRUCTION, and this
+    is where that claim is checked against the real distribution rather than assumed.
+
+    The train balance must be near a third each. The EVAL balance is bucketed with the TRAIN
+    cut points and is allowed to drift -- but not by much, or the tail of the file is a
+    different population and the dial's eval is not comparable to its training.
+    """
+    man, rows = reach_scale
+    train = man["reach"]["bucket_balance_train"]
+    assert train["n"] == man["split"]["n_train"] * len(MODEL_TURNS)
+    assert train["max_fraction"] < 0.45, train
+    assert min(train["counts"].values()) > 0.20 * train["n"], train
+    assert train["unknown_values"] == 0
+    ev = man["reach"]["bucket_balance_eval"]
+    if ev["n"]:
+        assert abs(ev["max_fraction"] - train["max_fraction"]) < 0.25, (ev, train)
+    # every row's bucket agrees with the published cut points -- eval cannot re-fit
+    lo, hi = man["reach"]["cut_points"]["lo"], man["reach"]["cut_points"]["hi"]
+    for row in rows:
+        for block, d in zip(row["blocks"], row["reach_distances"]):
+            assert block["reach"] == reach_bucket(d, lo, hi), (row["story_id"], d)
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="the zero rate is a property of the table")
+def test_the_zero_evidence_rate_is_measured_on_the_table_we_actually_built(reach_scale):
+    """The pre-flight measured 6.7% exact zeros on a sparse (prefix_word, turn_word) table
+    and asked for a re-measurement on whichever table this ships. Whole-story co-occurrence
+    should cut it by an order of magnitude; if it ever goes back up, the dial is partly a
+    dial on table coverage and the number must be read before the result is believed."""
+    man, rows = reach_scale
+    ze = man["reach"]["zero_evidence"]
+    assert ze["observations_examined"] > 0
+    assert ze["observation_fraction"] < 0.03, ze
+    at = man["reach"]["association_table"]
+    assert at["documents"] == man["stories"], "the table's population must be the whole scan"
+    assert at["pairs"] > 100_000 and at["vocabulary"] > 1_000
+    # ...and no kept observation may sit at a distance that came from no evidence.
+    assert all(0.0 <= d <= 1.0 for row in rows for d in row["reach_distances"])
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="the add/context relation is a corpus property")
+def test_the_add_word_is_never_in_its_own_context_on_real_skits(reach_scale):
+    """Cross-check between `block_context_words` and the derivation's own `established`.
+
+    `add` is by construction a word NOT already in play, so if this ever fails the reach
+    metric is measuring a word against a scene that already contains it -- which would make
+    every distance spuriously near. It is the check that holds the re-walk to the original.
+    """
+    _, rows = reach_scale
+    checked = 0
+    for row in rows:
+        for i, t_idx in enumerate(MODEL_TURNS):
+            ctx = set(block_context_words(row["prefix"], row["turns"], t_idx))
+            word = add_word_of(ReachSlots(**row["blocks"][i]))
+            assert word and word not in ctx, (row["story_id"], t_idx, word)
+            checked += 1
+    assert checked > 100, f"only {checked} observations checked"
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="ruling C's exclusion is a corpus property")
+def test_ruling_c_actually_excluded_over_length_skits_on_the_real_corpus(reach_scale):
+    """Task 1 measured 2.82% over the window. They must now be gone from the output, and
+    counted under their own rule rather than silently truncated."""
+    man, rows = reach_scale
+    rc = man["ruling_c"]
+    assert rc["applied"] is True
+    assert rc["excluded"] > 0, "the real corpus has over-length skits; none were excluded"
+    assert rc["excluded"] == man["drops_by_rule"].get("over_max_seq_len")
+    assert rc["kept_max"] <= man["ruling_c"]["max_seq_len"]
+    assert man["token_lengths"]["over_max_seq_len"] == 0, "an over-length skit survived"
+    assert man["token_lengths_before_exclusion"]["over_max_seq_len"] == rc["excluded"]
+    assert len(rows) == man["kept"]
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="the filter's cost is a corpus property")
+def test_ruling_a_filter_cost_is_recorded_and_the_strict_reading_costs_more(reach_scale):
+    """Both readings measured on the same population, so the choice is auditable.
+
+    The strict "no NEW CAPITALISED token" reading must come out MORE expensive -- that
+    asymmetry is the evidence behind applying the subject reading instead, and if it ever
+    inverted the manifest's justification would be wrong.
+    """
+    man, _ = reach_scale
+    sf = man["same_speaker_filter"]
+    assert sf["applied"] == "subject"
+    assert sf["skits_reaching_the_filter"] > 0
+    sub = sf["subject_reading"]["skit_drop_fraction"]
+    strict = sf["strict_names_reading"]["skit_drop_fraction"]
+    assert 0.0 < sub < 0.15, sub
+    assert strict > 3 * sub, (strict, sub)
+    assert sf["subject_reading"]["skits_dropped"] == \
+        man["drops_by_rule"].get("same_voice_pair")
+    assert sf["tag_only_pair_fraction"] > 0.25, "task 1 measured 0.3959 before the filter"
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="the stakes delta's spread is a scale property")
+def test_the_continuous_stakes_delta_has_spread_on_real_data(reach_scale):
+    """RULING D, tested on magnitude. Stage 2's three-way label was 85.3% one class; the
+    continuous form must at least be non-degenerate, or its successor is no better."""
+    _, rows = reach_scale
+    deltas = [d for row in rows for d in row["stakes_deltas"]]
+    assert len(deltas) > 100
+    nonzero = [d for d in deltas if d != 0.0]
+    assert len(nonzero) > 0.05 * len(deltas), \
+        f"only {len(nonzero)}/{len(deltas)} deltas are nonzero"
+    assert any(d > 0 for d in nonzero) and any(d < 0 for d in nonzero)
+    assert max(deltas) > 1.0
