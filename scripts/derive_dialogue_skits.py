@@ -747,9 +747,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # Recomputed for the length report only: the gate already decided.
             lengths_all.append(len(build_skit_example(
                 skit, tok, with_think=True, pad_token_id=pad_token_id)["input_ids"]))
-        if rule in ("over_max_seq_len", "reach_no_evidence"):
-            counts["reach_observations"] += len(MODEL_TURNS)
         if rule == "reach_no_evidence":
+            # The denominator of the zero-evidence RATE is the observations whose reach was
+            # actually attempted -- i.e. the skits that reached gate 3. A skit dropped at the
+            # length gate never had a distance computed, so counting its three blocks here
+            # would dilute the rate with observations nobody measured.
+            counts["reach_observations"] += len(MODEL_TURNS)
             # Read-only diagnostics, same pattern as classify_turn_failure: the gate has
             # already dropped this skit; this only says how many of its three observations
             # carried no evidence, which is what makes the zero rate an OBSERVATION rate.
@@ -871,8 +874,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "why": "RULING D. Stage 2 withdrew the up/level/down label as mostly confounded "
                    "(85.3% one class); carried continuously so the withdrawal has a "
                    "successor rather than a silent disappearance. NOT a headline slot.",
-            "per_row": "stakes_deltas carries the unrounded-to-6dp values beside the "
-                       "rendered strings, so a scorer never has to re-derive them.",
+            "per_row": "stakes_deltas carries the FULL-PRECISION values beside the "
+                       "rendered (1 d.p.) strings, so a scorer reads magnitude from the "
+                       "row and never has to re-derive it from the text.",
         },
         "same_speaker_filter": same_speaker_filter_report(
             counts, mode=("strict_names" if args.strict_speaker_names else "subject")),

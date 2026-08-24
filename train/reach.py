@@ -69,6 +69,7 @@ is a live check rather than a claim.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, asdict, fields
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -103,6 +104,40 @@ class ReachSlots:
 
     def as_dict(self) -> Dict[str, str]:
         return asdict(self)
+
+
+def parse_reach_think(text: str) -> Optional[ReachSlots]:
+    """Parse a v3 SIX-slot think-block out of `text`, or None if it is malformed.
+
+    Deliberately a separate function from `train.improv.parse_think` rather than a change to
+    it. That one validates the FIVE-slot schema and requires `stakes` to be one of
+    up/level/down, and it sits behind the published stage-1 and stage-2 adherence rates; a v3
+    block fails it, which is CORRECT -- they are different schemas and conflating them would
+    make two published rates incomparable.
+
+    None rather than a partial object, for the same reason: schema adherence is reported as a
+    RATE, and a partial parse would inflate it. A `reach` outside `REACH_VALUES` is malformed,
+    and a `stakes` that is not a signed number is malformed -- both are things a GENERATED
+    block will do, which is precisely when this is called.
+    """
+    m = re.search(r"<think>\s*(.*?)\s*</think>", text, re.S)
+    if not m:
+        return None
+    found: Dict[str, str] = {}
+    for line in m.group(1).splitlines():
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key, value = key.strip().lower(), value.strip()
+        if key in REACH_SLOT_NAMES and value:
+            found[key] = value
+    if set(found) != set(REACH_SLOT_NAMES):
+        return None
+    if found["reach"] not in REACH_VALUES:
+        return None
+    if parse_stakes_delta(found["stakes"]) is None:
+        return None
+    return ReachSlots(**found)
 
 
 # --------------------------------------------------------------------------------------
@@ -474,7 +509,7 @@ def reach_slot_names_of(slots) -> Tuple[str, ...]:
     return tuple(f.name for f in fields(slots))
 
 
-__all__ = ["REACH_VALUES", "REACH_SLOT_NAMES", "ReachSlots", "Association", "pair_key", "pair_counts",
+__all__ = ["REACH_VALUES", "REACH_SLOT_NAMES", "ReachSlots", "parse_reach_think", "Association", "pair_key", "pair_counts",
            "build_association", "pair_has_evidence", "npmi", "reach_distance",
            "fit_reach_terciles", "reach_bucket", "bucket_balance", "stakes_delta",
            "format_stakes_delta", "parse_stakes_delta", "stakes_label",

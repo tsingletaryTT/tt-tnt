@@ -37,6 +37,7 @@ from train.reach import (REACH_SLOT_NAMES, REACH_VALUES, ReachSlots,  # noqa: E4
                          add_word_of, block_context_words, bucket_balance,
                          build_association, fit_reach_terciles, format_stakes_delta,
                          npmi, pair_counts, pair_has_evidence, pair_key,
+                         parse_reach_think,
                          parse_stakes_delta,
                          reach_bucket, reach_distance, reach_slot_names_of,
                          skit_reach_distances, skit_reach_distances_per_block,
@@ -326,6 +327,40 @@ def test_render_think_reads_the_dataclass_field_order():
     six = render_think(ReachSlots("o", "a", "far", "d", "+2.5", "h"))
     assert six == ("<think>\noffer: o\naccept: a\nreach: far\nadd: d\nstakes: +2.5\n"
                    "handback: h\n</think>\n")
+
+
+def test_a_v3_block_round_trips_through_render_and_parse():
+    slots = ReachSlots("nell stood kiln", "kiln", "far", "bellows", "-3.4", "bellows")
+    assert parse_reach_think(render_think(slots)) == slots
+    # ...and prose either side of the block does not matter
+    assert parse_reach_think("before\n" + render_think(slots) + "after") == slots
+
+
+@pytest.mark.parametrize("bad,why", [
+    ("<think>\noffer: o\naccept: a\nadd: d\nstakes: level\nhandback: h\n</think>",
+     "a FIVE-slot block is a different schema and must not parse as v3"),
+    ("<think>\noffer: o\naccept: a\nreach: sideways\nadd: d\nstakes: +1.0\n"
+     "handback: h\n</think>", "reach outside REACH_VALUES"),
+    ("<think>\noffer: o\naccept: a\nreach: far\nadd: d\nstakes: level\n"
+     "handback: h\n</think>", "stakes is not a signed number"),
+    ("offer: o\naccept: a\nreach: far\nadd: d\nstakes: +1.0\nhandback: h",
+     "no think tags at all"),
+])
+def test_a_malformed_v3_block_is_none_not_a_partial(bad, why):
+    """None, not a partial object: adherence is reported as a RATE and a partial parse would
+    inflate it. The five-slot row is the important one -- it is what a stage-2 checkpoint
+    emits, and it must NOT count as a v3 block."""
+    assert parse_reach_think(bad) is None, why
+
+
+def test_the_five_slot_parser_and_the_six_slot_parser_do_not_accept_each_other():
+    """Two schemas, two parsers, and neither may quietly accept the other's output -- that is
+    what would make two published adherence rates incomparable."""
+    from train.improv import parse_think
+    five = render_think(Slots("o", "a", "d", "level", "h"))
+    six = render_think(ReachSlots("o", "a", "far", "d", "+1.0", "h"))
+    assert parse_think(five) is not None and parse_reach_think(five) is None
+    assert parse_reach_think(six) is not None and parse_think(six) is None
 
 
 def test_add_word_of_takes_the_first_item_and_lowercases_it():

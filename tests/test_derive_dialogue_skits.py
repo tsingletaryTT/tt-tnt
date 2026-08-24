@@ -806,6 +806,38 @@ def test_end_to_end_emits_the_reach_slot_and_records_the_cut_points(tmp_path):
     assert man["gate_order"][3].startswith("same_voice_pair")
 
 
+def test_the_cut_points_are_fitted_on_the_TRAINING_SPLIT_ONLY(tmp_path):
+    """HARD REQUIREMENT, and it needed a fixture with a NON-EMPTY eval split to be testable.
+
+    `_run` uses the default `--eval-fraction 0.1`, which on a two-skit fixture holds out
+    ZERO skits -- so "fitted on train only" and "fitted on everything" are the same set and
+    the assertion in `test_end_to_end_...` could not tell them apart. A mutation that fitted
+    the terciles on ALL candidates passed 176 tests. This forces a real hold-out.
+
+    Both halves matter: the count must equal the TRAIN observations, and it must be strictly
+    less than all of them, or the test drifts back into vacuity if the split changes.
+    """
+    corpus = tmp_path / "c.txt"
+    corpus.write_text("\n</s>\n".join([STORY_A, STORY_B, STORY_SILENT]) + "\n</s>\n")
+    out = tmp_path / "o" / "skits.jsonl"
+    assert main(["--corpus", str(corpus), "--limit", "10", "--out", str(out),
+                 "--eval-fraction", "0.5"]) == 0
+    man = json.loads((out.parent / "derive_manifest.json").read_text())
+    assert (man["split"]["n_train"], man["split"]["n_eval"]) == (1, 1)
+    n_all = man["kept"] * len(MODEL_TURNS)
+    assert man["reach"]["cut_points"]["n_fitted_on"] == \
+        man["split"]["n_train"] * len(MODEL_TURNS)
+    assert man["reach"]["cut_points"]["n_fitted_on"] < n_all, \
+        "the hold-out must be non-empty or this test is vacuous"
+    # the eval row is bucketed with the TRAIN cut points, not its own
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    lo, hi = man["reach"]["cut_points"]["lo"], man["reach"]["cut_points"]["hi"]
+    ev = [r for r in rows if r["split"] == "eval"]
+    assert len(ev) == 1
+    for block, d in zip(ev[0]["blocks"], ev[0]["reach_distances"]):
+        assert block["reach"] == reach_bucket(d, lo, hi)
+
+
 def test_the_rendered_block_in_the_output_matches_the_slot_order(tmp_path):
     """The JSON row and the RENDERED think-block must agree, because the trainer sees the
     rendered form and a scorer sees the row."""
@@ -868,6 +900,9 @@ def test_bucket_balance_on_the_real_artifact(reach_scale):
     assert train["max_fraction"] < 0.45, train
     assert min(train["counts"].values()) > 0.20 * train["n"], train
     assert train["unknown_values"] == 0
+    # the fit saw the TRAIN observations and strictly fewer than all of them
+    assert man["reach"]["cut_points"]["n_fitted_on"] == train["n"]
+    assert man["reach"]["cut_points"]["n_fitted_on"] < man["kept"] * len(MODEL_TURNS)
     ev = man["reach"]["bucket_balance_eval"]
     if ev["n"]:
         assert abs(ev["max_fraction"] - train["max_fraction"]) < 0.25, (ev, train)
@@ -888,6 +923,12 @@ def test_the_zero_evidence_rate_is_measured_on_the_table_we_actually_built(reach
     ze = man["reach"]["zero_evidence"]
     assert ze["observations_examined"] > 0
     assert ze["observation_fraction"] < 0.03, ze
+    # The denominator must be exactly the observations whose reach was ATTEMPTED: the kept
+    # skits plus the ones dropped for having no evidence. Skits dropped earlier (the voice
+    # filter, the length gate) never had a distance computed and must not dilute the rate.
+    attempted = man["kept"] + man["drops_by_rule"].get("reach_no_evidence", 0)
+    assert ze["observations_examined"] == attempted * len(MODEL_TURNS), \
+        (ze["observations_examined"], attempted)
     at = man["reach"]["association_table"]
     assert at["documents"] == man["stories"], "the table's population must be the whole scan"
     assert at["pairs"] > 100_000 and at["vocabulary"] > 1_000
