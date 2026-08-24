@@ -9854,5 +9854,19 @@
     "sentences_relative_change": -0.3281,
     "dialogue_marker": "a double-quote character anywhere in the unit",
     "note": "The eval population is the RESIDUE left by a splitter that fragments dialogue-with-attribution. Dialogue-heavy stories are systematically under-represented, so every number in this artifact describes model behaviour on the flatter, more narrative 9.3% of the corpus that survived derivation \u2014 not on the corpus."
+  },
+  "splitter_superseded_2026_08_23": {
+    "what": "Every number in this file was derived with the OLD sentence splitter, re.split(r'(?<=[.!?\"])\\s+'), which was removed from the tree on 2026-08-23 (train.improv.split_sentences now delegates to train.dialogue.split_sentences_dialogue).",
+    "consequence": "This derivation is NOT reproducible from HEAD. Re-running scripts/derive_skits.py today keeps 13.2% of stories, not 9.6%, and the kept turns carry 1.38x the corpus's dialogue density instead of 0.68x.",
+    "measured": {
+      "old_kept_fraction": 0.09605,
+      "new_kept_fraction": 0.13245,
+      "old_turn_dialogue_ratio_vs_corpus": 0.6817,
+      "new_turn_dialogue_ratio_vs_corpus": 1.3828,
+      "n_stories": 20000
+    },
+    "why_it_matters": "The published effects here were measured on a population that had been depleted of dialogue-with-attribution by the splitter. That is the most likely reason handback_anticipation was unmeasurable, and it is the premise of the 2026-08-23 reach-dial spec.",
+    "not_re_measured": "No result in this file has been re-run. Only the derivation properties above were re-measured, and only to state what changed.",
+    "spec": "docs/superpowers/specs/2026-08-23-reach-dial-design.md"
   }
 }

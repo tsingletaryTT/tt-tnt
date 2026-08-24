@@ -2016,3 +2016,43 @@ harmless only because the mutant touched `labels` and the reader consumed `input
 design, so mutations are now serialised against live runs. `scripts/eval_skits.py --rescore-from`
 re-derives every published number from stored generations with no model, tokenizer, or device,
 verified under an import blocker that raises on `torch`/`transformers`/`ttnn`/`ttml`.
+
+## Skits v2, task 1 — the splitter cutover and real dialogue turns (2026-08-23)
+
+Design: [`docs/superpowers/specs/2026-08-23-reach-dial-design.md`](docs/superpowers/specs/2026-08-23-reach-dial-design.md).
+Task 1 built the foundation: one dialogue-aware splitter, turn extraction by alternation, a
+dialogue derivation script, and the stage-1 republication the cutover obliged.
+
+**One splitter, and it needed to scan rather than match.** Both historical variants are wrong
+in opposite directions on the same two strings, and no lookbehind can fix that: the two cases
+differ only in what FOLLOWS the closing quote. `train/dialogue.py` tracks quote state and asks
+one named question — `continues_as_attribution` — at the single ambiguous position. Also worth
+recording: **1,224 tests, and not one of them called `split_sentences`.** Changing it broke
+nothing, which is exactly why it had drifted this long.
+
+**The dialogue loss was stage 2's, not stage 1's.** Measured, not assumed. Stage 1's random-cut
+population already retained 93% of the corpus's dialogue density (95% now). The stage-2 skit
+population carried **0.68×** the corpus rate under the old splitter and **1.38×** under the new
+one, with kept rising 9.6% → 13.2%. So the 43% relative loss was the accept gate eating
+dialogue-with-attribution, and it is now reversed. Stage 1's republished derivation moved only
+6.05% → 5.15% drop — but **40% of the shared examples changed text**, because the cut point is
+`randint(2, len(sents) - 2)` and `len(sents)` moved. A republication that reported only the
+drop rate would have read as a rounding correction.
+
+**Attribution really is unnecessary, and dropping it drops the bug.** No name is read anywhere.
+The cost is measurable and is published rather than hidden: 39.6% of adjacent turn pairs are
+separated by nothing but a tag (`"…," he said. "…"`), which is an **upper bound** on how often
+two adjacent turns are the same voice. Telling `"Don't cry," he said. "I can help."` (one voice)
+from `"Hello," said Amy. "Goodbye," said Ben.` (two) needs the subject of the tag — i.e. exactly
+the attribution that got the probe's speakers backwards. So it is a manifest field, not a gate.
+
+**Yield is 4× short of the projection, and the gates were not touched.** 18.89% of stories clear
+five utterances (the probe's 18.8%, confirmed at 400k). But only 11.3% of those survive
+accept/add, so 400,000 stories yield **8,543 skits**, not 80,000; the whole corpus projects to
+~45,000. The drop table says why and says it per gate: `no_accept` at some model turn is 61,781
+of the 66,770 derivation failures. Real exchanges are short — `"Ouch!"`, `"Thank you, ghost!"` —
+and share no content word with what preceded them. The spec's own sample skit drops at turn 4.
+
+**A tenth-class test caught in the act.** `classify_turn_failure`'s four-row table passed against
+a mutant that checked the `add` gate before `accept`, because every row failed exactly one gate.
+Ordering needed a row where BOTH fail. Same shape as the ten before it.
