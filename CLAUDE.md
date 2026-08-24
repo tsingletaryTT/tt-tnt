@@ -2182,3 +2182,62 @@ artifact that `scripts/reach.py` quotes. `default_paths()` derives a suffixed pa
 are tested. The step/manifest provenance check was written in `main()` first and a mutation that
 deleted it survived — driver-only guards are unreachable from tests, the same hole as round 2's
 composer mutants. Extracted and tested.
+
+### Task 7, the `add` slot — a POS filter that would have worked for the wrong reason (2026-08-24)
+
+Report: `.superpowers/sdd/2026-08-23-reach-dial/task-7-report.md`. New artifact
+`artifacts/reach-content/` (24,376 skits); `artifacts/reach-skits/` untouched.
+
+The reach dial was statistically fine and read as nothing, because `add` is the highest-IDF
+*fresh* word and a TinyStories turn is three words long — so the slot's 25 commonest values
+(18.5% of it) were `look please hi hello love what wow why come yes thank ok okay …`. Now they
+are `look want love come give go doing friend need stop name help see try …`.
+
+**The filter I was about to ship would have been right by accident.** Tagged as written, the
+particles pile onto `NNP` — `hi` 120/120, `hello` 118/120, `wow` 115/120 — because they open a
+quoted utterance and are therefore *capitalised*. An NN/NNS-excluding-NNP filter scores well on
+this corpus and inverts the first time a particle appears mid-utterance. Worse, the same
+artifact tags `look` NNP 93/120 and `come` 84/120, and those are verbs that must be **kept**:
+the right answer and the wrong one came out of the same accident. `pos_tags_in_turn` lowercases
+every token before tagging, which removes the cue in both directions — and doing that
+**destroys the POS signal entirely**: `hi`, `hello`, `wow` all become `NN`, indistinguishable
+from `comet`. Which is the honest finding. *Part of speech cannot separate a greeting from a
+noun*, because `hello` in "say hello" genuinely is one. Grammar was never the axis; **where the
+word lives** is. `narration_rate` — the fraction of a word's corpus occurrences outside
+quotation marks — separates `give .584 come .509 look .503 love .293` from `okay .237 thank .182
+hi .070 please .066 wow .033 let's .014`, and the POS gate is demoted to what it is actually
+good at: rejecting adjectives, per instance.
+
+**Isolated-word tagging carries no signal at all here** — `nltk.pos_tag([w])` returns `NN` for
+every one of `please wow okay thank hey comet hello look love dragon kite hi`. The brief
+reported a *mixed* set of wrong tags; I could not reproduce that and the difference matters,
+because "backwards" and "uninformative" imply different fallbacks.
+
+**A threshold chosen on the thing you then measure is not measured.** `NARRATION_FLOOR = 0.20`
+was fitted against the brief's own 25-word ground truth; precision/recall are reported against
+250 observations hand-labelled *before the classifier ran* (0.9493 / 0.9424, majority floor
+0.556). Both sets are in the manifest, and the top-25 one is labelled **FIT, not a test**.
+
+**Report which gate is SOLELY responsible, not which fired.** Five gates, and `content_add_reasons`
+returns all of them rather than the first, precisely so the manifest can say that `clitic` fired
+4,384 times and was solely responsible **zero** times — redundant on this corpus, kept as a rule
+only because it generalises. The narration floor's 1,013 sole rejections are the real payoff
+(`ow`, `mmm`, `yuck`, `sir`, `dear`, `whee`) *and* its real cost in the same column (`belongs`,
+`deserve` — verbs the narrator never says).
+
+**The fix made the confound worse, and that is the headline finding, not a footnote.**
+`spearman(add_df, distance)` +0.2078 → **+0.2334**; `far`'s median `add_df` +32%. Removing the
+particles promoted the *common verbs* that were second choice in the same turns, so the slot got
+**more** concentrated (top-25 share 0.1846 → 0.2181, distinct 6,442 → 4,846). A slot can read
+better and measure worse at the same time.
+
+**A fixture of `comet` vs `hello` cannot test this classifier** — every candidate design,
+including two provably wrong ones, gets that pair right. The parametrisations are built on
+`look/love/come/want/give/doing/mean` and on real turns from the artifact, and the
+`SpeechProfile` fixtures carry the **real measured corpus counts**, because the floor's
+justification is where real words fall relative to it. Eleven mutants, each reverted: the ones
+that matter are `choose_add_word` ignoring its filter (4 red), `pos_tags_in_turn` no longer
+lowercasing (6 red, including `come`/`give` wrongly rejected), and a content run **defaulting
+onto `artifacts/reach-skits/`** — which is why `resolve_out_path` is a named function instead of
+two lines in `main`. The artifact test is the satisfying one: pointed at the old artifact it
+names **311 distinct particles** in the `add` slot; pointed at the new one the set is empty.

@@ -11,6 +11,14 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+# The content-word gate on the `add` slot (train/content_add.py, --content-add). Optional
+# because nothing else in the tree needs a tagger and a bare checkout must still run pytest:
+# `train.content_add` imports nltk lazily through `importlib.util.find_spec`, and
+# `tests/test_content_add.py` skips nothing -- it fails loudly if the gate cannot run, which
+# is the right behaviour for the module that decides the training vocabulary.
+# Needs the tagger data too:
+#   python -m nltk.downloader averaged_perceptron_tagger_eng punkt_tab
+content = ["nltk>=3.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

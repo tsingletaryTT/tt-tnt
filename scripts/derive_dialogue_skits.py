@@ -85,11 +85,15 @@ from train.dialogue import (MIN_UTTERANCES, adjacent_gaps,  # noqa: E402
                             dialogue_prefix, extract_dialogue_turns, is_tag_only_gap,
                             quoted_utterances, same_voice_risk,
                             split_sentences_dialogue, voice_changes_throughout)
+from train.content_add import (GATE_NAMES, NARRATION_FLOOR,  # noqa: E402
+                               SpeechProfile, build_speech_profile, content_add_filter,
+                               gate_attribution, narration_rate, profile_meta)
 from train.improv import content_words  # noqa: E402
 from train.reach import (REACH_SLOT_NAMES, REACH_VALUES, Association,  # noqa: E402
                          add_word_of, bucket_balance, build_association,
                          fit_reach_terciles, frequency_confound, skit_reach_distances,
-                         skit_reach_distances_per_block, skit_stakes_deltas, with_reach)
+                         skit_reach_distances_per_block, skit_stakes_deltas, spearman,
+                         with_reach)
 from train.skit import (MODEL_TURNS, PARTNER_TURNS, SKIT_ROLES,  # noqa: E402,F401
                         Skit, derive_skit_from_turns, skit_segments)
 
@@ -169,7 +173,8 @@ def dialogue_unit_counts(story: str) -> Tuple[int, int]:
     return len(units), sum(1 for u in units if '"' in u)
 
 
-def classify_turn_failure(prefix: str, turns: Sequence[str]) -> str:
+def classify_turn_failure(prefix: str, turns: Sequence[str],
+                          add_filter=None) -> str:
     """Which gate a would-be skit failed, for the drop table. READ-ONLY DIAGNOSTICS.
 
     Nothing gates on this. `derive_skit_from_turns` has already decided (whole-or-nothing,
@@ -179,8 +184,9 @@ def classify_turn_failure(prefix: str, turns: Sequence[str]) -> str:
     `derive_skits.py`'s `dialogue_pattern` recompute: a drop table that says only
     "derivation failed" cannot tell you whether to fix the gate or accept the yield.
 
-    Returns e.g. `"no_accept_at_turn_2"`, `"no_add_at_turn_0"`, `"no_content_at_turn_4"`, or
-    `"unclassified"` if every turn passes both re-walked conditions (which would mean this
+    Returns e.g. `"no_accept_at_turn_2"`, `"no_add_at_turn_0"`, `"no_content_at_turn_4"`,
+    `"no_content_add_at_turn_1"` (only when `add_filter` is supplied -- see `--content-add`),
+    or `"unclassified"` if every turn passes every re-walked condition (which would mean this
     diagnostic and the real derivation disagree -- worth seeing in the table).
     """
     for t_idx in MODEL_TURNS:
@@ -193,9 +199,49 @@ def classify_turn_failure(prefix: str, turns: Sequence[str]) -> str:
         established = set(content_words(prefix))
         for j in range(t_idx):
             established |= set(content_words(turns[j]))
-        if not [w for w in turn_words if w not in established]:
+        fresh = [w for w in turn_words if w not in established]
+        if not fresh:
             return f"no_add_at_turn_{t_idx}"
+        # The content gate, re-walked on the same words in the same order. A skit that had a
+        # fresh word but none that NAMES anything is a different failure from having no fresh
+        # word at all, and folding the two together would hide exactly the cost this run is
+        # here to measure. See `train.skit.choose_add_word`.
+        if add_filter is not None and not any(add_filter(w, turns[t_idx]) for w in fresh):
+            return f"no_content_add_at_turn_{t_idx}"
     return "unclassified"
+
+
+def rejected_add_candidates(skit: Skit, idf: Dict[str, float],
+                            add_filter) -> List[Tuple[str, str]]:
+    """`(word, turn)` for every fresh word the content gate ranked ABOVE the chosen `add`.
+
+    READ-ONLY DIAGNOSTICS, same pattern and same justification as `classify_turn_failure`:
+    the derivation has already chosen, and this re-walks `train.skit.choose_add_word`'s
+    candidate list only to say WHAT the gate took out of the slot. Those pairs are what
+    `train.content_add.gate_attribution` counts, so the manifest can report which gate is
+    solely responsible for which rejection instead of asserting that all five earn their
+    place.
+
+    The walk stops at the chosen word: everything after it was never examined by the filter
+    (`choose_add_word` returns on the first acceptance), so counting it would invent
+    rejections that never happened.
+    """
+    out: List[Tuple[str, str]] = []
+    if add_filter is None:
+        return out
+    for i, t_idx in enumerate(MODEL_TURNS):
+        established = set(content_words(skit.prefix))
+        for j in range(t_idx):
+            established |= set(content_words(skit.turns[j]))
+        turn = skit.turns[t_idx]
+        fresh = sorted({w for w in content_words(turn) if w not in established},
+                       key=lambda w: (-idf.get(w, 0.0), w))
+        chosen = add_word_of(skit.blocks[i])
+        for w in fresh:
+            if w == chosen:
+                break
+            out.append((w, turn))
+    return out
 
 
 def tag_only_gap_count(story: str, n_turns: int = MIN_UTTERANCES) -> Tuple[int, int]:
@@ -594,9 +640,98 @@ def reach_report(distances_train: List[float], distances_all: List[float],
     }
 
 
+def content_add_report(profile: Optional[SpeechProfile], floor: float,
+                       rejected: List[Tuple[str, str]],
+                       add_words: List[str], add_dfs: List[int]) -> dict:
+    """The manifest's `content_add` block: what the gate is, what it did, and how wrong it is.
+
+    Four things, and the third and fourth are the ones a reader should check first:
+
+      * `speech_profile` -- the corpus evidence, with a fingerprint, because the profile is
+        not written to disk (same reasoning as `association_meta`).
+      * `gate_attribution` -- per gate, how often it fired and how often it was the ONLY gate
+        that fired. A gate with a big `fired` and no `solely_responsible` is redundant.
+      * `validation` -- precision and recall against 250 observations hand-labelled BEFORE the
+        classifier was run on them, with every disagreement listed by name, plus the same
+        against the measured top-25 (which is a fit, and says so).
+      * `not_a_frequency_filter` -- the rank correlation between the gate's own statistic and
+        `add_df`. The design forbids selecting on document frequency, because NPMI is already
+        frequency-biased and a DF cut would be partly the same axis as the dial; this is the
+        number that shows the narration rate is not that axis in disguise.
+
+    Returns an `applied: False` stub when the gate was off, rather than omitting the key: a
+    manifest that is silent about a filter reads exactly like one where the filter passed
+    everything.
+    """
+    vocab = Counter(add_words)
+    vocabulary = {
+        "observations": len(add_words),
+        "distinct": len(vocab),
+        "top_25": [[w, n] for w, n in vocab.most_common(25)],
+        "top_25_share": (round(sum(n for _, n in vocab.most_common(25)) / len(add_words), 4)
+                         if add_words else None),
+        "note": "THE HEADLINE. Before the gate (artifacts/reach-skits/) this list read "
+                "`look please hi hello love what wow why come yes thank ok okay want mine "
+                "let's doing where our mean can't what's give course hey` -- 18.5% of the "
+                "slot, and a different set of particles at each end of the dial.",
+    }
+    if profile is None:
+        return {"applied": False, "add_vocabulary": vocabulary,
+                "note": "no --content-add. `add` is the highest-IDF fresh word whatever it "
+                        "is; on this corpus that is a discourse particle 18.5% of the time "
+                        "(measured over artifacts/reach-skits/, 123,042 observations)."}
+    from scripts.validate_content_add import (floor_sensitivity, validate_sample,
+                                              validate_top25)
+    rates = [narration_rate(w, profile) for w in add_words]
+    return {
+        "applied": True,
+        "module": "train.content_add",
+        "question": "does the `add` word name a THING or an ACTION?",
+        "add_vocabulary": vocabulary,
+        "narration_floor": floor,
+        "gates": list(GATE_NAMES),
+        "gate_order_note":
+            "content_add_reasons returns EVERY gate a word fails, not the first -- the "
+            "opposite of screen_candidate, whose gates are ordered by cost. Here the point is "
+            "attribution: which gate would have caught this on its own.",
+        "why_not_part_of_speech_alone":
+            "Tagged as written, the particles pile onto NNP (hi 120/120, hello 118/120, wow "
+            "115/120) because they open a quoted utterance and are capitalised -- and so do "
+            "`look` (93/120) and `come` (84/120), which are verbs that must be KEPT. "
+            "pos_tags_in_turn lowercases every token before tagging, which removes the cue "
+            "and moves the particles onto NN, indistinguishable from `comet`. The POS gate "
+            "therefore rejects adjectives/adverbs/numerals per instance and nothing else; "
+            "the particles are held out by narration rate and the two closed-class lists.",
+        "speech_profile": profile_meta(profile),
+        "gate_attribution": gate_attribution(rejected, profile, floor=floor),
+        "gate_attribution_population":
+            "every fresh word the gate ranked ABOVE the word it accepted, over the kept "
+            "skits -- i.e. exactly what the gate removed from the slot. Words below the "
+            "accepted one were never examined and are not counted.",
+        "validation": {
+            "hand_labelled_sample": validate_sample(profile, floor=floor),
+            "measured_top_25": validate_top25(profile, floor=floor),
+            "floor_sensitivity": floor_sensitivity(profile),
+        },
+        "not_a_frequency_filter": {
+            "spearman_narration_rate_vs_add_df": spearman(rates, [float(d) for d in add_dfs]),
+            "n": len(rates),
+            "sign_means":
+                "the gate's own statistic against the covariate the design forbids selecting "
+                "on. A large positive or negative value here would mean the content gate is "
+                "a document-frequency cut wearing a different name, which would manufacture "
+                "or destroy the reach effect rather than clean it up.",
+            "the_constraint":
+                "DF is not used as a gate anywhere in train.content_add. narration_rate is a "
+                "ratio of one word's counts against itself and is scale-free by construction.",
+        },
+    }
+
+
 # --------------------------------------------------------------------------------------
 def derive_dialogue_skit(story: str, *, story_id: int, idf: Dict[str, float],
-                         intensity_fn) -> Tuple[Optional[Skit], Optional[str]]:
+                         intensity_fn,
+                         add_filter=None) -> Tuple[Optional[Skit], Optional[str]]:
     """One dialogue skit from one story, or `(None, drop_rule)`.
 
     The gates, in the order they fire:
@@ -606,7 +741,9 @@ def derive_dialogue_skit(story: str, *, story_id: int, idf: Dict[str, float],
          accept and the skit could only ever drop at the first turn. Reported separately
          because it is a property of the STORY's shape, not of the slots.
       4. `turn_derivation_failed_*` -- accept/add failed at some model turn;
-         `classify_turn_failure` says which.
+         `classify_turn_failure` says which. With `add_filter`, `no_content_add_at_turn_N`
+         separates "the turn introduced nothing" from "the turn introduced nothing that names
+         a thing or an action", which is the whole cost of the content gate.
     """
     turns = extract_dialogue_turns(story)
     if turns is None:
@@ -621,9 +758,10 @@ def derive_dialogue_skit(story: str, *, story_id: int, idf: Dict[str, float],
     if not prefix:
         return None, "empty_prefix"
     skit = derive_skit_from_turns(prefix, turns, story_id=story_id, idf=idf,
-                                  intensity=intensity_fn)
+                                  intensity=intensity_fn, add_filter=add_filter)
     if skit is None:
-        return None, f"turn_derivation_failed_{classify_turn_failure(prefix, turns)}"
+        return None, ("turn_derivation_failed_"
+                      f"{classify_turn_failure(prefix, turns, add_filter)}")
     return skit, None
 
 
@@ -667,6 +805,21 @@ def association_meta(assoc: Association, *, population: str,
     }
 
 
+def resolve_out_path(out: Optional[Path], content_add: bool) -> Path:
+    """Where the skits go: an explicit `--out`, else a path that depends on the gate.
+
+    A named function and not two lines in `main` because it is the only thing standing
+    between a content run and `artifacts/reach-skits/skits.jsonl`, which is 41,014 skits
+    referenced by the published artifact and by BOTH trained arm pairs. A default that
+    silently pointed at the old path would destroy them on the first run and the drop table
+    would look plausible the whole way.
+    """
+    if out is not None:
+        return out
+    return (ROOT / "artifacts" / ("reach-content" if content_add else "reach-skits")
+            / "skits.jsonl")
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -674,10 +827,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     default=ROOT / "artifacts" / "corpus" / "tinystories.txt")
     ap.add_argument("--limit", type=int, default=None,
                     help="stories to scan; default None = the WHOLE corpus (ruling B).")
-    ap.add_argument("--out", type=Path,
-                    default=ROOT / "artifacts" / "reach-skits" / "skits.jsonl",
-                    help="NEW path. artifacts/dialogue-skits/ is task 1's output and is "
-                         "left alone.")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="default depends on --content-add: artifacts/reach-skits/ without "
+                         "it (task 2's published artifact), artifacts/reach-content/ with "
+                         "it. Defaulted rather than fixed so a content run cannot overwrite "
+                         "the 41,014 skits both trained arm pairs and the published artifact "
+                         "reference. artifacts/dialogue-skits/ is task 1's and is left alone.")
+    ap.add_argument("--content-add", action="store_true",
+                    help="require the `add` slot to name a THING or an ACTION "
+                         "(train.content_add). Without it `add` is the highest-IDF fresh "
+                         "word whatever it is, which on this corpus is a discourse particle "
+                         "18.5%% of the time.")
+    ap.add_argument("--narration-floor", type=float, default=NARRATION_FLOOR,
+                    help="the content gate's narration-rate cut. Only read with "
+                         "--content-add; see train.content_add.NARRATION_FLOOR.")
     ap.add_argument("--tokenizer", type=Path, default=None,
                     help="HF tokenizer dir. WITHOUT it ruling C cannot be applied: "
                          "over-length skits are neither identified nor excluded, and the "
@@ -694,6 +857,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="ruling A's filter under the literal 'no NEW CAPITALISED token' "
                          "reading. Measured either way; see same_speaker_filter.")
     args = ap.parse_args(argv)
+    args.out = resolve_out_path(args.out, args.content_add)
 
     tok = None
     if args.tokenizer is not None:
@@ -708,6 +872,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     def intensity_fn(text: str) -> float:
         return intensity(text, harm)
+
+    # The content gate's corpus evidence, built BEFORE the association table so a missing
+    # nltk fails in seconds rather than 34 minutes in. One extra pass over `stories` (~95 s on
+    # the whole corpus), and the profile is a pure function of the same bytes, so the manifest
+    # carries its fingerprint instead of the table.
+    profile: Optional[SpeechProfile] = None
+    add_filter = None
+    if args.content_add:
+        print(f"building the speech profile (narration vs quoted speech) over "
+              f"{len(stories):,} stories ...", flush=True)
+        profile = build_speech_profile(stories)
+        add_filter = content_add_filter(profile, floor=args.narration_floor)
+        # Fail now, on one word, if nltk or its tagger data is absent.
+        add_filter("comet", "Look, a comet!")
+        print(f"  narration vocabulary {len(profile.narration):,}  "
+              f"floor {args.narration_floor}", flush=True)
 
     n_assoc = args.assoc_stories or len(stories)
     print(f"building the association table over {n_assoc:,} whole-story documents "
@@ -734,7 +914,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         counts["stories_with_min_utterances"] += 1 if n_utts >= MIN_UTTERANCES else 0
 
         skit, rule = derive_dialogue_skit(story, story_id=i, idf=idf,
-                                          intensity_fn=intensity_fn)
+                                          intensity_fn=intensity_fn,
+                                          add_filter=add_filter)
         if skit is None:
             drops[rule] += 1
             continue
@@ -811,6 +992,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     buckets_train: List[str] = []
     buckets_eval: List[str] = []
     add_dfs: List[int] = []
+    add_words: List[str] = []
+    rejected_candidates: List[Tuple[str, str]] = []
     distances_all: List[float] = []
     lengths_kept: List[int] = []
     with args.out.open("w") as fh:
@@ -831,6 +1014,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # match on it. See train.reach.frequency_confound.
             row["add_df"] = [assoc.uni.get(add_word_of(b), 0) for b in skit.blocks]
             add_dfs.extend(row["add_df"])
+            add_words.extend(add_word_of(b) for b in skit.blocks)
+            rejected_candidates.extend(rejected_add_candidates(skit, idf, add_filter))
             fh.write(json.dumps(row) + "\n")
             got = [b.reach for b in skit.blocks]
             (buckets_train if k < n_train else buckets_eval).extend(got)
@@ -892,6 +1077,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                             if args.assoc_stories else
                             f"EVERY story scanned ({n_assoc:,})"),
                 corpus_md5=md5_of(args.corpus))),
+        "content_add": content_add_report(profile, args.narration_floor,
+                                          rejected_candidates, add_words, add_dfs),
         "stakes": {
             "form": "continuous signed delta, rendered by train.reach.format_stakes_delta",
             "definition": "intensity(this model turn) - intensity(the turn before it), in "
@@ -952,6 +1139,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
           f" of {sf['skits_reaching_the_filter']:,} skits reaching the filter")
     rc = manifest["ruling_c"]
     print(f"ruling C: applied={rc['applied']} excluded={rc['excluded']:,}")
+    ca = manifest["content_add"]
+    if ca["applied"]:
+        v = ca["validation"]["hand_labelled_sample"]
+        print(f"content gate: removed {ca['gate_attribution']['observations']:,} candidate "
+              f"words from the slot across the kept skits; hand-labelled sample "
+              f"precision {v['precision']} recall {v['recall']} (n={v['n']})")
+        top = Counter(add_words).most_common(25)
+        print("top-25 add words: " + " ".join(f"{w}({n})" for w, n in top))
     sb = manifest["selection_bias"]
     print(f"dialogue: {sb['stories_with_any_dialogue_fraction']:.1%} of stories have any; "
           f"{sb['stories_with_min_utterances_fraction']:.1%} clear >={MIN_UTTERANCES}; "

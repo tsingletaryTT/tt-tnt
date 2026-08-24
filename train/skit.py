@@ -73,9 +73,37 @@ class Skit:
                 "blocks": [b.as_dict() for b in self.blocks]}
 
 
+def choose_add_word(fresh_ranked: Sequence[str], turn: str,
+                    add_filter: Optional[Callable[[str, str], bool]] = None
+                    ) -> Optional[str]:
+    """The word the `add` slot names: the highest-IDF fresh word `add_filter` accepts.
+
+    THE WIRING POINT for the 2026-08-23 content-word gate, and a named function precisely so
+    a test can call it. `fresh_ranked` arrives sorted rarest-first; with no filter this is
+    ``fresh_ranked[0]`` and the behaviour published in stage 2 is unchanged, which is why the
+    default is None rather than a filter that accepts everything.
+
+    With a filter it is the first ACCEPTED word in the same order -- not "accept the top word
+    or drop", because the ranking's job is to prefer the rarer word and the filter's job is to
+    say which words are eligible at all. Returning None means this turn introduced nothing
+    that names a thing or an action, and `_slots_for_turn` drops the block (and so the skit).
+
+    See `train.content_add.content_add_filter` for the filter this is built for, and
+    `tests/test_skit.py::test_choose_add_word_*` for the fixtures.
+    """
+    if add_filter is None:
+        return fresh_ranked[0] if fresh_ranked else None
+    for word in fresh_ranked:
+        if add_filter(word, turn):
+            return word
+    return None
+
+
 def _slots_for_turn(offer_text: str, established: List[str], turn: str, prev_turn: str, *,
                     idf: Dict[str, float],
-                    intensity: Callable[[str], float]) -> Optional[Slots]:
+                    intensity: Callable[[str], float],
+                    add_filter: Optional[Callable[[str, str], bool]] = None
+                    ) -> Optional[Slots]:
     """Derive one block, or None to drop the skit.
 
     `offer_text` is the IMMEDIATELY PRECEDING span — the partner's turn for blocks 1 and 2,
@@ -109,6 +137,9 @@ def _slots_for_turn(offer_text: str, established: List[str], turn: str, prev_tur
     # Sort keys are TOTAL (value, then the word) so a tie cannot resolve differently between
     # processes. Python randomises string hashing, and this output becomes training data.
     fresh_ranked = sorted(set(fresh), key=lambda w: (-idf.get(w, 0.0), w))
+    add_word = choose_add_word(fresh_ranked, turn, add_filter)
+    if add_word is None:
+        return None                      # nothing that NAMES anything -> a block -> drop
 
     # stakes spans the exchange: this turn against the PREVIOUS turn, not against the scene.
     delta = intensity(turn) - intensity(prev_turn)
@@ -121,7 +152,7 @@ def _slots_for_turn(offer_text: str, established: List[str], turn: str, prev_tur
     return Slots(
         offer=" ".join(offer_words[:12]) or offer_text[:60],
         accept=" ".join(carried[:6]),
-        add=", ".join(fresh_ranked[:1]),
+        add=add_word,
         stakes=stakes,
         handback=introduced[-1] if introduced else "open",
     )
@@ -129,7 +160,9 @@ def _slots_for_turn(offer_text: str, established: List[str], turn: str, prev_tur
 
 def derive_skit_from_turns(prefix: str, turns: Sequence[str], *, story_id: int,
                            idf: Dict[str, float],
-                           intensity: Callable[[str], float]) -> Optional[Skit]:
+                           intensity: Callable[[str], float],
+                           add_filter: Optional[Callable[[str, str], bool]] = None
+                           ) -> Optional[Skit]:
     """One skit from a prefix and five ALREADY-CHOSEN turns, or None to drop it.
 
     This is the slot derivation proper, with no opinion about where the turns came from.
@@ -147,6 +180,13 @@ def derive_skit_from_turns(prefix: str, turns: Sequence[str], *, story_id: int,
     the scene so far -- prefix plus all earlier turns -- so `add` means new to the SCENE and
     not merely new to this turn. See `_slots_for_turn` for both, including the block-0
     erratum in the stage-2 spec.
+
+    `add_filter` (2026-08-23) decides WHICH fresh word the `add` slot may name; None keeps the
+    stage-2 behaviour byte for byte, which is why every existing caller passes nothing.
+    `scripts/derive_dialogue_skits.py --content-add` passes
+    `train.content_add.content_add_filter`, and a turn whose fresh words are all rejected
+    drops the whole skit under the same whole-or-nothing rule as every other block failure.
+    See `choose_add_word`.
     """
     turns = tuple(turns)
     if len(turns) != len(SKIT_ROLES):
@@ -159,7 +199,7 @@ def derive_skit_from_turns(prefix: str, turns: Sequence[str], *, story_id: int,
         established = content_words(prefix) + [w for j in range(t_idx)
                                                for w in content_words(turns[j])]
         got = _slots_for_turn(offer, established, turns[t_idx], prev,
-                              idf=idf, intensity=intensity)
+                              idf=idf, intensity=intensity, add_filter=add_filter)
         if got is None:
             return None
         blocks.append(got)

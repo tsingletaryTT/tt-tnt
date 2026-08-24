@@ -1035,3 +1035,179 @@ def test_the_continuous_stakes_delta_has_spread_on_real_data(reach_scale):
         f"only {len(nonzero)}/{len(deltas)} deltas are nonzero"
     assert any(d > 0 for d in nonzero) and any(d < 0 for d in nonzero)
     assert max(deltas) > 1.0
+
+
+# --------------------------------------------------------------------------------------
+# F. the content-word gate on the DERIVATION side (task 7, --content-add)
+# --------------------------------------------------------------------------------------
+from scripts.derive_dialogue_skits import (content_add_report,  # noqa: E402
+                                           rejected_add_candidates, resolve_out_path)
+from scripts.validate_content_add import confusion, validate_sample  # noqa: E402
+from train.content_add import SpeechProfile  # noqa: E402
+
+
+def test_the_out_path_defaults_apart_so_a_content_run_cannot_overwrite_reach_skits():
+    """`artifacts/reach-skits/` is 41,014 skits that the published artifact and both trained
+    arm pairs reference. The content run must not be able to reach it by default."""
+    assert resolve_out_path(None, True).parent.name == "reach-content"
+    assert resolve_out_path(None, False).parent.name == "reach-skits"
+    assert resolve_out_path(None, True) != resolve_out_path(None, False)
+    explicit = Path("/tmp/somewhere/skits.jsonl")
+    assert resolve_out_path(explicit, True) == explicit
+
+
+def test_classify_turn_failure_names_the_content_gate_separately_from_no_add():
+    """"the turn introduced nothing" and "it introduced nothing that NAMES anything" are
+    different failures, and folding them together would hide the whole cost of this run.
+
+    Same story, two filters: with none it derives; with a filter that rejects everything the
+    diagnostic must name the CONTENT gate at the FIRST model turn, not `no_add`.
+    """
+    skit, rule = derive_dialogue_skit(STORY_A, story_id=0, idf=IDF,
+                                      intensity_fn=lambda t: 0.0)
+    assert skit is not None and rule is None
+    assert classify_turn_failure(skit.prefix, list(skit.turns)) == "unclassified"
+    assert classify_turn_failure(skit.prefix, list(skit.turns),
+                                 lambda w, t: False) == "no_content_add_at_turn_0"
+
+
+def test_derive_dialogue_skit_carries_the_filter_into_the_drop_rule():
+    """The wiring, at the level `main` actually calls: a filter that accepts nothing must
+    produce the content-gate drop rule and not a silent `unclassified`."""
+    skit, rule = derive_dialogue_skit(STORY_A, story_id=0, idf=IDF,
+                                      intensity_fn=lambda t: 0.0,
+                                      add_filter=lambda w, t: False)
+    assert skit is None
+    assert rule == "turn_derivation_failed_no_content_add_at_turn_0"
+
+
+def test_rejected_add_candidates_stops_at_the_word_the_gate_accepted():
+    """The words ranked BELOW the accepted one were never examined by the filter.
+
+    `choose_add_word` returns on the first acceptance, so counting the rest would invent
+    rejections that never happened and inflate every gate's attribution.
+    """
+    unfiltered, _ = derive_dialogue_skit(STORY_A, story_id=0, idf=IDF,
+                                         intensity_fn=lambda t: 0.0)
+    assert not rejected_add_candidates(unfiltered, IDF, None)   # no filter, no rejections
+    assert rejected_add_candidates(unfiltered, IDF, lambda w, t: True) == [], \
+        "an accept-everything filter rejects nothing"
+
+    # Ban the word the unfiltered derivation chose at every turn, re-derive, and the
+    # diagnostic must name exactly those three words -- the ones ranked above the new choice.
+    banned = [b.add for b in unfiltered.blocks]
+    reject_banned = lambda w, t: w not in banned                        # noqa: E731
+    filtered, _ = derive_dialogue_skit(STORY_A, story_id=0, idf=IDF,
+                                       intensity_fn=lambda t: 0.0,
+                                       add_filter=reject_banned)
+    assert filtered is not None
+    assert [b.add for b in filtered.blocks] != banned
+    pairs = rejected_add_candidates(filtered, IDF, reject_banned)
+    assert [w for w, _ in pairs] == banned
+    # and nothing ranked BELOW the accepted word is counted
+    assert all(w not in {b.add for b in filtered.blocks} for w, _ in pairs)
+
+
+def test_confusion_counts_and_leaves_an_empty_rate_as_none():
+    """A rate over an empty denominator is not 0.0, and printing 0.0000 there is how an empty
+    run reads as a catastrophic one."""
+    got = confusion([(True, True), (True, True), (True, False), (False, True),
+                     (False, False)])
+    assert (got["true_positive"], got["false_positive"],
+            got["false_negative"], got["true_negative"]) == (2, 1, 1, 1)
+    assert got["precision"] == round(2 / 3, 4)
+    assert got["recall"] == round(2 / 3, 4)
+    empty = confusion([(False, False)])
+    assert empty["precision"] is None and empty["recall"] is None and empty["f1"] is None
+
+
+def test_validate_sample_reports_the_disagreements_by_name():
+    """The error lists are the part a reader can act on; an aggregate alone hides which words
+    the gate is wrong about."""
+    profile = SpeechProfile(narration={"comet": 900, "hello": 100},
+                            speech={"comet": 100, "hello": 900}, stories=1)
+    labels = [{"add": "comet", "turn": "Look, a comet!", "label": "content"},
+              {"add": "hello", "turn": "Hello, Ben!", "label": "content"},
+              {"add": "hello", "turn": "Hello, Ben!", "label": "not_content"}]
+    got = validate_sample(profile, labels=labels)
+    assert got["true_positive"] == 1 and got["false_negative"] == 1
+    assert got["true_negative"] == 1 and got["false_positive"] == 0
+    assert [e["add"] for e in got["false_negative_examples"]] == ["hello"]
+    assert got["false_positive_examples"] == []
+
+
+def test_content_add_report_says_applied_false_rather_than_going_silent():
+    """A manifest that omits a filter reads exactly like one where the filter passed
+    everything."""
+    off = content_add_report(None, 0.2, [], ["hi", "hi", "comet"], [10, 10, 3])
+    assert off["applied"] is False
+    assert off["add_vocabulary"]["distinct"] == 2
+    assert off["add_vocabulary"]["top_25"][0] == ["hi", 2]
+
+
+def test_content_add_report_publishes_the_validation_and_the_df_correlation():
+    """Both numbers the design constraint asks for, in the manifest, unconditionally."""
+    # `hello` is given a narration rate of 0.5 on purpose: well ABOVE the floor, so the
+    # interjection list is the only gate that can fire on it and `solely_responsible` has
+    # something to be sole about.
+    profile = SpeechProfile(narration={"comet": 900, "dragon": 800, "hello": 500},
+                            speech={"comet": 100, "dragon": 200, "hello": 500}, stories=1)
+    got = content_add_report(profile, 0.2, [("hello", "Hello, Ben!")],
+                             ["comet", "dragon", "comet"], [30, 40, 30])
+    assert got["applied"] is True
+    assert got["validation"]["hand_labelled_sample"]["n"] == 250
+    assert got["validation"]["measured_top_25"]["n"] == 25
+    assert "spearman_narration_rate_vs_add_df" in got["not_a_frequency_filter"]
+    assert got["gate_attribution"]["per_gate"]["interjection"]["solely_responsible"] == 1
+
+
+@needs_artifacts("artifacts/reach-content/skits.jsonl",
+                 reason="the content-gated derivation's own output")
+def test_the_content_artifact_carries_no_particle_in_its_add_slot():
+    """THE PUBLISHED ARTIFACT IS THE SUBJECT, so it is what gets checked.
+
+    Every `add` value in `artifacts/reach-content/skits.jsonl` must clear the three gates that
+    need no corpus and no tagger -- clitic, function word, interjection. The narration-rate
+    and POS gates are not re-run here because they would need a 2.1M-story profile and a
+    tagger pass, and the point of this test is the cheap invariant a reader can verify in a
+    second: the slot no longer contains `hi`, `hello`, `please`, `what's` or `let's`.
+
+    A fixture cannot stand in for this. `train.content_add`'s own tests prove the classifier
+    accepts and rejects the right words; this proves the DERIVATION actually applied it, which
+    is a different claim and the one an artifact on disk can settle.
+    """
+    from train.content_add import is_clitic_form, is_function_word, is_interjection
+    path = ROOT / "artifacts" / "reach-content" / "skits.jsonl"
+    offenders: dict = {}
+    n = 0
+    with path.open() as fh:
+        for line in fh:
+            for block in json.loads(line)["blocks"]:
+                word = add_word_of(ReachSlots(**block))
+                n += 1
+                if is_clitic_form(word) or is_function_word(word) or is_interjection(word):
+                    offenders[word] = offenders.get(word, 0) + 1
+    assert n > 0
+    assert offenders == {}, f"particles survived into the add slot: {offenders}"
+
+
+@needs_artifacts("artifacts/reach-content/derive_manifest.json",
+                 reason="the content-gated derivation's own manifest")
+def test_the_content_manifest_publishes_its_own_validation_and_does_not_reuse_task_2s_cuts():
+    """The two numbers this artifact would be worthless without.
+
+    The tercile cut points describe a DISTANCE DISTRIBUTION, and this run's `add` vocabulary
+    is a different one -- reusing task 2's `lo`/`hi` would bucket a new distribution with an
+    old dial. And the filter's precision/recall must be in the manifest, not only in a report,
+    because the artifact outlives the report.
+    """
+    manifest = json.loads((ROOT / "artifacts" / "reach-content"
+                           / "derive_manifest.json").read_text())
+    assert manifest["content_add"]["applied"] is True
+    sample = manifest["content_add"]["validation"]["hand_labelled_sample"]
+    assert sample["n"] >= 200
+    assert sample["precision"] is not None and sample["recall"] is not None
+    cuts = manifest["reach"]["cut_points"]
+    assert (cuts["lo"], cuts["hi"]) != (0.7184308448481754, 0.8243294716769457), \
+        "task 2's cut points were reused on a different distance distribution"
+    assert cuts["fitted_on"].startswith("training split only")
