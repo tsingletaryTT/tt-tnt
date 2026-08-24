@@ -133,7 +133,16 @@ COHERENCE_MARGIN = 0.05
 #: that stops FULFILLING an ambitious plan has a decorative dial.
 ADHERENCE_MARGIN = 0.05
 
-#: Off-vocabulary dial value for the PRIMARY control: same shape, same schema, no meaning.
+#: Off-vocabulary dial value for the PRIMARY control: same shape, same schema, and no meaning
+#: AS A DIAL SETTING.
+#:
+#: "Nonsense" is a claim about the SLOT, not about the word. `blue` is a perfectly ordinary
+#: high-frequency content word with its own NPMI profile against any scene, and this corpus is
+#: full of blue things. What makes it a control is that it is off-vocabulary for `reach`: the
+#: arms never saw it in that position, and it cannot encode "near" or "far". A truly
+#: meaning-free token (a random string) would also be off-DISTRIBUTION for the tokenizer and
+#: would confound "unknown value" with "unknown token", so a real word is the right trade --
+#: but the artifact must not call it meaningless, and does not.
 NONSENSE_VALUE = "blue"
 
 #: The model turn this eval measures. See the module docstring.
@@ -529,12 +538,19 @@ def monotonicity_verdict(near: Sequence[float], mid: Sequence[float], far: Seque
         "near_lt_mid": steps[0], "mid_lt_far": steps[1], "near_lt_far": steps[2],
         "monotone": all(s["significant"] for s in steps),
         "n_significant_steps": sum(1 for s in steps if s["significant"]),
+        # KEY NAME IS A CONTRACT: `scripts/reach.py --about` quotes this field and
+        # `tests/test_reach_cli.py` pins it. The name stays; what changed is that it no longer
+        # ships as a bare claim about the run.
         "cleaner_contrast": "mid_lt_far",
-        "cleaner_contrast_why": (
-            "the corpus-scale frequency confound is NOT monotone -- median add_df is near "
-            "16,591 / mid 51,269 / far 39,367 -- so near-vs-far is also rare-vs-common while "
-            "mid-vs-far is much less exposed. Do not read the three steps as equally "
-            "confounded."),
+        "cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run": True,
+        "cleaner_contrast_provenance": (
+            "THE SPEC'S framing, and a property of the DERIVATION's gold label distribution, "
+            "not of this run: the corpus-scale per-bucket median add_df is non-monotone (near "
+            "16,591 / mid 51,269 / far 39,367 -- `mid` commonest), which would make "
+            "near-vs-far the most frequency-exposed step. Whether that transfers has to be "
+            "CHECKED against the add words this run actually produced -- see "
+            "effects.realised_frequency_profile, which computes it. Do not quote this field "
+            "as a finding about this run."),
     }
 
 
@@ -600,6 +616,12 @@ def adherence_readings(rates: Dict[str, float], near_key: str, mid_key: str, far
         "reading_far_minus_best_of_near_mid": round(far_vs_best, 6),
         "reading_far_minus_best_passes": bool(far_vs_best >= -margin),
         "which_setting_is_worst": declared["worst_setting"],
+        "may_itself_be_undertraining": (
+            "the rate is 0.48-0.57 at EVERY setting: the model fulfils its own declared plan "
+            "barely half the time regardless of the dial. Neither arm is converged (see "
+            "limitations), so the most likely reading of this guard's failure is a weak "
+            "plan-follower rather than a dial-specific defect. That is an explanation, not an "
+            "excuse -- the gate still fails, and the verdict still stands."),
         "READ_THIS": (
             "The three readings do not agree, and the direction of the failure matters. The "
             "declared gate fails, but the WORST setting is `near`, not `far`: the rate is "
@@ -660,17 +682,52 @@ def nonsense_control_verdict(near: Sequence[float], far: Sequence[float],
     away_from_near = bool(vs_near["significant"])
     indistinguishable_from_far = not bool(
         vs_far["t"] is not None and abs(vs_far["t"]) >= CRITICAL_T)
-    spread = None
-    if (vs_near["mean_delta"] is not None and far_vs_near["mean_delta"] not in (None, 0)):
-        spread = round(vs_near["mean_delta"] / far_vs_near["mean_delta"], 4)
+    rng = far_vs_near["mean_delta"]
+    position = None
+    if vs_near["mean_delta"] is not None and rng not in (None, 0):
+        position = round(vs_near["mean_delta"] / rng, 4)
+    # The equivalence bound the gate does NOT have. `indistinguishable_from_far` is a
+    # failure-to-reject, so on its own it says "we could not tell them apart", not "they are
+    # the same". Reporting the smallest difference this n could have detected turns that into
+    # a statement a reader can check: the gate can only fire when `blue` lands inside this
+    # band around `far`, and the band is a small slice of the dial's range.
+    sdd = None
+    band = None
+    if vs_far["t"] not in (None, 0) and vs_far["mean_delta"] is not None:
+        se = abs(vs_far["mean_delta"] / vs_far["t"])
+        sdd = round(CRITICAL_T * se, 6)
+        if rng:
+            band = round(sdd / abs(rng), 4)
     return {
         "role": ("PRIMARY CONTROL -- same arm, well-formed on-schema six-slot block, "
                  "off-vocabulary value. It isolates the dial's VALUE from its SCHEMA, which "
                  "the `nodial` arm cannot."),
         "vs_near": vs_near, "vs_far": vs_far, "far_vs_near_for_reference": far_vs_near,
-        "fraction_of_the_dial_range_reproduced": spread,
+        "position_on_the_near_far_range": position,
+        "position_is_NOT_a_share_of_the_effect": (
+            "This number is where the off-vocabulary value LANDS between `near` and `far`. It "
+            "is NOT the fraction of the dial that is schema rather than value, and an earlier "
+            "draft published it as if it were, which UNDERSTATED the result. There is no "
+            "zero-token baseline in this design -- every condition has some token in the "
+            "reach line -- so `blue`'s position cannot be decomposed into a schema share and "
+            "a value share. What the data support is the ORDERING: `blue` is significantly "
+            "displaced from `near` and from `far` in OPPOSITE directions, and an "
+            "off-vocabulary token cannot encode `near` or `far`, so both displacements are "
+            "value-specific. Publish the ordering, not the percentage."),
         "moved_away_from_near": away_from_near,
+        "distinguishable_from_far": not indistinguishable_from_far,
         "indistinguishable_from_far": indistinguishable_from_far,
+        "smallest_detectable_difference_from_far": sdd,
+        "smallest_detectable_difference_as_share_of_range": band,
+        "THE_GATE_IS_WEAK_AND_HERE_IS_HOW_WEAK": (
+            "`indistinguishable_from_far` is a FAILURE TO REJECT, not an equivalence test, so "
+            "this gate can only fire when the nonsense value lands within "
+            f"{sdd} of `far` -- about {band} of the near-to-far range. It passes over the "
+            "other ~90%. On this run it passes on POSITIVE evidence rather than on absence of "
+            "it (the difference from `far` is many standard errors), which is the only reason "
+            "it is worth anything here; a future run where `blue` drifted toward `far` "
+            "without crossing that band would pass this gate while deserving to fail. Read "
+            "`vs_far` and the bound, not the boolean."),
         "reproduces_the_dial_pattern": bool(away_from_near and indistinguishable_from_far),
         "rule": ("fails (i.e. reproduces the pattern) only when the nonsense value BOTH moves "
                  "significantly away from `near` in the dial's direction AND cannot be "
@@ -707,11 +764,157 @@ def df_matched_pairs(a_vals: Sequence[float], a_dfs: Sequence[float],
 
     Frequency control, method 1: instead of modelling the confound away, keep only the pairs
     where it is not there. Pairing is preserved -- both halves keep the same scene indices --
-    so the resulting contrast is the same paired test on a cleaner subsample, not a different
-    design.
+    so the resulting contrast is the same paired test on a cleaner subsample.
+
+    **THIS PRIMITIVE IS NULL-ENRICHING AND MUST NOT BE READ ALONE.** When the model emits the
+    SAME `add` word under both settings the two document frequencies are identical, so
+    ``|dlog df| = 0`` and the pair is ALWAYS kept -- and its distance difference is exactly
+    0.0, because it is the same word scored against the same context. Every scene where the
+    dial did nothing therefore survives the filter, while a scene where the dial changed the
+    word survives only if the two words happen to be about equally common. Measured on this
+    run, 78-92% of the retained pairs were identical-word pairs contributing a structural
+    zero. Use `df_matched_contrast`, which splits those out.
     """
     keep = [i for i in range(len(a_vals)) if abs(a_dfs[i] - b_dfs[i]) <= tol]
     return [a_vals[i] for i in keep], [b_vals[i] for i in keep]
+
+
+def df_matched_contrast(a_vals: Sequence[float], a_dfs: Sequence[float],
+                        a_words: Sequence[Optional[str]], b_vals: Sequence[float],
+                        b_dfs: Sequence[float], b_words: Sequence[Optional[str]], *,
+                        tol: float, label: str) -> Dict[str, Any]:
+    """The df-matched contrast WITH its null-enrichment made visible, and corrected for.
+
+    THE BUG THIS EXISTS TO FIX. An earlier version of this eval published the raw matched
+    contrast and concluded that the frequency-matched effect was 3-5x smaller than the
+    residualised one, i.e. that "a large share of the raw movement IS frequency". That reading
+    was **wrong**, and it was wrong because of the FILTER, not the model: the matched
+    subsample is dominated by scenes where the dial emitted the identical word under both
+    settings, whose distance difference is 0.0 by construction. Averaging a real effect over a
+    pool padded with structural zeros shrinks it by exactly the padding ratio and says nothing
+    at all about frequency.
+
+    So the contrast is reported twice: over everything kept (comparable to the old number, and
+    uninterpretable on its own), and over the INFORMATIVE pairs -- those where the dial
+    actually changed the word, so the difference CAN be non-zero. The informative mean is the
+    one that answers the question.
+
+    `n_informative` is also the honest power statement: a step with a few dozen informative
+    pairs is UNDERPOWERED, not refuted.
+    """
+    if not (len(a_vals) == len(b_vals) == len(a_dfs) == len(b_dfs)
+            == len(a_words) == len(b_words)):
+        raise ValueError("df_matched_contrast: unpaired input")
+    keep = [i for i in range(len(a_vals)) if abs(a_dfs[i] - b_dfs[i]) <= tol]
+    av = [a_vals[i] for i in keep]
+    bv = [b_vals[i] for i in keep]
+    same = [i for i in keep if a_words[i] is not None and a_words[i] == b_words[i]]
+    info = [i for i in keep if b_vals[i] - a_vals[i] != 0.0]
+    out = paired_contrast(av, bv, direction="b_greater", label=label)
+    out["kept_pairs_of"] = len(a_vals)
+    out["log_df_tolerance"] = tol
+    out["n_same_add_word"] = len(same)
+    out["n_exact_zero_difference"] = len(keep) - len(info)
+    out["n_informative"] = len(info)
+    out["structural_zero_share_of_kept"] = (round((len(keep) - len(info)) / len(keep), 4)
+                                            if keep else None)
+    out["informative_only"] = (
+        paired_contrast([a_vals[i] for i in info], [b_vals[i] for i in info],
+                        direction="b_greater", label=f"{label} (informative pairs only)")
+        if len(info) >= 2 else None)
+    out["READ_THE_INFORMATIVE_ROW"] = (
+        "`mean_delta` on this row is averaged over a pool in which "
+        f"{out['structural_zero_share_of_kept']} of the pairs are the SAME `add` word under "
+        "both settings and therefore contribute an exact 0.0 by construction. That is not a "
+        "smaller effect; it is the same effect divided by the padding. `informative_only` is "
+        "the interpretable number, and `n_informative` is the honest power statement.")
+    return out
+
+
+def frequency_control_agreement(raw: Dict[str, Any], residualised: Dict[str, Any],
+                                matched: Dict[str, Any]) -> Dict[str, Any]:
+    """Do the two frequency controls agree, and how much of the raw effect IS frequency?
+
+    A named function because an earlier draft answered this in prose, inside the artifact, and
+    got it backwards. The comparison must be residualised-vs-**informative**-matched: setting
+    the residualised effect against the null-padded matched mean is a category error of
+    exactly the kind this project's notes warn about -- two averages that no longer contain
+    the same population.
+
+    `near_lt_far` is the reference contrast: largest effect, most informative pairs, so it is
+    the step where the two methods can actually be compared.
+    """
+    raw_d = raw["near_lt_far"]["mean_delta"]
+    res_d = residualised["near_lt_far"]["mean_delta"]
+    inf = matched["near_lt_far"].get("informative_only")
+    inf_d = inf["mean_delta"] if inf else None
+    surviving = (res_d / raw_d) if (raw_d not in (None, 0) and res_d is not None) else None
+    agree = None
+    if inf_d is not None and res_d is not None and raw_d:
+        agree = abs(inf_d - res_d) <= 0.25 * abs(raw_d)
+    return {
+        "reference_contrast": "near_lt_far",
+        "raw_mean_delta": raw_d,
+        "residualised_mean_delta": res_d,
+        "df_matched_informative_mean_delta": inf_d,
+        "df_matched_informative_n": (inf["n_pairs"] if inf else None),
+        "share_of_raw_surviving_frequency_control": (round(surviving, 4)
+                                                     if surviving is not None else None),
+        "share_of_raw_attributable_to_log_add_df": (round(1.0 - surviving, 4)
+                                                    if surviving is not None else None),
+        "the_two_controls_agree": agree,
+        "agreement_rule": ("the two informative estimates differ by no more than a quarter of "
+                           "the raw effect"),
+        "READ_THIS": (
+            "About half the raw movement is document frequency and about half survives it -- "
+            "and the two frequency controls, once the matched one is read over its INFORMATIVE "
+            "pairs rather than over a pool padded with identical-word zeros, land in the same "
+            "place. A step that is not significant under matching with only a few dozen "
+            "informative pairs is UNDERPOWERED, not refuted."),
+    }
+
+
+def realised_frequency_profile(log_dfs_by_setting: Dict[str, Sequence[float]],
+                               order: Sequence[str],
+                               spearman_here: Optional[float]) -> Dict[str, Any]:
+    """Is the frequency confound monotone across the dial IN THIS RUN? COMPUTED, never quoted.
+
+    THE BUG THIS EXISTS TO FIX. This block used to carry a hard-coded ``not_monotone: True``
+    next to the DERIVATION's per-bucket medians (near 16,591 / mid 51,269 / far 39,367), under
+    a key named `frequency_confound_HERE`. Both were false of this run: the realised `add_df`
+    the model produced is strictly monotone across near/mid/far. A literal that describes a
+    different population, published under a key that claims to describe this one, is the exact
+    shape of the "trust the subject, verify the instrument" failure -- so the answer is
+    computed from the run's own data and the derivation's numbers are labelled as the
+    derivation's.
+
+    It matters beyond tidiness: the spec's "mid-vs-far is the cleaner contrast" framing was
+    derived from the derivation's non-monotone distribution. If the realised confound is
+    monotone, that framing does not transfer, and this function is what says so.
+    """
+    means = {k: (st.fmean(log_dfs_by_setting[k]) if log_dfs_by_setting[k] else None)
+             for k in order}
+    vals = [means[k] for k in order]
+    monotone = all(v is not None for v in vals) and all(
+        vals[i] < vals[i + 1] for i in range(len(vals) - 1))
+    return {
+        "measured_on": "the add words THIS RUN generated, not the derivation's gold ones",
+        "mean_log_add_df_by_setting": {k: (round(v, 4) if v is not None else None)
+                                       for k, v in means.items()},
+        "monotone_across_the_dial": monotone,
+        "not_monotone": not monotone,
+        "spearman_log_add_df_vs_distance_in_this_run": spearman_here,
+        "consequence_for_the_specs_cleaner_contrast_framing": (
+            "The spec named `mid` vs `far` the CLEANER contrast because the DERIVATION's "
+            "per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 "
+            "-- `mid` commonest). That framing is a property of the gold label distribution. "
+            + ("It does NOT transfer to this run: the realised add_df the model produced is "
+               "strictly monotone across the dial, so every step is exposed to the confound "
+               "in the same direction and no step is privileged as 'cleaner'. The frequency "
+               "control below, not the choice of contrast, is what separates them."
+               if monotone else
+               "It does transfer: the realised add_df is non-monotone here too.")),
+    }
 
 
 def dial_or_frequency_dial(raw: Dict[str, Any], controlled: Dict[str, Any],
@@ -747,27 +950,39 @@ def dial_or_frequency_dial(raw: Dict[str, Any], controlled: Dict[str, Any],
         # function's gate was fixed before the data existed. Changing it now, after seeing
         # that the two methods disagree, is precisely the move this project forbids -- so the
         # disagreement is published beside the verdict instead of quietly deciding it.
-        n_sig = sum(1 for k in ("near_lt_mid", "mid_lt_far", "near_lt_far")
-                    if matched[k]["significant"])
+        steps = ("near_lt_mid", "mid_lt_far", "near_lt_far")
+        n_sig_info = sum(1 for k in steps
+                         if (matched[k].get("informative_only") or {}).get("significant"))
         out["second_frequency_control_df_matched_subsample"] = {
-            "steps_significant": n_sig,
-            "all_three_significant": bool(matched.get("all_three_significant")),
-            "agrees_with_the_gate": bool(matched.get("all_three_significant"))
-                                     == bool(controlled["monotone"]),
-            "per_step": {k: {"mean_delta": matched[k]["mean_delta"], "t": matched[k]["t"],
-                             "significant": matched[k]["significant"],
-                             "n_pairs": matched[k]["n_pairs"]}
-                         for k in ("near_lt_mid", "mid_lt_far", "near_lt_far")},
+            "steps_significant_over_informative_pairs": n_sig_info,
+            "per_step": {
+                k: {"kept": matched[k]["n_pairs"],
+                    "n_same_add_word": matched[k]["n_same_add_word"],
+                    "n_exact_zero_difference": matched[k]["n_exact_zero_difference"],
+                    "structural_zero_share_of_kept": matched[k][
+                        "structural_zero_share_of_kept"],
+                    "n_informative": matched[k]["n_informative"],
+                    "mean_delta_over_kept_UNINTERPRETABLE": matched[k]["mean_delta"],
+                    "mean_delta_over_informative": (
+                        (matched[k].get("informative_only") or {}).get("mean_delta")),
+                    "t_over_informative": (
+                        (matched[k].get("informative_only") or {}).get("t")),
+                    "significant_over_informative": (
+                        (matched[k].get("informative_only") or {}).get("significant")),
+                    }
+                for k in steps},
             "READ_THIS": (
-                "The two frequency controls do NOT agree, and the honest summary is: the "
-                "direction survives both, the SIGNIFICANCE survives residualisation on all "
-                "three steps but only on the two contrasts involving `far` under matching, "
-                "and the MAGNITUDE under matching is several times smaller than raw. So a "
-                "large share of the raw movement IS frequency. The step that fails under "
-                "matching is `near<mid` -- the most frequency-exposed contrast, since median "
-                "add_df is near 16,591 / mid 51,269 -- and the cleaner `mid<far` contrast "
-                "survives both controls. That is the pattern the spec's amendment predicted, "
-                "not a rescue of it."),
+                "REPORTED, NOT GATING. Read the `_over_informative` columns and ignore "
+                "`mean_delta_over_kept_UNINTERPRETABLE`. The matching filter keeps EVERY scene "
+                "where the dial emitted the same `add` word under both settings -- identical "
+                "word means identical document frequency, so |dlog df| is 0 and the pair "
+                "always passes, while its distance difference is 0.0 by construction. Those "
+                "structural zeros are the large majority of what is kept, so the kept-pool "
+                "mean is the real effect divided by the padding, NOT evidence that the effect "
+                "is smaller. Over the informative pairs the matched estimate agrees with the "
+                "residualised one (see effects.frequency_control_agreement). A step that is "
+                "not significant here with only a few dozen informative pairs is UNDERPOWERED, "
+                "not refuted."),
         }
     return out
 
@@ -798,8 +1013,20 @@ def eureka_verdict(*, dial_kind: Dict[str, Any], coherence: Dict[str, Any],
                        f"{coherence['drop_far_below_near']} at far, margin "
                        f"{coherence['declared_margin']}")
     if not adherence["passes"]:
-        reasons.append(f"add slot-hit rate fell {adherence['shortfall']} between settings, "
-                       f"margin {adherence['declared_margin']}")
+        # NAME THE SETTINGS. "fell 0.0896 between settings" sitting beside a coherence-at-`far`
+        # gate and a `far`-end narrative reads as a `far`-side collapse; on this run the worst
+        # setting is `near` and `far` is ABOVE it. A reason string that a reader can misread
+        # into the opposite finding is a reporting bug, not a wording preference.
+        reasons.append(
+            f"add slot-hit rate fell {adherence['shortfall']} from the best setting "
+            f"{adherence['best_setting']} ({adherence['rates'][adherence['best_setting']]}) "
+            f"to the WORST setting {adherence['worst_setting']} "
+            f"({adherence['rates'][adherence['worst_setting']]}), margin "
+            f"{adherence['declared_margin']}. NOTE THE DIRECTION: "
+            + ("the worst setting is NOT `far`, so this is not a far-end collapse -- see "
+               "adherence_guard.READ_THIS."
+               if not adherence["worst_setting"].endswith("far")
+               else "the worst setting IS `far`, the failure the guard was written for."))
     if nonsense.get("reproduces_the_dial_pattern"):
         reasons.append("PRIMARY CONTROL FAILED: an off-vocabulary dial value reproduces the "
                        "`far` end, so the effect is 'any token in the reach line' rather "
@@ -807,6 +1034,15 @@ def eureka_verdict(*, dial_kind: Dict[str, Any], coherence: Dict[str, Any],
     met = not reasons
     return {
         "eureka_criterion_met": met,
+        "dial_kind_verdict": dial_kind["verdict"],
+        "QUOTING_EITHER_ALONE_IS_MISLEADING": (
+            f"`eureka_criterion_met` is {met} AND `dial_kind.verdict` is "
+            f"{dial_kind['verdict']}. These are different questions and on this run they have "
+            f"different answers: the DIAL EFFECT is established (monotone raw and after "
+            f"frequency control), while the pre-declared EUREKA criterion additionally "
+            f"requires coherence, adherence and the primary control, and it is the adherence "
+            f"guard that decides it. Quoting `dial_kind.verdict` alone overstates; quoting "
+            f"`eureka_criterion_met` alone understates. Report both."),
         "reasons_against": reasons,
         "gates": {
             "frequency_controlled_monotone_dial": dial_kind["verdict"] == "REACH DIAL",
@@ -854,11 +1090,22 @@ def build_limitations(derive: Dict[str, Any], manifests: Dict[str, Dict[str, Any
          "steps": dial.get("steps"),
          "steps_note": dial.get("steps_note"),
          "why_it_matters": ("val loss was still falling monotonically at step 3000 in both "
-                            "arms. A NULL DIAL RESULT HERE COULD BE UNDERTRAINING and must "
-                            "be read as 'not demonstrated at this budget', not as 'the dial "
-                            "does not work'. 3000 steps is an inherited budget, not a "
-                            "convergence criterion.")},
-        {"limitation": "a truncation asymmetry exists and IS NOT THE DIAL",
+                            "arms. 3000 steps is an inherited budget, not a convergence "
+                            "criterion. THREE THINGS THIS QUALIFIES, not one: (1) a null dial "
+                            "result would have been undertraining-ambiguous; (2) the dial "
+                            "effect sizes reported here are a FLOOR, not a ceiling -- the "
+                            "measurement is taken below the model's trained ceiling; and (3) "
+                            "THE FAILING ADHERENCE GUARD may itself be undertraining. `add` "
+                            "slot-hit is 0.48-0.57, i.e. the model fulfils its own declared "
+                            "plan barely half the time at ANY setting, which is much more "
+                            "consistent with an under-trained plan-follower than with a "
+                            "dial-specific defect. See adherence_guard."),
+         "loss_pair_is_NOT_a_comparison": ("the two val-loss pairs are printed here so each "
+                                           "arm's own trajectory is visible. They are NOT "
+                                           "comparable to each other -- see the next "
+                                           "limitation -- and must not be subtracted.")},
+        {"limitation": "a truncation asymmetry exists between the arms, and its cause is the "
+                       "reach line's token cost rather than the dial's VALUE",
          "dial_over_max_seq_len": rc.get("dial_over_max_seq_len"),
          "nodial_over_max_seq_len": rc.get("nodial_over_max_seq_len"),
          "of_training_rows": rc.get("of_training_rows"),
@@ -997,6 +1244,16 @@ def build_observations(rows: Sequence[Dict[str, Any]],
                         "add_value": g.add_value, "add_word": w, "stakes": g.stakes,
                         "handback": g.handback, "turn": g.turn,
                         "add_hit": bool(w and _mentions(g.turn, w))}
+        nxt = (r["turns"][MEASURED_TURN + 1]
+               if MEASURED_TURN + 1 < len(r["turns"]) else None)
+        for k, c in per.items():
+            # `handback` scored against the REAL following partner turn, the same way
+            # scripts/score_skits.py:score_block scores it. Cheap, and capability 2 of 2 in
+            # the spec; leaving it unmeasured while publishing the dial would have shipped
+            # half the design silently.
+            c["handback_hit"] = bool(nxt and c["handback"]
+                                     and _mentions(nxt, c["handback"]))
+            c["handback_scorable"] = nxt is not None
         gold_w = add_word_of_value(r["blocks"][MEASURED_BLOCK]["add"])
         if gold_w:
             add_words.add(gold_w)
@@ -1085,6 +1342,16 @@ def per_setting_table(obs: Sequence[Dict[str, Any]], complete: Sequence[int],
             "add_slot_hit_rate": (
                 "does the generated turn USE the word the block named? A dial that moves the "
                 "declaration without moving the behaviour is decorative."),
+            "handback_hit_rate": (
+                "does the REAL following partner turn contain the word the block handed back? "
+                "Scored exactly as scripts/score_skits.py:score_block scores it. Reported "
+                "because `handback` is capability 2 of 2 in the spec and the stated payoff of "
+                "the whole dialogue rebuild -- but NO handback effect is claimed and none of "
+                "the pre-declared family's two handback tests is run against it. It rests on "
+                "the premise that the following turn is a DIFFERENT VOICE, which Ruling A's "
+                "filter holds only probabilistically (residual same-voice rate 0.0097, see "
+                "limitations), and it is a rate against no floor. Read it as a descriptive "
+                "number, not as a result."),
         }
     }
     for arm, value in CONDITIONS:
@@ -1112,6 +1379,9 @@ def per_setting_table(obs: Sequence[Dict[str, Any]], complete: Sequence[int],
             "realised_log_add_df_mean": round(st.fmean([math.log(max(x, 1)) for x in f]), 4),
             "groundedness_mean": round(st.fmean(g), 6),
             "add_slot_hit_rate": round(sum(1 for h in hits if h) / len(hits), 6),
+            "handback_hit_rate": round(
+                sum(1 for i in complete
+                    if obs[i]["conditions"][key]["handback_hit"]) / len(complete), 6),
             "block_closed_rate": round(sum(1 for c in closed if c) / len(closed), 6),
             "named_an_add_rate": round(sum(1 for c in named if c) / len(named), 6),
             "distinct_add_words": len(set(words)),
@@ -1157,7 +1427,8 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
             corpus: Path, corpus_limit: Optional[int], assoc_skits: int,
             all_rows: Sequence[Dict[str, Any]], derive: Dict[str, Any],
             manifests: Dict[str, Dict[str, Any]], gen_meta: Dict[str, Any],
-            df_match_tol: float, progress: int = 200000) -> Dict[str, Any]:
+            df_match_tol: float, progress: int = 200000,
+            generate_cmd: str = "python scripts/eval_reach.py") -> Dict[str, Any]:
     """Every scored number and every verdict, as ONE CALLED FUNCTION.
 
     Pure apart from reading the corpus: given the same stored generations it reproduces the
@@ -1287,6 +1558,15 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
     def series(k: str, src: Dict[str, Dict[int, float]]) -> List[float]:
         return [src[k][i] for i in complete]
 
+    def words_of(k: str) -> List[Optional[str]]:
+        """The `add` word each complete-case scene produced under condition `k`.
+
+        `df_matched_contrast` needs these to report how much of its retained pool is the SAME
+        word under both settings -- the pairs whose distance difference is 0.0 by construction
+        and which otherwise silently dominate the matched mean.
+        """
+        return [obs[i]["conditions"][k]["add_word"] for i in complete]
+
     raw_dial = monotonicity_verdict(series(dial_keys[0], dist), series(dial_keys[1], dist),
                                     series(dial_keys[2], dist), label="dial raw distance")
     res_dial = monotonicity_verdict(series(dial_keys[0], resid), series(dial_keys[1], resid),
@@ -1309,15 +1589,19 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
     for a_key, b_key, name in ((dial_keys[0], dial_keys[1], "near_lt_mid"),
                                (dial_keys[1], dial_keys[2], "mid_lt_far"),
                                (dial_keys[0], dial_keys[2], "near_lt_far")):
-        av, bv = df_matched_pairs(series(a_key, dist), series(a_key, logdf),
-                                  series(b_key, dist), series(b_key, logdf),
-                                  tol=df_match_tol)
-        matched[name] = paired_contrast(av, bv, direction="b_greater",
-                                        label=f"df-matched {name}")
-        matched[name]["kept_pairs_of"] = len(complete)
-        matched[name]["log_df_tolerance"] = df_match_tol
-    matched["all_three_significant"] = all(matched[n]["significant"] for n in
-                                           ("near_lt_mid", "mid_lt_far", "near_lt_far"))
+        matched[name] = df_matched_contrast(
+            series(a_key, dist), series(a_key, logdf), words_of(a_key),
+            series(b_key, dist), series(b_key, logdf), words_of(b_key),
+            tol=df_match_tol, label=f"df-matched {name}")
+    matched["all_three_significant_over_informative_pairs"] = all(
+        (matched[n].get("informative_only") or {}).get("significant")
+        for n in ("near_lt_mid", "mid_lt_far", "near_lt_far"))
+
+    # COMPUTED, not quoted: is the realised confound monotone in THIS run? (It was published
+    # as a hard-coded `not_monotone: true` once, and that literal was false here.)
+    freq_profile = realised_frequency_profile({k: series(k, logdf) for k in dial_keys},
+                                              dial_keys, freq_slope_spearman)
+    freq_agreement = frequency_control_agreement(raw_dial, res_dial, matched)
 
     # ---- controls ---------------------------------------------------------------------
     nonsense_key = condition_key("dial", NONSENSE_VALUE)
@@ -1347,9 +1631,37 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
     coherence = coherence_guard(series(dial_keys[0], grounded), series(dial_keys[2], grounded))
     adherence = adherence_readings({k: table[k]["add_slot_hit_rate"] for k in dial_keys},
                                     dial_keys[0], dial_keys[1], dial_keys[2])
+    # SENSITIVITY on the denominator, because the gate's rates are computed on `complete`,
+    # which is partly selected by the CONTROL arm's ability to name a scorable `add` word.
+    # Over every row where the dial arm named one -- no distance requirement, no `nodial`
+    # requirement -- the gate must still fail, or the verdict is an artefact of the selection.
+    unsel: Dict[str, float] = {}
+    for k in dial_keys:
+        named = [o for o in obs if o["conditions"][k]["add_word"]]
+        unsel[k] = (sum(1 for o in named if o["conditions"][k]["add_hit"]) / len(named)
+                    if named else 0.0)
+    unsel_guard = adherence_guard({k: round(v, 6) for k, v in unsel.items()})
+    adherence["unselected_denominator_sensitivity"] = {
+        "n_rows_considered": len(obs),
+        "rates": {k: round(v, 6) for k, v in unsel.items()},
+        "shortfall": unsel_guard["shortfall"],
+        "worst_setting": unsel_guard["worst_setting"],
+        "passes": unsel_guard["passes"],
+        "agrees_with_the_gate": unsel_guard["passes"] == adherence["passes"],
+        "why": ("the headline rates use the scenes complete in ALL SEVEN conditions, which "
+                "the `nodial` arm partly selects. These use every row where the DIAL arm "
+                "named an `add` word. If the two disagreed, the failing gate would be a "
+                "property of the denominator rather than of the model."),
+    }
     dial_kind = dial_or_frequency_dial(raw_dial, res_dial, matched)
     eureka = eureka_verdict(dial_kind=dial_kind, coherence=coherence, adherence=adherence,
                             nonsense=nonsense, nodial=nodial)
+    # BOTH DIRECTIONS. `dial_kind.verdict` and `headline.eureka_criterion_met` answer different
+    # questions and on this run they have different answers, so either one quoted alone is
+    # materially misleading. Each now carries the other.
+    dial_kind["eureka_criterion_met"] = eureka["eureka_criterion_met"]
+    dial_kind["QUOTING_EITHER_ALONE_IS_MISLEADING"] = eureka[
+        "QUOTING_EITHER_ALONE_IS_MISLEADING"]
 
     # SENSITIVITY on the denominator: the same raw contrast over the dial arm's own complete
     # cases, so a reader can see whether conditioning on the control arm's success moved
@@ -1433,20 +1745,23 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
             "frequency_residualised_distance": res_dial,
             "frequency_residualised_distance_dial_only_slope": res_dial_only,
             "frequency_matched_subsample": matched,
+            "frequency_control_agreement": freq_agreement,
             "raw_distance_dial_complete_cases_sensitivity": raw_dial_own,
-            "frequency_confound_here": {
-                "spearman_log_add_df_vs_distance_in_this_run": freq_slope_spearman,
-                "corpus_scale_spearman": derive["reach"]["frequency_confound"][
-                    "spearman_df_vs_distance"],
+            "realised_frequency_profile": freq_profile,
+            "frequency_confound_in_the_DERIVATION_not_here": {
+                "corpus_scale_spearman_raw_df_vs_distance": derive["reach"][
+                    "frequency_confound"]["spearman_df_vs_distance"],
                 "corpus_scale_per_bucket_median_add_df": {
                     b: derive["reach"]["frequency_confound"]["per_bucket"][b]["median_add_df"]
                     for b in REACH_VALUES},
-                "not_monotone": True,
-                "cleaner_contrast": "mid vs far",
-                "why": ("median add_df is near 16,591 / mid 51,269 / far 39,367 -- `mid` is "
-                        "the COMMONEST bucket, so the confound is not monotone and "
-                        "near-vs-far is the most exposed contrast while mid-vs-far is the "
-                        "least. Do not report the three steps as equally confounded."),
+                "these_describe_the_GOLD_LABELS": (
+                    "the derivation's tercile population, NOT the words this model generated. "
+                    "This block used to be keyed `frequency_confound_here` and carried a "
+                    "hard-coded `not_monotone: true` beside these numbers; both were false of "
+                    "this run. What is true of this run is computed in "
+                    "`realised_frequency_profile` above. The corpus-scale figure is also on "
+                    "RAW df while this run's is on LOG df, so the two coefficients are not "
+                    "directly comparable in magnitude."),
             },
         },
         "controls": {"nonsense_value_PRIMARY": nonsense, "nodial_arm_secondary": nodial},
@@ -1476,7 +1791,7 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
         "limitations": build_limitations(derive, manifests,
                                          particles=particle_profile(all_rows)),
         "reproduce": {
-            "generate": "python scripts/eval_reach.py",
+            "generate": generate_cmd,
             "rescore_from_this_artifact": ("python scripts/eval_reach.py --rescore-from "
                                            "docs/measurements/reach-dial.json"),
             "rescore_from_the_side_file": ("python scripts/eval_reach.py --rescore-from "
@@ -1561,6 +1876,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                       max_new_tokens=args.max_new_tokens,
                                       batch_size=args.batch_size)
         args.store.parent.mkdir(parents=True, exist_ok=True)
+        gen_meta["generate_cmd"] = (
+            f"python scripts/eval_reach.py --n-scenes {len(rows)} "
+            f"--batch-size {args.batch_size} --max-new-tokens {args.max_new_tokens}")
         args.store.write_text(json.dumps({"rows": rows, "generations": gens,
                                           "gen_meta": gen_meta}) + "\n")
         print(f"  stored every generation -> {args.store}")
@@ -1569,7 +1887,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     result = analyse(rows, gens, corpus=args.corpus, corpus_limit=corpus_limit,
                      assoc_skits=args.assoc_skits, all_rows=all_rows, derive=derive,
                      manifests=manifests, gen_meta=gen_meta,
-                     df_match_tol=args.df_match_tol)
+                     df_match_tol=args.df_match_tol,
+                     # The command that ACTUALLY produced these generations, carried through a
+                     # rescore. The default `--n-scenes` is 800 and this run used 1,000, so a
+                     # printed default is a reproduction instruction that does not reproduce.
+                     generate_cmd=gen_meta.get(
+                         "generate_cmd",
+                         f"python scripts/eval_reach.py --n-scenes {len(rows)}"))
     if corpus_limit:
         result["instrument_checks"]["association_table"]["SMOKE_RUN_WARNING"] = (
             f"--corpus-limit {corpus_limit}: the association table is NOT the one the dial "

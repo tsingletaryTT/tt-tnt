@@ -195,13 +195,22 @@ def test_two_steps_are_not_enough_for_a_monotone_dial():
     assert v["monotone"] is False
 
 
-def test_the_verdict_names_mid_vs_far_as_the_cleaner_contrast():
-    """Spec amendment 8fb43b4: the corpus-scale frequency confound is NOT monotone (`mid` is
-    the commonest bucket), so the three steps are not equally exposed and the artifact must
-    say which one is cleaner."""
+def test_the_cleaner_contrast_field_is_labelled_as_the_SPECS_framing_not_this_runs():
+    """Spec amendment 8fb43b4 named `mid` vs `far` the cleaner contrast because the DERIVATION's
+    per-bucket median add_df is non-monotone. That is a property of the gold label
+    distribution, and it must not be published as a property of a run without being checked
+    against the words that run produced -- an earlier version of this artifact shipped a
+    hard-coded `not_monotone: true` beside it that was FALSE of the run it described."""
     v = monotonicity_verdict(NEAR, MID, FAR, label="fixture")
+    # The key name is a contract -- `scripts/reach.py --about` quotes it and
+    # `tests/test_reach_cli.py` pins it -- so it stays. What must not stay is shipping it as a
+    # bare claim about the run.
     assert v["cleaner_contrast"] == "mid_lt_far"
-    assert "NOT monotone" in v["cleaner_contrast_why"]
+    assert v["cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run"] is True
+    prov = v["cleaner_contrast_provenance"]
+    assert "DERIVATION" in prov
+    assert "realised_frequency_profile" in prov, "must point at the computed answer"
+    assert "cleaner_contrast_why" not in v, "the un-provenanced claim must be gone"
 
 
 # ---------------------------------------------------------------------------------------
@@ -292,32 +301,41 @@ def test_no_movement_at_all_is_no_dial():
 
 def _matched(near_mid: bool, mid_far: bool, near_far: bool) -> dict:
     def step(sig):
-        return {"mean_delta": 0.01, "t": 3.5 if sig else 2.0, "significant": sig,
-                "n_pairs": 300}
+        return {"mean_delta": 0.004, "t": 2.4, "significant": False, "n_pairs": 300,
+                "n_same_add_word": 270, "n_exact_zero_difference": 272,
+                "structural_zero_share_of_kept": 0.9067, "n_informative": 28,
+                "informative_only": {"mean_delta": 0.06, "t": 3.5 if sig else 2.0,
+                                     "significant": sig, "n_pairs": 28}}
     return {"near_lt_mid": step(near_mid), "mid_lt_far": step(mid_far),
             "near_lt_far": step(near_far),
-            "all_three_significant": near_mid and mid_far and near_far}
+            "all_three_significant_over_informative_pairs": near_mid and mid_far and near_far}
 
 
-def test_the_df_matched_subsample_is_reported_but_does_not_change_the_verdict():
-    """The second frequency control disagreed with the gate in this run (near<mid failed under
-    matching). The disagreement must be PUBLISHED and must NOT silently redecide the verdict:
-    the gate was fixed before the data existed."""
+def test_the_df_matched_subsample_is_reported_over_INFORMATIVE_pairs_and_does_not_gate():
+    """Two things at once, both of which were wrong in an earlier draft.
+
+    1. The matched block must be summarised over its INFORMATIVE pairs. Its kept-pool mean is
+       padded with identical-word zeros and is not an effect size.
+    2. It must not silently redecide the verdict; the gate is the residualised control and was
+       fixed before the data existed.
+    """
     got = dial_or_frequency_dial(_verdict(True), _verdict(True),
                                  _matched(False, True, True))
     assert got["verdict"] == "REACH DIAL", "the gate is the residualised control"
     blk = got["second_frequency_control_df_matched_subsample"]
-    assert blk["steps_significant"] == 2
-    assert blk["all_three_significant"] is False
-    assert blk["agrees_with_the_gate"] is False
-    assert "do NOT agree" in blk["READ_THIS"]
+    assert blk["steps_significant_over_informative_pairs"] == 2
+    step = blk["per_step"]["near_lt_far"]
+    assert step["n_informative"] == 28
+    assert step["mean_delta_over_informative"] == 0.06
+    assert step["mean_delta_over_kept_UNINTERPRETABLE"] == 0.004
+    assert "structural zeros" in blk["READ_THIS"]
+    assert "UNDERPOWERED" in blk["READ_THIS"]
 
 
-def test_the_matched_report_says_so_when_the_two_controls_agree():
+def test_the_matched_report_counts_all_three_when_the_informative_pairs_all_reach():
     got = dial_or_frequency_dial(_verdict(True), _verdict(True), _matched(True, True, True))
     blk = got["second_frequency_control_df_matched_subsample"]
-    assert blk["agrees_with_the_gate"] is True
-    assert blk["steps_significant"] == 3
+    assert blk["steps_significant_over_informative_pairs"] == 3
 
 
 def test_dial_or_frequency_dial_still_works_without_the_matched_report():
@@ -367,7 +385,10 @@ def _gates(**over) -> dict:
                 coherence={"passes": True, "drop_far_below_near": 0.0,
                            "declared_margin": COHERENCE_MARGIN},
                 adherence={"passes": True, "shortfall": 0.0,
-                           "declared_margin": ADHERENCE_MARGIN},
+                           "declared_margin": ADHERENCE_MARGIN,
+                           "best_setting": "dial:mid", "worst_setting": "dial:near",
+                           "rates": {"dial:near": 0.48, "dial:mid": 0.57,
+                                     "dial:far": 0.51}},
                 nonsense={"reproduces_the_dial_pattern": False},
                 nodial={"monotone": False})
     base.update(over)
@@ -382,8 +403,10 @@ def test_eureka_is_met_when_every_gate_passes():
     ({"dial_kind": {"verdict": "FREQUENCY DIAL"}}, "FREQUENCY DIAL"),
     ({"coherence": {"passes": False, "drop_far_below_near": 0.2,
                     "declared_margin": 0.05}}, "coherence"),
-    ({"adherence": {"passes": False, "shortfall": 0.3,
-                    "declared_margin": 0.05}}, "slot-hit"),
+    ({"adherence": {"passes": False, "shortfall": 0.3, "declared_margin": 0.05,
+                    "best_setting": "dial:mid", "worst_setting": "dial:near",
+                    "rates": {"dial:near": 0.27, "dial:mid": 0.57,
+                              "dial:far": 0.51}}}, "slot-hit"),
     ({"nonsense": {"reproduces_the_dial_pattern": True}}, "PRIMARY CONTROL"),
 ])
 def test_every_gate_alone_can_refuse_eureka(override, expect_in_reason):
@@ -823,3 +846,336 @@ def test_the_thresholds_are_not_imported_from_another_stage():
     for bad in ("from scripts.eval_skits import", "from scripts.eval_improv import CRITICAL_T",
                 "from scripts.eval_improv import BONFERRONI_ALPHA"):
         assert bad not in src, bad
+
+
+# =======================================================================================
+# THE COMPOSITION LAYER.
+#
+# Every leaf decision above is fixture-tested. That was NOT ENOUGH, and a review proved it:
+# `analyse`, `build_observations` and `per_setting_table` were imported by no test at all, and
+# three one-line mutations inside them each rewrote a published claim while all 1,505 tests in
+# the repo passed --
+#
+#   (a) the raw monotonicity contrast called with its arguments inverted -> `raw_monotone`
+#       false and the verdict downgraded to PARTIAL;
+#   (b) the frequency control bypassed -> a FREQUENCY DIAL publishes as a REACH DIAL;
+#   (c) `add`-hit scored against the RAW generation instead of the extracted turn -> the rate
+#       jumps to ~1.0 because the block text contains the `add` word, the shortfall collapses,
+#       and `eureka_criterion_met` FLIPS FROM FALSE TO TRUE.
+#
+# That is the eleventh instance of this class on this project and the second in this file's
+# own history. A 340-line composer is `main()` by another name, which the spec's Testing ¶1
+# forbids. So `analyse` is driven end to end here on a synthetic corpus small enough to build
+# in milliseconds, and each of (a)(b)(c) is demonstrated RED against it.
+#
+# The fixture is engineered to be a FREQUENCY DIAL: `add` words are chosen so that distance
+# rises across near/mid/far *entirely because* document frequency rises. Raw is monotone;
+# residualising on log df kills it. That makes (b) visible -- with the control bypassed the
+# fixture publishes as a REACH DIAL -- and it exercises the spec's headline rule on the one
+# outcome the spec says must be published as its own finding.
+# =======================================================================================
+import math as _math  # noqa: E402
+
+from scripts.eval_reach import analyse, build_observations, per_setting_table  # noqa: E402
+
+#: Context words every fixture scene shares. Three of them, so `reach_distance`'s "nearest
+#: context word" has something to choose between rather than one forced answer.
+_CTX = ("harbour", "lantern", "compass")
+
+#: (word, document frequency, documents co-occurring with the whole context).
+#:
+#: NPMI = [log(k/N) - log(d/N) - log(cb/N)] / -log(k/N), so with `k` and the context marginal
+#: fixed it falls as `d` rises -- the real NPMI frequency bias, reproduced at fixture scale, so
+#: distance RISES with document frequency and with nothing else. Two `k` variants per frequency
+#: level give the residual a real, NON-monotone component: without it the distance is an exact
+#: linear function of log df, the residuals are float noise, and whether the residualised
+#: contrast comes out significant is decided by rounding rather than by the fixture.
+#:
+#: The neutral filler at the end is not padding: without a large N the rarest-vs-commonest pair
+#: drops below chance co-occurrence, `npmi` clamps to 0.0, and every distance saturates at
+#: exactly 1.0 -- which is what the first version of this fixture did, making three of its
+#: assertions unable to fail.
+_ADD_WORDS = [("gull", 12, 8), ("rope", 24, 8), ("salt", 36, 8),
+              ("plank", 12, 11), ("net", 24, 11), ("tide", 36, 11)]
+_FILLER_CONTEXT_ONLY = 5
+_FILLER_NEUTRAL = 400
+
+
+def _freq_fixture_corpus(tmp_path: Path) -> Path:
+    """A corpus where distance is a function of document frequency and one orthogonal term."""
+    stories = []
+    for word, df, k in _ADD_WORDS:
+        for i in range(k):
+            stories.append(f"The {word} near the {' and the '.join(_CTX)} at dusk {i}.")
+        for i in range(df - k):
+            stories.append(f"A {word} and a pebble number {i} rested quietly.")
+    for i in range(_FILLER_CONTEXT_ONLY):
+        stories.append(f"The {' and the '.join(_CTX)} waited, evening {i}.")
+    for i in range(_FILLER_NEUTRAL):
+        stories.append(f"A quiet unrelated sentence numbered {i} about pebbles.")
+    p = tmp_path / "corpus.txt"
+    p.write_text("</s>".join(stories) + "</s>", encoding="utf-8")
+    return p
+
+
+def _fixture_rows_and_generations(tmp_path: Path, n_scenes: int = 120):
+    """Rows whose stored gold values are CORRECT for the fixture corpus, plus generations.
+
+    The gold `reach_distances`/`add_df` are computed from the fixture corpus rather than
+    invented, because `analyse` re-derives them and REFUSES to continue on a mismatch. So this
+    fixture also exercises that refusal from the passing side.
+    """
+    corpus = _freq_fixture_corpus(tmp_path)
+    prefix = f"Once the {_CTX[0]} was quiet."
+    turns = [f"I see the {_CTX[1]}.", f"And the {_CTX[2]} too.",
+             f"Then the {_CTX[0]} answered.", "A partner replies here.",
+             "The last model turn."]
+
+    # Build the association over everything any scene could ask for.
+    probe = [{"context_words": list(_CTX), "add_words": [w for w, _, _ in _ADD_WORDS]}]
+    uni, by_add = needed_lookups(probe)
+    assoc, _own = collect_targeted_association(corpus, needed_uni=uni, by_add=by_add,
+                                               story_ids=set())
+    dist_of = {w: reach_distance(w, list(_CTX), assoc) for w, _, _ in _ADD_WORDS}
+    assert all(d is not None for d in dist_of.values()), dist_of
+    # A fixture that saturates cannot fail the assertions built on it. Both checks are the
+    # ones the first version of this fixture would have failed.
+    assert all(0.0 < d < 1.0 for d in dist_of.values()), (
+        "fixture saturates: npmi clamped to 0 and every distance is 1.0", dist_of)
+    for k_variant in (8, 11):
+        lvl = [(df, dist_of[w]) for w, df, k in _ADD_WORDS if k == k_variant]
+        lvl.sort()
+        assert [d for _, d in lvl] == sorted(d for _, d in lvl), (
+            "fixture is vacuous: distance does not track document frequency", lvl)
+
+    rows = []
+    for j in range(n_scenes):
+        rows.append({
+            "story_id": 10_000 + j, "prefix": prefix, "turns": list(turns),
+            "roles": ["model", "partner", "model", "partner", "model"],
+            "blocks": [{"offer": "o", "accept": "a", "reach": "mid", "add": "gull",
+                        "stakes": "+0.0", "handback": "compass"} for _ in range(3)],
+            "split": "eval",
+            # `analyse` only reads index MEASURED_BLOCK of these two.
+            "reach_distances": [0.0, dist_of["gull"], 0.0],
+            "add_df": [0, assoc.uni["gull"], 0],
+            "stakes_deltas": [0.0, 0.0, 0.0],
+        })
+
+    def gen(add_word, *, mention, handback="compass"):
+        turn = (f"The {add_word} is here." if mention else "Nothing of the sort.")
+        return (f"add: {add_word}\nstakes: +0.0\nhandback: {handback}\n</think>\n {turn}")
+
+    # Two triples alternate -- same frequency ladder, different co-occurrence variant -- so
+    # the paired differences have real scatter and the residual has a non-monotone component.
+    triples = [("gull", "rope", "salt"), ("plank", "net", "tide")]
+    gens = {condition_key(a, v): [] for a, v in CONDITIONS}
+    for j in range(n_scenes):
+        near_w, mid_w, far_w = triples[j % 2]
+        # `add`-hit deliberately BELOW 1.0 and different per setting, so a mutant that scores
+        # the hit against the raw generation (which always contains "add: <word>") cannot
+        # reproduce these rates.
+        gens[condition_key("dial", "near")].append(gen(near_w, mention=(j % 4 != 0)))
+        gens[condition_key("dial", "mid")].append(gen(mid_w, mention=(j % 2 == 0)))
+        gens[condition_key("dial", "far")].append(gen(far_w, mention=(j % 4 == 0)))
+        gens[condition_key("dial", NONSENSE_VALUE)].append(gen(mid_w, mention=True))
+        # The control conditions cycle through EVERY level. `analyse` fits the nuisance line
+        # over the pooled observations of all seven conditions, so a control that always emits
+        # one word puts a tall cluster at a single x and tilts the fit -- an earlier version of
+        # this fixture did exactly that, and the tilt left a monotone residual that made a pure
+        # frequency dial read as a reach dial. Spreading the controls keeps the fit conditioned
+        # on the real geometry.
+        for i, v in enumerate(("near", "mid", "far")):
+            w = _ADD_WORDS[(j + 2 * i) % len(_ADD_WORDS)][0]
+            gens[condition_key("nodial", v)].append(gen(w, mention=True))
+    return corpus, rows, gens, assoc
+
+
+def _fixture_manifests_and_derive(assoc):
+    derive = {
+        "drop_rate": 0.9806, "stories": 2119489, "kept": 41014,
+        "drops_by_rule": {"no_dialogue": 976158},
+        "gate_order": ["a"], "gate_order_note": "conditional",
+        "same_speaker_filter": {"subject_reading": {"gate": "g", "risky_pair_fraction": 0.0097},
+                                "what_this_filter_CANNOT_catch": "narrative-gap drift"},
+        "reach": {
+            "cut_points": {"lo": 0.718431, "hi": 0.824329,
+                           "fitted_on": "training split only",
+                           "n_fitted_on": 110739,
+                           "eval_must_not_refit": "these two numbers ARE the dial"},
+            "frequency_confound": {
+                "spearman_df_vs_distance": 0.2078,
+                "per_bucket": {"near": {"median_add_df": 16591},
+                               "mid": {"median_add_df": 51269},
+                               "far": {"median_add_df": 39367}}},
+            "association_table": {"documents": assoc.n_docs, "vocabulary": 52302,
+                                  "pairs": 31856720},
+        },
+    }
+    arm = {
+        "n_examples": 36387, "steps": 3000, "steps_note": "inherited budget",
+        "val_loss_first": [250, 1.2046], "val_loss_last": [3000, 0.71245],
+        "loss_comparability_WARNING": "different supervised token sets",
+        "batch_order_fingerprint": {"sha256": "deadbeef" * 8, "n": 36387},
+        "ruling_c_reapplied": {"rule": "union across arms",
+                               "measured_before_dropping": {
+                                   "dial_over_max_seq_len": 526,
+                                   "nodial_over_max_seq_len": 180,
+                                   "of_training_rows": 36913,
+                                   "max_tokens_either_arm": 544}},
+    }
+    return derive, {"dial": dict(arm), "nodial": dict(arm)}
+
+
+@pytest.fixture(scope="module")
+def composed(tmp_path_factory):
+    """`analyse` driven end to end. Module-scoped: the corpus pass is cheap but not free."""
+    tmp = tmp_path_factory.mktemp("compose")
+    corpus, rows, gens, assoc = _fixture_rows_and_generations(tmp)
+    derive, manifests = _fixture_manifests_and_derive(assoc)
+    return analyse(rows, gens, corpus=corpus, corpus_limit=None, assoc_skits=0,
+                   all_rows=rows, derive=derive, manifests=manifests, gen_meta={},
+                   df_match_tol=0.25, progress=0, generate_cmd="FIXTURE-CMD")
+
+
+def test_analyse_wires_the_raw_contrast_in_the_declared_direction(composed):
+    """MUTANT (a): the raw monotonicity call with its arguments inverted. The leaf function is
+    correct and fixture-tested either way; only driving the composer catches the wiring."""
+    raw = composed["effects"]["raw_distance"]
+    assert raw["monotone"] is True
+    for step in ("near_lt_mid", "mid_lt_far", "near_lt_far"):
+        assert raw[step]["mean_delta"] > 0, step
+        assert raw[step]["in_the_declared_direction"] is True
+    ps = composed["per_setting"]
+    assert (ps["dial:near"]["raw_distance_mean"]
+            < ps["dial:mid"]["raw_distance_mean"]
+            < ps["dial:far"]["raw_distance_mean"])
+
+
+def test_analyse_publishes_a_frequency_dial_as_a_frequency_dial(composed):
+    """MUTANT (b): the frequency control bypassed. This fixture's distance is a PURE function
+    of document frequency, so the honest verdict is FREQUENCY DIAL -- the outcome the spec says
+    must be published as its own finding. A bypass makes it read REACH DIAL."""
+    assert composed["effects"]["raw_distance"]["monotone"] is True
+    assert composed["effects"]["frequency_residualised_distance"]["monotone"] is False
+    assert composed["dial_kind"]["verdict"] == "FREQUENCY DIAL"
+    assert composed["dial_kind"]["frequency_controlled_monotone"] is False
+    # the gate must read the RESIDUALISED verdict, not the raw one
+    assert (composed["dial_kind"]["frequency_controlled_steps_significant"]
+            == composed["effects"]["frequency_residualised_distance"]["n_significant_steps"])
+    assert (composed["effects"]["raw_distance"]["n_significant_steps"]
+            != composed["effects"]["frequency_residualised_distance"]["n_significant_steps"]), (
+        "fixture is vacuous: raw and residualised agree, so a bypass would be invisible")
+    assert composed["headline"]["eureka_criterion_met"] is False
+
+
+def test_analyse_scores_the_add_hit_against_the_TURN_not_the_raw_generation(composed):
+    """MUTANT (c): `add`-hit scored on the raw generation. The generation always contains
+    `add: <word>`, so the rate jumps to ~1.0, the shortfall collapses, and on the real run
+    `eureka_criterion_met` FLIPS FROM FALSE TO TRUE. The fixture's rates are deliberately
+    uneven and none is 1.0."""
+    ps = composed["per_setting"]
+    assert ps["dial:near"]["add_slot_hit_rate"] == pytest.approx(0.75, abs=1e-6)
+    assert ps["dial:mid"]["add_slot_hit_rate"] == pytest.approx(0.50, abs=1e-6)
+    assert ps["dial:far"]["add_slot_hit_rate"] == pytest.approx(0.25, abs=1e-6)
+    for k in ("dial:near", "dial:mid", "dial:far"):
+        assert ps[k]["add_slot_hit_rate"] < 0.99, k
+    assert composed["adherence_guard"]["passes"] is False
+    assert composed["adherence_guard"]["shortfall"] == pytest.approx(0.50, abs=1e-6)
+
+
+def test_analyse_reproduces_the_gold_distances_and_would_refuse_otherwise(composed):
+    repro = composed["instrument_checks"]["gold_distance_reproduction"]
+    assert repro["matches"] is True
+    assert repro["max_abs_distance_error"] == 0.0
+    assert repro["add_df_mismatches"] == 0
+    assert repro["observations_rederived"] > 0
+
+
+def test_analyse_computes_the_realised_frequency_profile_rather_than_asserting_it(composed):
+    """BLOCKER 3's regression guard. `not_monotone` was a hard-coded literal and was FALSE of
+    the run it described. In this fixture the realised confound IS monotone by construction."""
+    prof = composed["effects"]["realised_frequency_profile"]
+    means = prof["mean_log_add_df_by_setting"]
+    assert means["dial:near"] < means["dial:mid"] < means["dial:far"]
+    assert prof["monotone_across_the_dial"] is True
+    assert prof["not_monotone"] is False
+    assert "does NOT transfer" in prof["consequence_for_the_specs_cleaner_contrast_framing"]
+    assert "frequency_confound_here" not in composed["effects"], (
+        "the key that claimed to describe this run while quoting the derivation must be gone")
+
+
+def test_analyse_reports_the_matched_control_over_informative_pairs(composed):
+    """BLOCKER 1's regression guard, on real wiring: every `nodial` condition emits the SAME
+    `add` word here, and the dial conditions never do, so the structural-zero accounting has to
+    show up."""
+    m = composed["effects"]["frequency_matched_subsample"]
+    for step in ("near_lt_mid", "mid_lt_far", "near_lt_far"):
+        assert "n_informative" in m[step]
+        assert "structural_zero_share_of_kept" in m[step]
+    agree = composed["effects"]["frequency_control_agreement"]
+    assert agree["reference_contrast"] == "near_lt_far"
+    assert agree["share_of_raw_surviving_frequency_control"] is not None
+
+
+def test_analyse_cross_links_the_verdict_and_the_headline(composed):
+    """BLOCKER 5: quoting either alone gives a materially different result."""
+    assert composed["headline"]["dial_kind_verdict"] == composed["dial_kind"]["verdict"]
+    assert "QUOTING_EITHER_ALONE_IS_MISLEADING" in composed["headline"]
+    assert composed["dial_kind"]["eureka_criterion_met"] == (
+        composed["headline"]["eureka_criterion_met"])
+
+
+def test_analyse_names_the_failing_setting_in_the_reason_string(composed):
+    """BLOCKER 4: 'fell 0.0896 between settings' beside a far-end narrative reads as a far-end
+    collapse. The reason must name worst and best."""
+    reasons = composed["headline"]["reasons_against"]
+    adh = [r for r in reasons if "slot-hit" in r]
+    assert adh, reasons
+    reason = adh[0]
+    assert composed["adherence_guard"]["worst_setting"] in reason
+    assert composed["adherence_guard"]["best_setting"] in reason
+    assert "NOTE THE DIRECTION" in reason
+    # the fixture's worst setting IS `far`, so the string must say so rather than emitting the
+    # near-side wording unconditionally
+    assert "the worst setting IS `far`" in reason
+
+
+def test_analyse_measures_handback_rather_than_shipping_it_unevaluated(composed):
+    for k in ("dial:near", "dial:mid", "dial:far"):
+        assert "handback_hit_rate" in composed["per_setting"][k]
+    note = composed["per_setting"]["_disclosures"]["handback_hit_rate"]
+    assert "no handback effect is claimed" in note.lower() or "NO handback effect" in note
+
+
+def test_analyse_carries_the_command_that_actually_generated(composed):
+    assert composed["reproduce"]["generate"] == "FIXTURE-CMD"
+
+
+def test_build_observations_excludes_the_block_from_the_scored_turn():
+    """The composer's own use of the parser, reached with a fixture rather than through
+    `analyse`, so a failure here points at the wiring and not at the corpus."""
+    row = {"story_id": 1, "prefix": f"The {_CTX[0]} waited.",
+           "turns": ["a turn.", "partner one.", "model two.",
+                     "partner two mentions the compass.", "model four."],
+           "blocks": [{"offer": "o", "accept": "a", "reach": "mid", "add": "gull",
+                       "stakes": "+0.0", "handback": "compass"}] * 3,
+           "reach_distances": [0.1, 0.2, 0.3], "add_df": [1, 2, 3]}
+    gens = {condition_key(a, v): ["add: kraken\nstakes: +0.0\nhandback: compass\n</think>\n"
+                                  " Nothing here."]
+            for a, v in CONDITIONS}
+    obs = build_observations([row], gens)
+    c = obs[0]["conditions"]["dial:far"]
+    assert c["add_word"] == "kraken"
+    assert c["add_hit"] is False, "the turn does not contain 'kraken'; only the block does"
+    # scored against the REAL following partner turn (turns[MEASURED_TURN + 1]),
+    # which mentions the compass -- not against the model's own turn.
+    assert c["handback_hit"] is True
+    assert c["handback_scorable"] is True
+
+
+def test_per_setting_table_keeps_its_disclosures_out_of_the_condition_rows():
+    """`_disclosures` shares the table's namespace, so every consumer must skip underscore
+    keys. A consumer that does not will crash or, worse, average a string."""
+    tbl = per_setting_table.__doc__
+    assert "add_df" in tbl

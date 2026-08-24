@@ -3,8 +3,10 @@
   "spec": "docs/superpowers/specs/2026-08-23-reach-dial-design.md",
   "headline": {
     "eureka_criterion_met": false,
+    "dial_kind_verdict": "REACH DIAL",
+    "QUOTING_EITHER_ALONE_IS_MISLEADING": "`eureka_criterion_met` is False AND `dial_kind.verdict` is REACH DIAL. These are different questions and on this run they have different answers: the DIAL EFFECT is established (monotone raw and after frequency control), while the pre-declared EUREKA criterion additionally requires coherence, adherence and the primary control, and it is the adherence guard that decides it. Quoting `dial_kind.verdict` alone overstates; quoting `eureka_criterion_met` alone understates. Report both.",
     "reasons_against": [
-      "add slot-hit rate fell 0.089588 between settings, margin 0.05"
+      "add slot-hit rate fell 0.089588 from the best setting dial:mid (0.566586) to the WORST setting dial:near (0.476998), margin 0.05. NOTE THE DIRECTION: the worst setting is NOT `far`, so this is not a far-end collapse -- see adherence_guard.READ_THIS."
     ],
     "gates": {
       "frequency_controlled_monotone_dial": true,
@@ -23,31 +25,46 @@
     "frequency_controlled_steps_significant": 3,
     "rule": "raw AND controlled -> REACH DIAL; raw only -> FREQUENCY DIAL (published as such); neither -> NO DIAL. The GATE is the residualised control, which is what this function was written against before any data existed.",
     "second_frequency_control_df_matched_subsample": {
-      "steps_significant": 2,
-      "all_three_significant": false,
-      "agrees_with_the_gate": false,
+      "steps_significant_over_informative_pairs": 2,
       "per_step": {
         "near_lt_mid": {
-          "mean_delta": 0.003602,
-          "t": 2.4702,
-          "significant": false,
-          "n_pairs": 330
+          "kept": 330,
+          "n_same_add_word": 302,
+          "n_exact_zero_difference": 304,
+          "structural_zero_share_of_kept": 0.9212,
+          "n_informative": 26,
+          "mean_delta_over_kept_UNINTERPRETABLE": 0.003602,
+          "mean_delta_over_informative": 0.04572,
+          "t_over_informative": 2.7413,
+          "significant_over_informative": false
         },
         "mid_lt_far": {
-          "mean_delta": 0.008707,
-          "t": 3.5305,
-          "significant": true,
-          "n_pairs": 411
+          "kept": 411,
+          "n_same_add_word": 344,
+          "n_exact_zero_difference": 345,
+          "structural_zero_share_of_kept": 0.8394,
+          "n_informative": 66,
+          "mean_delta_over_kept_UNINTERPRETABLE": 0.008707,
+          "mean_delta_over_informative": 0.054221,
+          "t_over_informative": 3.825,
+          "significant_over_informative": true
         },
         "near_lt_far": {
-          "mean_delta": 0.013996,
-          "t": 3.8937,
-          "significant": true,
-          "n_pairs": 216
+          "kept": 216,
+          "n_same_add_word": 167,
+          "n_exact_zero_difference": 168,
+          "structural_zero_share_of_kept": 0.7778,
+          "n_informative": 48,
+          "mean_delta_over_kept_UNINTERPRETABLE": 0.013996,
+          "mean_delta_over_informative": 0.062982,
+          "t_over_informative": 4.4498,
+          "significant_over_informative": true
         }
       },
-      "READ_THIS": "The two frequency controls do NOT agree, and the honest summary is: the direction survives both, the SIGNIFICANCE survives residualisation on all three steps but only on the two contrasts involving `far` under matching, and the MAGNITUDE under matching is several times smaller than raw. So a large share of the raw movement IS frequency. The step that fails under matching is `near<mid` -- the most frequency-exposed contrast, since median add_df is near 16,591 / mid 51,269 -- and the cleaner `mid<far` contrast survives both controls. That is the pattern the spec's amendment predicted, not a rescue of it."
-    }
+      "READ_THIS": "REPORTED, NOT GATING. Read the `_over_informative` columns and ignore `mean_delta_over_kept_UNINTERPRETABLE`. The matching filter keeps EVERY scene where the dial emitted the same `add` word under both settings -- identical word means identical document frequency, so |dlog df| is 0 and the pair always passes, while its distance difference is 0.0 by construction. Those structural zeros are the large majority of what is kept, so the kept-pool mean is the real effect divided by the padding, NOT evidence that the effect is smaller. Over the informative pairs the matched estimate agrees with the residualised one (see effects.frequency_control_agreement). A step that is not significant here with only a few dozen informative pairs is UNDERPOWERED, not refuted."
+    },
+    "eureka_criterion_met": false,
+    "QUOTING_EITHER_ALONE_IS_MISLEADING": "`eureka_criterion_met` is False AND `dial_kind.verdict` is REACH DIAL. These are different questions and on this run they have different answers: the DIAL EFFECT is established (monotone raw and after frequency control), while the pre-declared EUREKA criterion additionally requires coherence, adherence and the primary control, and it is the adherence guard that decides it. Quoting `dial_kind.verdict` alone overstates; quoting `eureka_criterion_met` alone understates. Report both."
   },
   "thresholds": {
     "n_tests": 11,
@@ -156,7 +173,8 @@
       "add_word_already_in_the_context_rate": "DEGENERATE WAY TO BE NEAR, disclosed inline. The cheapest way to make the `add` word close to the scene is to COPY a word already in it, and a copied word is not a reach at all. A `near` setting whose rate here is much higher than `far`'s is partly measuring copying rather than proximity. Read the near end of the dial against this column.",
       "content_word_repeat_rate_mean": "the generation's own degeneration floor, per setting. Greedy decoding on an unconverged 123M model loops ('Snowmen are snowmen and snowmen'), and a setting that loops more has a different effective sample of language than one that loops less. A 4-gram version of this was tried first and scored exactly 0.0000 everywhere -- a skit turn is one sentence and rarely has four content words -- so it is type/token over content words instead.",
       "realised_add_df_median": "THE FREQUENCY CONFOUND, beside the effect rather than in a warning. NPMI caps a common word's score low, so a farther-scoring word is partly just a commoner word.",
-      "add_slot_hit_rate": "does the generated turn USE the word the block named? A dial that moves the declaration without moving the behaviour is decorative."
+      "add_slot_hit_rate": "does the generated turn USE the word the block named? A dial that moves the declaration without moving the behaviour is decorative.",
+      "handback_hit_rate": "does the REAL following partner turn contain the word the block handed back? Scored exactly as scripts/score_skits.py:score_block scores it. Reported because `handback` is capability 2 of 2 in the spec and the stated payoff of the whole dialogue rebuild -- but NO handback effect is claimed and none of the pre-declared family's two handback tests is run against it. It rests on the premise that the following turn is a DIFFERENT VOICE, which Ruling A's filter holds only probabilistically (residual same-voice rate 0.0097, see limitations), and it is a rate against no floor. Read it as a descriptive number, not as a result."
     },
     "dial:near": {
       "arm": "dial",
@@ -170,6 +188,7 @@
       "realised_log_add_df_mean": 10.7916,
       "groundedness_mean": 0.330643,
       "add_slot_hit_rate": 0.476998,
+      "handback_hit_rate": 0.16707,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 265,
@@ -234,6 +253,7 @@
       "realised_log_add_df_mean": 11.7161,
       "groundedness_mean": 0.306292,
       "add_slot_hit_rate": 0.566586,
+      "handback_hit_rate": 0.085956,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 105,
@@ -298,6 +318,7 @@
       "realised_log_add_df_mean": 12.03,
       "groundedness_mean": 0.300295,
       "add_slot_hit_rate": 0.507264,
+      "handback_hit_rate": 0.072639,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 88,
@@ -362,6 +383,7 @@
       "realised_log_add_df_mean": 11.3298,
       "groundedness_mean": 0.317104,
       "add_slot_hit_rate": 0.501211,
+      "handback_hit_rate": 0.084746,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 159,
@@ -426,6 +448,7 @@
       "realised_log_add_df_mean": 11.4699,
       "groundedness_mean": 0.281878,
       "add_slot_hit_rate": 0.584746,
+      "handback_hit_rate": 0.11138,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 144,
@@ -490,6 +513,7 @@
       "realised_log_add_df_mean": 11.494,
       "groundedness_mean": 0.2841,
       "add_slot_hit_rate": 0.570218,
+      "handback_hit_rate": 0.102906,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 141,
@@ -554,6 +578,7 @@
       "realised_log_add_df_mean": 11.5206,
       "groundedness_mean": 0.294055,
       "add_slot_hit_rate": 0.541162,
+      "handback_hit_rate": 0.096852,
       "block_closed_rate": 1.0,
       "named_an_add_rate": 1.0,
       "distinct_add_words": 141,
@@ -655,7 +680,8 @@
       "monotone": true,
       "n_significant_steps": 3,
       "cleaner_contrast": "mid_lt_far",
-      "cleaner_contrast_why": "the corpus-scale frequency confound is NOT monotone -- median add_df is near 16,591 / mid 51,269 / far 39,367 -- so near-vs-far is also rare-vs-common while mid-vs-far is much less exposed. Do not read the three steps as equally confounded."
+      "cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run": true,
+      "cleaner_contrast_provenance": "THE SPEC'S framing, and a property of the DERIVATION's gold label distribution, not of this run: the corpus-scale per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 -- `mid` commonest), which would make near-vs-far the most frequency-exposed step. Whether that transfers has to be CHECKED against the add words this run actually produced -- see effects.realised_frequency_profile, which computes it. Do not quote this field as a finding about this run."
     },
     "frequency_residualised_distance": {
       "label": "dial distance residualised on log add_df",
@@ -704,7 +730,8 @@
       "monotone": true,
       "n_significant_steps": 3,
       "cleaner_contrast": "mid_lt_far",
-      "cleaner_contrast_why": "the corpus-scale frequency confound is NOT monotone -- median add_df is near 16,591 / mid 51,269 / far 39,367 -- so near-vs-far is also rare-vs-common while mid-vs-far is much less exposed. Do not read the three steps as equally confounded.",
+      "cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run": true,
+      "cleaner_contrast_provenance": "THE SPEC'S framing, and a property of the DERIVATION's gold label distribution, not of this run: the corpus-scale per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 -- `mid` commonest), which would make near-vs-far the most frequency-exposed step. Whether that transfers has to be CHECKED against the add words this run actually produced -- see effects.realised_frequency_profile, which computes it. Do not quote this field as a finding about this run.",
       "fitted_on": "one line over EVERY condition's pooled observations -- the distance~log(add_df) relation is a property of NPMI, not of an arm, so one correction is applied everywhere",
       "sensitivity_agrees_with_a_dial_only_slope": true
     },
@@ -755,7 +782,8 @@
       "monotone": true,
       "n_significant_steps": 3,
       "cleaner_contrast": "mid_lt_far",
-      "cleaner_contrast_why": "the corpus-scale frequency confound is NOT monotone -- median add_df is near 16,591 / mid 51,269 / far 39,367 -- so near-vs-far is also rare-vs-common while mid-vs-far is much less exposed. Do not read the three steps as equally confounded.",
+      "cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run": true,
+      "cleaner_contrast_provenance": "THE SPEC'S framing, and a property of the DERIVATION's gold label distribution, not of this run: the corpus-scale per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 -- `mid` commonest), which would make near-vs-far the most frequency-exposed step. Whether that transfers has to be CHECKED against the add words this run actually produced -- see effects.realised_frequency_profile, which computes it. Do not quote this field as a finding about this run.",
       "fitted_on": "the dial arm's three settings only (sensitivity check)"
     },
     "frequency_matched_subsample": {
@@ -773,7 +801,26 @@
         "significant": false,
         "zero_scatter": false,
         "kept_pairs_of": 826,
-        "log_df_tolerance": 0.25
+        "log_df_tolerance": 0.25,
+        "n_same_add_word": 302,
+        "n_exact_zero_difference": 304,
+        "n_informative": 26,
+        "structural_zero_share_of_kept": 0.9212,
+        "informative_only": {
+          "label": "df-matched near_lt_mid (informative pairs only)",
+          "n_pairs": 26,
+          "direction": "b_greater",
+          "mean_a": 0.688081,
+          "mean_b": 0.733801,
+          "mean_delta": 0.04572,
+          "t": 2.7413,
+          "critical_t": 2.843,
+          "alpha": 0.004545454545454546,
+          "in_the_declared_direction": true,
+          "significant": false,
+          "zero_scatter": false
+        },
+        "READ_THE_INFORMATIVE_ROW": "`mean_delta` on this row is averaged over a pool in which 0.9212 of the pairs are the SAME `add` word under both settings and therefore contribute an exact 0.0 by construction. That is not a smaller effect; it is the same effect divided by the padding. `informative_only` is the interpretable number, and `n_informative` is the honest power statement."
       },
       "mid_lt_far": {
         "label": "df-matched mid_lt_far",
@@ -789,7 +836,26 @@
         "significant": true,
         "zero_scatter": false,
         "kept_pairs_of": 826,
-        "log_df_tolerance": 0.25
+        "log_df_tolerance": 0.25,
+        "n_same_add_word": 344,
+        "n_exact_zero_difference": 345,
+        "n_informative": 66,
+        "structural_zero_share_of_kept": 0.8394,
+        "informative_only": {
+          "label": "df-matched mid_lt_far (informative pairs only)",
+          "n_pairs": 66,
+          "direction": "b_greater",
+          "mean_a": 0.736466,
+          "mean_b": 0.790687,
+          "mean_delta": 0.054221,
+          "t": 3.825,
+          "critical_t": 2.843,
+          "alpha": 0.004545454545454546,
+          "in_the_declared_direction": true,
+          "significant": true,
+          "zero_scatter": false
+        },
+        "READ_THE_INFORMATIVE_ROW": "`mean_delta` on this row is averaged over a pool in which 0.8394 of the pairs are the SAME `add` word under both settings and therefore contribute an exact 0.0 by construction. That is not a smaller effect; it is the same effect divided by the padding. `informative_only` is the interpretable number, and `n_informative` is the honest power statement."
       },
       "near_lt_far": {
         "label": "df-matched near_lt_far",
@@ -805,9 +871,40 @@
         "significant": true,
         "zero_scatter": false,
         "kept_pairs_of": 826,
-        "log_df_tolerance": 0.25
+        "log_df_tolerance": 0.25,
+        "n_same_add_word": 167,
+        "n_exact_zero_difference": 168,
+        "n_informative": 48,
+        "structural_zero_share_of_kept": 0.7778,
+        "informative_only": {
+          "label": "df-matched near_lt_far (informative pairs only)",
+          "n_pairs": 48,
+          "direction": "b_greater",
+          "mean_a": 0.727109,
+          "mean_b": 0.79009,
+          "mean_delta": 0.062982,
+          "t": 4.4498,
+          "critical_t": 2.843,
+          "alpha": 0.004545454545454546,
+          "in_the_declared_direction": true,
+          "significant": true,
+          "zero_scatter": false
+        },
+        "READ_THE_INFORMATIVE_ROW": "`mean_delta` on this row is averaged over a pool in which 0.7778 of the pairs are the SAME `add` word under both settings and therefore contribute an exact 0.0 by construction. That is not a smaller effect; it is the same effect divided by the padding. `informative_only` is the interpretable number, and `n_informative` is the honest power statement."
       },
-      "all_three_significant": false
+      "all_three_significant_over_informative_pairs": false
+    },
+    "frequency_control_agreement": {
+      "reference_contrast": "near_lt_far",
+      "raw_mean_delta": 0.129473,
+      "residualised_mean_delta": 0.060438,
+      "df_matched_informative_mean_delta": 0.062982,
+      "df_matched_informative_n": 48,
+      "share_of_raw_surviving_frequency_control": 0.4668,
+      "share_of_raw_attributable_to_log_add_df": 0.5332,
+      "the_two_controls_agree": true,
+      "agreement_rule": "the two informative estimates differ by no more than a quarter of the raw effect",
+      "READ_THIS": "About half the raw movement is document frequency and about half survives it -- and the two frequency controls, once the matched one is read over its INFORMATIVE pairs rather than over a pool padded with identical-word zeros, land in the same place. A step that is not significant under matching with only a few dozen informative pairs is UNDERPOWERED, not refuted."
     },
     "raw_distance_dial_complete_cases_sensitivity": {
       "label": "dial raw distance, dial-complete cases",
@@ -856,22 +953,32 @@
       "monotone": true,
       "n_significant_steps": 3,
       "cleaner_contrast": "mid_lt_far",
-      "cleaner_contrast_why": "the corpus-scale frequency confound is NOT monotone -- median add_df is near 16,591 / mid 51,269 / far 39,367 -- so near-vs-far is also rare-vs-common while mid-vs-far is much less exposed. Do not read the three steps as equally confounded.",
+      "cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run": true,
+      "cleaner_contrast_provenance": "THE SPEC'S framing, and a property of the DERIVATION's gold label distribution, not of this run: the corpus-scale per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 -- `mid` commonest), which would make near-vs-far the most frequency-exposed step. Whether that transfers has to be CHECKED against the add words this run actually produced -- see effects.realised_frequency_profile, which computes it. Do not quote this field as a finding about this run.",
       "n_scenes": 996,
       "vs_headline_denominator": "the headline uses the 826 scenes complete in ALL SEVEN conditions; this uses the 996 complete in the dial arm's four. The `nodial` arm names a scorable `add` word far less often (see definedness_per_condition), so the headline set is partly selected by the CONTROL arm's success.",
       "agrees_with_the_headline": true
     },
-    "frequency_confound_here": {
+    "realised_frequency_profile": {
+      "measured_on": "the add words THIS RUN generated, not the derivation's gold ones",
+      "mean_log_add_df_by_setting": {
+        "dial:near": 10.7916,
+        "dial:mid": 11.7161,
+        "dial:far": 12.03
+      },
+      "monotone_across_the_dial": true,
+      "not_monotone": false,
       "spearman_log_add_df_vs_distance_in_this_run": 0.4194180271507608,
-      "corpus_scale_spearman": 0.2078,
+      "consequence_for_the_specs_cleaner_contrast_framing": "The spec named `mid` vs `far` the CLEANER contrast because the DERIVATION's per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 -- `mid` commonest). That framing is a property of the gold label distribution. It does NOT transfer to this run: the realised add_df the model produced is strictly monotone across the dial, so every step is exposed to the confound in the same direction and no step is privileged as 'cleaner'. The frequency control below, not the choice of contrast, is what separates them."
+    },
+    "frequency_confound_in_the_DERIVATION_not_here": {
+      "corpus_scale_spearman_raw_df_vs_distance": 0.2078,
       "corpus_scale_per_bucket_median_add_df": {
         "near": 16591,
         "mid": 51269,
         "far": 39367
       },
-      "not_monotone": true,
-      "cleaner_contrast": "mid vs far",
-      "why": "median add_df is near 16,591 / mid 51,269 / far 39,367 -- `mid` is the COMMONEST bucket, so the confound is not monotone and near-vs-far is the most exposed contrast while mid-vs-far is the least. Do not report the three steps as equally confounded."
+      "these_describe_the_GOLD_LABELS": "the derivation's tercile population, NOT the words this model generated. This block used to be keyed `frequency_confound_here` and carried a hard-coded `not_monotone: true` beside these numbers; both were false of this run. What is true of this run is computed in `realised_frequency_profile` above. The corpus-scale figure is also on RAW df while this run's is on LOG df, so the two coefficients are not directly comparable in magnitude."
     }
   },
   "controls": {
@@ -919,9 +1026,14 @@
         "significant": true,
         "zero_scatter": false
       },
-      "fraction_of_the_dial_range_reproduced": 0.379,
+      "position_on_the_near_far_range": 0.379,
+      "position_is_NOT_a_share_of_the_effect": "This number is where the off-vocabulary value LANDS between `near` and `far`. It is NOT the fraction of the dial that is schema rather than value, and an earlier draft published it as if it were, which UNDERSTATED the result. There is no zero-token baseline in this design -- every condition has some token in the reach line -- so `blue`'s position cannot be decomposed into a schema share and a value share. What the data support is the ORDERING: `blue` is significantly displaced from `near` and from `far` in OPPOSITE directions, and an off-vocabulary token cannot encode `near` or `far`, so both displacements are value-specific. Publish the ordering, not the percentage.",
       "moved_away_from_near": true,
+      "distinguishable_from_far": true,
       "indistinguishable_from_far": false,
+      "smallest_detectable_difference_from_far": 0.012841,
+      "smallest_detectable_difference_as_share_of_range": 0.0992,
+      "THE_GATE_IS_WEAK_AND_HERE_IS_HOW_WEAK": "`indistinguishable_from_far` is a FAILURE TO REJECT, not an equivalence test, so this gate can only fire when the nonsense value lands within 0.012841 of `far` -- about 0.0992 of the near-to-far range. It passes over the other ~90%. On this run it passes on POSITIVE evidence rather than on absence of it (the difference from `far` is many standard errors), which is the only reason it is worth anything here; a future run where `blue` drifted toward `far` without crossing that band would pass this gate while deserving to fail. Read `vs_far` and the bound, not the boolean.",
       "reproduces_the_dial_pattern": false,
       "rule": "fails (i.e. reproduces the pattern) only when the nonsense value BOTH moves significantly away from `near` in the dial's direction AND cannot be distinguished from `far`. Either one alone is not 'any token gives you far'.",
       "condition": "dial:blue",
@@ -988,7 +1100,8 @@
       "monotone": false,
       "n_significant_steps": 0,
       "cleaner_contrast": "mid_lt_far",
-      "cleaner_contrast_why": "the corpus-scale frequency confound is NOT monotone -- median add_df is near 16,591 / mid 51,269 / far 39,367 -- so near-vs-far is also rare-vs-common while mid-vs-far is much less exposed. Do not read the three steps as equally confounded.",
+      "cleaner_contrast_is_THE_SPECS_DESIGNATION_not_a_finding_about_this_run": true,
+      "cleaner_contrast_provenance": "THE SPEC'S framing, and a property of the DERIVATION's gold label distribution, not of this run: the corpus-scale per-bucket median add_df is non-monotone (near 16,591 / mid 51,269 / far 39,367 -- `mid` commonest), which would make near-vs-far the most frequency-exposed step. Whether that transfers has to be CHECKED against the add words this run actually produced -- see effects.realised_frequency_profile, which computes it. Do not quote this field as a finding about this run.",
       "role": "SECONDARY CONTROL, and weaker than it looks -- see prompt_parity.nodial_note.",
       "how_off_schema_this_arm_is": "THREE ways, not one. The prompts are byte-identical across arms (that is what makes the two arms' numbers comparable at all), so the `nodial` arm receives (1) an unknown slot NAME, (2) an extra LINE in the measured block, and (3) a `reach` line in the earlier TEACHER-FORCED block too. Within the arm all three settings share every one of those, so the near/mid/far contrast below is still internally paired -- but the arm is far enough out of distribution that a null here is weak evidence and a movement here is not attributable to the dial's value. Arm-native five-slot earlier blocks would be a cleaner secondary control and were not run: it is another 3,000 CPU generations and this arm is not a gate on the headline."
     }
@@ -1020,7 +1133,21 @@
     "reading_far_minus_best_of_near_mid": -0.059322,
     "reading_far_minus_best_passes": false,
     "which_setting_is_worst": "dial:near",
-    "READ_THIS": "The three readings do not agree, and the direction of the failure matters. The declared gate fails, but the WORST setting is `near`, not `far`: the rate is non-monotone (mid highest), so this is not the 'ambitious plan goes unfulfilled' failure the guard was written for. Under `far` vs `near` -- the spec's own wording -- `far` is ABOVE `near` and the reading passes. Under `far` vs the best setting it fails, narrowly. The declared gate is the one that decides `eureka_criterion_met`; it is not moved after the fact, and the disagreement is published rather than resolved in our favour."
+    "may_itself_be_undertraining": "the rate is 0.48-0.57 at EVERY setting: the model fulfils its own declared plan barely half the time regardless of the dial. Neither arm is converged (see limitations), so the most likely reading of this guard's failure is a weak plan-follower rather than a dial-specific defect. That is an explanation, not an excuse -- the gate still fails, and the verdict still stands.",
+    "READ_THIS": "The three readings do not agree, and the direction of the failure matters. The declared gate fails, but the WORST setting is `near`, not `far`: the rate is non-monotone (mid highest), so this is not the 'ambitious plan goes unfulfilled' failure the guard was written for. Under `far` vs `near` -- the spec's own wording -- `far` is ABOVE `near` and the reading passes. Under `far` vs the best setting it fails, narrowly. The declared gate is the one that decides `eureka_criterion_met`; it is not moved after the fact, and the disagreement is published rather than resolved in our favour.",
+    "unselected_denominator_sensitivity": {
+      "n_rows_considered": 1000,
+      "rates": {
+        "dial:near": 0.468,
+        "dial:mid": 0.555,
+        "dial:far": 0.501
+      },
+      "shortfall": 0.087,
+      "worst_setting": "dial:near",
+      "passes": false,
+      "agrees_with_the_gate": true,
+      "why": "the headline rates use the scenes complete in ALL SEVEN conditions, which the `nodial` arm partly selects. These use every row where the DIAL arm named an `add` word. If the two disagreed, the failing gate would be a property of the denominator rather than of the model."
+    }
   },
   "instrument_checks": {
     "association_table": {
@@ -1204,10 +1331,11 @@
       ],
       "steps": 3000,
       "steps_note": "3000 is an INHERITED BUDGET, matched to stage 2 for comparability. It is not a convergence criterion and no convergence was demonstrated at it.",
-      "why_it_matters": "val loss was still falling monotonically at step 3000 in both arms. A NULL DIAL RESULT HERE COULD BE UNDERTRAINING and must be read as 'not demonstrated at this budget', not as 'the dial does not work'. 3000 steps is an inherited budget, not a convergence criterion."
+      "why_it_matters": "val loss was still falling monotonically at step 3000 in both arms. 3000 steps is an inherited budget, not a convergence criterion. THREE THINGS THIS QUALIFIES, not one: (1) a null dial result would have been undertraining-ambiguous; (2) the dial effect sizes reported here are a FLOOR, not a ceiling -- the measurement is taken below the model's trained ceiling; and (3) THE FAILING ADHERENCE GUARD may itself be undertraining. `add` slot-hit is 0.48-0.57, i.e. the model fulfils its own declared plan barely half the time at ANY setting, which is much more consistent with an under-trained plan-follower than with a dial-specific defect. See adherence_guard.",
+      "loss_pair_is_NOT_a_comparison": "the two val-loss pairs are printed here so each arm's own trajectory is visible. They are NOT comparable to each other -- see the next limitation -- and must not be subtracted."
     },
     {
-      "limitation": "a truncation asymmetry exists and IS NOT THE DIAL",
+      "limitation": "a truncation asymmetry exists between the arms, and its cause is the reach line's token cost rather than the dial's VALUE",
       "dial_over_max_seq_len": 526,
       "nodial_over_max_seq_len": 180,
       "of_training_rows": 36913,
@@ -1321,7 +1449,7 @@
     }
   ],
   "reproduce": {
-    "generate": "python scripts/eval_reach.py",
+    "generate": "python scripts/eval_reach.py --n-scenes 1000",
     "rescore_from_this_artifact": "python scripts/eval_reach.py --rescore-from docs/measurements/reach-dial.json",
     "rescore_from_the_side_file": "python scripts/eval_reach.py --rescore-from artifacts/reach/eval-generations.json",
     "why_the_generations_are_EMBEDDED_here": "artifacts/ is git-ignored in this repo (artifacts/.gitignore is `*`), so a side file cannot make a committed measurement re-derivable. `stored` below carries every scene AND every raw generation, so every number in this file can be recomputed from this file -- no model, no tokenizer, no device, and no regeneration. Stage 2 embedded its `generated_turns` for the same reason and it proved its worth."

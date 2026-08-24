@@ -2109,3 +2109,38 @@ for the wrong reason. Both fixed by making the fixture able to fail. Also: stage
 degeneration metric scored **exactly 0.0000 on every setting** here — a skit turn is one
 sentence and rarely has four content words — while `"Snowmen are snowmen and snowmen"` sat in the
 sample. A metric that cannot fire is worse than no metric; replaced with type/token.
+
+### Task 4, review round 2 — the control that measured its own filter (2026-08-24)
+
+**A frequency control that was actually a null-enrichment filter, and I published its reading
+as a finding.** The df-matched subsample keeps pairs whose two `add` words have similar
+document frequency. When the dial emits the SAME word under both settings the frequencies are
+identical, so the pair is *always* kept — and its distance difference is **exactly 0.0 by
+construction**. 78–92% of each matched subsample was such a pair. Averaging a real effect over
+a pool padded with structural zeros shrinks it by the padding ratio, and I read that shrinkage
+as "a large share of the raw movement IS frequency" and as a 3–5× disagreement between the two
+controls. Over the *informative* pairs the two controls agree to three decimal places
+(+0.0630 vs +0.0604). **The instrument, not the subject, produced the finding** — the exact
+failure the global notes warn about, in a control I wrote specifically to be careful.
+
+**A hard-coded `not_monotone: true` under a key named `frequency_confound_here`.** It described
+the derivation's gold buckets, not this run; the run's realised `add_df` is strictly monotone
+(10.79 → 11.72 → 12.03, spearman +0.419). Any literal that describes a *different population*
+under a key claiming to describe *this* one is the same class of bug. Computed now, and the
+derivation's numbers are labelled as the derivation's.
+
+**Leaf-only test suites have now failed to catch this class eleven times.** Every decision
+function had a fixture test; the 340-line composer that wires them had none, and three
+one-line mutations inside it each rewrote a published claim while 1,505 tests passed — one of
+them (`add`-hit scored against the raw generation, which always contains `add: <word>`) flipped
+`eureka_criterion_met` from false to TRUE. `analyse` is now driven end to end on a synthetic
+corpus. **Both versions of that fixture were themselves vacuous first**: the first saturated
+(NPMI clamped to 0, every distance exactly 1.0) and the second let the control conditions emit
+a single word, tilting the nuisance fit so a pure frequency dial read as a reach dial. A
+fixture built to test a property of scale has to be checked for that property before anything
+is asserted on it.
+
+**A key name is a contract.** Renaming `cleaner_contrast` to something more honest broke
+`tests/test_reach_cli.py`, because `scripts/reach.py --about` quotes the field. The key is back
+with its provenance attached — and the CLI still states the spec's framing as a finding when
+this run does not support it. Flagged rather than edited: both files were out of scope.
