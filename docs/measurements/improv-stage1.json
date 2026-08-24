@@ -1,4 +1,12 @@
 {
+  "superseded_by": {
+    "what_is_superseded": "The `derivation` block below, and every artifact downstream of it (artifacts/improv/traces.jsonl, both checkpoints, and therefore every rate in `rates`, `adherence` and `swap_test`). They were produced with the OLD sentence splitter, re.split(r'(?<=[.!?\"])\\s+'), which no longer exists in the tree.",
+    "superseded_by": "derivation_republished_2026_08_23 (in this same file)",
+    "approved_by": "docs/superpowers/specs/2026-08-23-reach-dial-design.md, 'The splitter, fixed properly' -- an explicit clean cutover with republication, not a silent overwrite.",
+    "why": "The old splitter cut a quoted span away from its attribution clause ('\"It catches the light!\" said her friend.' -> two sentences). That fragmentation is what starved stage 2's skit population of dialogue, and it was held frozen only because this file sat behind it. train.improv.split_sentences now delegates to train.dialogue.split_sentences_dialogue.",
+    "what_is_NOT_superseded": "Nothing in this file has been re-MEASURED. The verdict, the swap test, adherence and the four scorer rates are the original numbers from the original checkpoints and are left exactly as published. Only the DERIVATION has been re-run. Treat the rates as measurements of the old traces, which is what they are.",
+    "old_artifacts_preserved": "artifacts/improv/traces.jsonl and artifacts/improv/derive_manifest.json are untouched. The re-derivation was written to artifacts/improv-newsplitter/ so the published run stays reproducible from its own inputs."
+  },
   "verdict": "PARTIAL -- see success_criteria",
   "limitations": {
     "swap_test_and_rates_are_forced_not_organic": "The swap test and the paired failure-mode rates FORCE the think-block into the prompt; they do not measure whether the model spontaneously emits one. See 'adherence' for the organic measurement, and swap_test.forced_think_note for the same caveat attached directly to that number.",
@@ -534,6 +542,68 @@
       "groundedness": 0,
       "affordance": 117,
       "reading": "Three scorers still report IDENTICAL values for both arms on most prompts. The block changes the text (swap test 100%) without changing these properties of it \u2014 which is the same finding the generations show qualitatively."
+    }
+  },
+  "derivation_republished_2026_08_23": {
+    "date": "2026-08-23",
+    "command": "python3 scripts/derive_traces.py --limit 20000 --seed 5489 --out artifacts/improv-newsplitter/traces.jsonl",
+    "splitter_old": "re.split(r'(?<=[.!?\"])\\s+') -- removed from the tree",
+    "splitter_new": "train.dialogue.split_sentences_dialogue",
+    "corpus": "artifacts/corpus/tinystories.txt",
+    "corpus_md5": "cb79377db23e71515983c26beaef3da3",
+    "seed": 5489,
+    "stories": 20000,
+    "old": {
+      "kept": 18791,
+      "drop_rate": 0.0605,
+      "drops_by_rule": {
+        "no_carry_or_no_add": 1209,
+        "too_few_sentences": 0
+      }
+    },
+    "new": {
+      "kept": 18970,
+      "drop_rate": 0.0515,
+      "drops_by_rule": {
+        "no_carry_or_no_add": 1025,
+        "too_few_sentences": 5
+      }
+    },
+    "delta": {
+      "kept": 179,
+      "drop_rate": -0.009,
+      "reading": "184 fewer no_carry_or_no_add drops: a quote and its attribution are now ONE sentence, so the words on both sides of that boundary land in the same unit and `accept`/`add` can find them. Five stories newly drop as too_few_sentences (0 before): merging units can take a 4-sentence story below the 4-sentence floor. Net +179 kept."
+    },
+    "churn_is_not_small": {
+      "story_ids_in_both": 18521,
+      "only_in_old": 270,
+      "only_in_new": 449,
+      "same_cut_k_fraction": 0.761,
+      "same_prefix_and_continuation_fraction": 0.595,
+      "same_slots_fraction": 0.596,
+      "reading": "The drop rate barely moved but the DATA did: derive_from_story picks its cut point as rng.randint(2, len(sents) - 2), and len(sents) changed, so only 59.5% of the shared examples are textually identical. A re-run of stage 1's training and eval against these traces would not be a small perturbation of the published numbers, and this file does not pretend otherwise."
+    },
+    "dialogue_retention_stage1": {
+      "metric": "fraction of sentence units in (prefix + continuation) containing a quote, against the same 20,000 stories measured with the SAME splitter",
+      "old_population": 0.1639,
+      "old_corpus_baseline": 0.1758,
+      "old_ratio_population_over_corpus": 0.9324,
+      "new_population": 0.1214,
+      "new_corpus_baseline": 0.1283,
+      "new_ratio_population_over_corpus": 0.9463,
+      "reading": "Stage 1 was never the leak. Its random-cut derivation already retained 93% of the corpus's dialogue density and now retains 95%. The absolute fractions fall (0.164 -> 0.121) only because the new splitter emits FEWER, LONGER units -- the same dialogue in fewer sentences -- which is why the ratio to a like-for-like baseline is the number to read, not the bare fraction."
+    },
+    "where_the_dialogue_loss_actually_was": {
+      "measured_on": "the stage-2 skit population (scripts/derive_skits.py, consecutive-sentence turns) over the same 20,000 stories",
+      "old_kept": 1921,
+      "old_kept_fraction": 0.09605,
+      "old_turn_dialogue_fraction": 0.1198,
+      "old_ratio_population_over_corpus": 0.6817,
+      "new_kept": 2649,
+      "new_kept_fraction": 0.13245,
+      "new_turn_dialogue_fraction": 0.1774,
+      "new_ratio_population_over_corpus": 1.3828,
+      "reading": "This is the 43% the spec attributes to the splitter, confirmed and then reversed. Under the old splitter a stage-2 skit's turns carried 0.68x the corpus's dialogue density -- the accept gate was systematically eliminating dialogue-with-attribution -- and under the new one they carry 1.38x, with kept rising 9.6% -> 13.2%. Stage 2's own published numbers are therefore ALSO derived from a dialogue-depleted population; see docs/measurements/skits-stage2.json's splitter_superseded_2026_08_23 note."
     }
   }
 }

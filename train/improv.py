@@ -7,8 +7,10 @@ pipeline would make every downstream number unattributable.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, fields
 from typing import Callable, Dict, List, Optional
+
+from train.dialogue import split_sentences_dialogue
 
 SLOT_NAMES = ("offer", "accept", "add", "stakes", "handback")
 STAKES_VALUES = ("up", "level", "down")
@@ -22,7 +24,6 @@ they them his her their him us we you your i me my not no nor do did does done h
 has had will would can could should may might must very just
 """.split())
 
-_SENT_SPLIT = re.compile(r'(?<=[.!?"])\s+')
 _WORD = re.compile(r"[A-Za-z']+")
 
 
@@ -39,15 +40,47 @@ class Slots:
 
 
 def split_sentences(text: str) -> List[str]:
-    return [s.strip() for s in _SENT_SPLIT.split(text.strip()) if s.strip()]
+    r"""Sentence split. Delegates to `train.dialogue.split_sentences_dialogue`.
+
+    CLEAN CUTOVER, 2026-08-23. This used to be ``re.split(r'(?<=[.!?"])\s+')``, which broke
+    ``'"It catches the light!" said her friend.'`` into two units -- the quote and its own
+    attribution tag -- and cost the stage-2 eval population 43% of the corpus's dialogue
+    (54.6% -> 31.0% of units). Approved in
+    ``docs/superpowers/specs/2026-08-23-reach-dial-design.md`` ("The splitter, fixed
+    properly"): ONE splitter in the tree, and stage 1 re-derived and REPUBLISHED with the
+    new numbers beside the old rather than silently overwritten -- see
+    ``docs/measurements/improv-stage1.json``'s ``superseded_by`` and
+    ``derivation_republished_2026_08_23``.
+
+    A thin delegation, not a copy: a second splitter in the tree is exactly what the spec
+    forbids. Everything reached through this name (``train.skit``, ``scripts.score_improv``,
+    ``scripts.derive_traces``, ``scripts.eval_skits``) picks up the new behaviour from here.
+    """
+    return split_sentences_dialogue(text)
 
 
 def content_words(text: str) -> List[str]:
     return [w.lower() for w in _WORD.findall(text) if w.lower() not in STOPWORDS]
 
 
-def render_think(slots: Slots) -> str:
-    body = "\n".join(f"{name}: {getattr(slots, name)}" for name in SLOT_NAMES)
+def render_think(slots) -> str:
+    """Render a think-block from any slots dataclass, in its OWN field order.
+
+    GENERALISED 2026-08-23 (reach dial, task 2). This used to iterate the module-level
+    `SLOT_NAMES`, which is exactly the five fields of `Slots`; it now reads the field order
+    off the object, so `train.reach.ReachSlots` (six slots, `reach` ahead of `add`) renders
+    through the same function. Behaviour for `Slots` is unchanged --
+    `test_render_think_reads_the_dataclass_field_order` pins
+    ``fields(Slots) == SLOT_NAMES``, so the generalisation cannot drift into a different
+    rendering of the published schema.
+
+    Why generalise rather than add a second renderer: `train.skit.skit_segments` and
+    `scripts.derive_skits.build_skit_example` reach the block through this one name, and the
+    pre-shifted label rule and the positional nine-segment supervision mask must stay
+    byte-identical between the two schemas. One renderer is how that is guaranteed instead of
+    asserted.
+    """
+    body = "\n".join(f"{f.name}: {getattr(slots, f.name)}" for f in fields(slots))
     return f"<think>\n{body}\n</think>\n"
 
 

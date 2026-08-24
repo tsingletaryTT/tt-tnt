@@ -73,6 +73,59 @@ one. So is a dial that does not move.
 - Coherence margin at `far`: groundedness may fall no more than **0.05** below its `near` value.
   Declared here, before the data exists.
 
+### Amendment, 2026-08-23, before any training run: the dial must beat a frequency confound
+
+**NPMI is not frequency-neutral, and the bias runs opposite to the obvious worry.** Two rare words
+that co-occur at all score *high* — their expected co-occurrence under independence is tiny — while
+a common word's NPMI with anything is capped low by its own marginal. So a rare `add` word tends to
+score NEAR and a common one tends to score FAR. Measured on 20,000 stories:
+
+- `spearman(add-word document frequency, distance) = +0.2078` at full corpus scale
+- median `add`-word document frequency: near **16,591** / mid **51,269** / far **39,367**
+
+**Correction, same day:** this amendment first cited `spearman = +0.306` and ranks 1,100-vs-444.
+Those were interim figures from a 20,000-story sample. At full corpus scale the confound is *weaker*
+and, more importantly, **not monotone**: `mid` has the *highest* median document frequency, not
+`far`. So the exposure is uneven — **near-vs-far is also rare-vs-common, but mid-vs-far is much less
+exposed.** The direction of this amendment stands; the numbers above are the corpus-scale ones.
+A practical consequence for the eval: `mid` vs `far` is the *cleaner* contrast and should be
+reported as such, rather than treating all three steps as equally confounded.
+
+Therefore **`near < mid < far` on realised distance is not, by itself, evidence the model reached
+further.** It is equally consistent with the model reaching for a *commoner* word. The criterion
+above is insufficient as written and is amended:
+
+The EUREKA criterion now requires the monotone dial effect to survive **frequency control**. Report
+all three of:
+
+1. **Raw** realised distance per bucket (the original criterion).
+2. **Frequency-matched**: distance per bucket over a subsample matched on `add`-word document
+   frequency, or equivalently the effect residualised on log document frequency.
+3. The **realised document frequency** per bucket, so a reader can see the confound's size next to
+   the effect rather than taking our word for it.
+
+A dial that moves raw distance but not frequency-controlled distance is a **frequency dial**, and
+must be published as that — it is a real finding about NPMI, not a finding about the model.
+
+Every derived row carries its own `add_df` so an eval can match or covary without rebuilding a
+document-frequency table. An eval can control for a number; it cannot control for a warning.
+
+### Amendment: two further instrument problems found during derivation
+
+**Self-inclusion.** The scored story is itself a document in its own association table, which drives
+the zero-evidence rate to a structural 0.0000 — every pair the story contains has co-occurred, in
+that story. Fixed with leave-one-out: a story's own contribution is removed before its distances are
+computed. Any future distance metric over a corpus-built table inherits this bug by default.
+
+**The same-speaker filter cannot catch the case that motivated it.** The controller inspected a real
+skit where model turn 0 is the mother and model turn 2 is the daughter, and required a conservative
+filter in response. That filter provably cannot catch it: the gap between those utterances carries
+narrative rather than being tag-only. The filter still removes tag-only gaps, which are a real
+subset, so it stays — but the residual same-voice rate after filtering must be **measured and
+published**, not assumed away, and the premise "the partner turn is a different voice" holds only
+probabilistically. State the residual rate beside any handback result, since that slot is the one
+that depends on the premise.
+
 ## Derivation: real dialogue
 
 ### Turn extraction

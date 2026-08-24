@@ -2016,3 +2016,289 @@ harmless only because the mutant touched `labels` and the reader consumed `input
 design, so mutations are now serialised against live runs. `scripts/eval_skits.py --rescore-from`
 re-derives every published number from stored generations with no model, tokenizer, or device,
 verified under an import blocker that raises on `torch`/`transformers`/`ttnn`/`ttml`.
+
+## Skits v2, task 1 — the splitter cutover and real dialogue turns (2026-08-23)
+
+Design: [`docs/superpowers/specs/2026-08-23-reach-dial-design.md`](docs/superpowers/specs/2026-08-23-reach-dial-design.md).
+Task 1 built the foundation: one dialogue-aware splitter, turn extraction by alternation, a
+dialogue derivation script, and the stage-1 republication the cutover obliged.
+
+**One splitter, and it needed to scan rather than match.** Both historical variants are wrong
+in opposite directions on the same two strings, and no lookbehind can fix that: the two cases
+differ only in what FOLLOWS the closing quote. `train/dialogue.py` tracks quote state and asks
+one named question — `continues_as_attribution` — at the single ambiguous position. Also worth
+recording: **1,224 tests, and not one of them called `split_sentences`.** Changing it broke
+nothing, which is exactly why it had drifted this long.
+
+**The dialogue loss was stage 2's, not stage 1's.** Measured, not assumed. Stage 1's random-cut
+population already retained 93% of the corpus's dialogue density (95% now). The stage-2 skit
+population carried **0.68×** the corpus rate under the old splitter and **1.38×** under the new
+one, with kept rising 9.6% → 13.2%. So the 43% relative loss was the accept gate eating
+dialogue-with-attribution, and it is now reversed. Stage 1's republished derivation moved only
+6.05% → 5.15% drop — but **40% of the shared examples changed text**, because the cut point is
+`randint(2, len(sents) - 2)` and `len(sents)` moved. A republication that reported only the
+drop rate would have read as a rounding correction.
+
+**Attribution really is unnecessary, and dropping it drops the bug.** No name is read anywhere.
+The cost is measurable and is published rather than hidden: 39.6% of adjacent turn pairs are
+separated by nothing but a tag (`"…," he said. "…"`), which is an **upper bound** on how often
+two adjacent turns are the same voice. Telling `"Don't cry," he said. "I can help."` (one voice)
+from `"Hello," said Amy. "Goodbye," said Ben.` (two) needs the subject of the tag — i.e. exactly
+the attribution that got the probe's speakers backwards. So it is a manifest field, not a gate.
+
+**Yield is 4× short of the projection, and the gates were not touched.** 18.89% of stories clear
+five utterances (the probe's 18.8%, confirmed at 400k). But only 11.3% of those survive
+accept/add, so 400,000 stories yield **8,543 skits**, not 80,000; the whole corpus projects to
+~45,000. The drop table says why and says it per gate: `no_accept` at some model turn is 61,781
+of the 66,770 derivation failures. Real exchanges are short — `"Ouch!"`, `"Thank you, ghost!"` —
+and share no content word with what preceded them. The spec's own sample skit drops at turn 4.
+
+**A tenth-class test caught in the act.** `classify_turn_failure`'s four-row table passed against
+a mutant that checked the `add` gate before `accept`, because every row failed exactly one gate.
+Ordering needed a row where BOTH fail. Same shape as the ten before it.
+
+## Skits v2, task 4 — the EUREKA measurement, and the dial moves (2026-08-23)
+
+Design: [`docs/superpowers/specs/2026-08-23-reach-dial-design.md`](docs/superpowers/specs/2026-08-23-reach-dial-design.md).
+Result: [`docs/measurements/reach-dial.json`](docs/measurements/reach-dial.json).
+
+**The dial works.** Within-model, scene-paired, 826 scenes, one model turn each, everything
+teacher-forced except the four characters of the dial value. Realised distance runs
+**0.6497 → 0.7336 → 0.7792** across `near`/`mid`/`far`, all three steps significant at
+`CRITICAL_T = 2.843` (t = 16.2 / 13.9 / 23.3) and **all three still significant after
+residualising on log `add_df`** (t = 7.4 / 9.0 / 12.5). So it is a REACH dial, not a frequency
+dial. Coherence held: groundedness fell 0.030 at `far` against a 0.05 margin declared before
+the data existed.
+
+**The negative control needed the strict threshold to stay negative.** `nodial`'s three steps
+came in at t = 2.36 / −0.30 / 2.35. Two of those sit *between* stage 1's 2.576 and this eval's
+2.843. Importing the looser constant — the thing the spec forbade in writing — would have turned
+the negative control positive and destroyed the headline. That is not a hypothetical any more.
+
+**EUREKA is still "not met", on one gate, and the gate failed in the wrong direction.** The
+`add` slot-hit rate is non-monotone: near 0.477, mid 0.567, far 0.507. "Hold at every setting"
+(worst-vs-best, declared) fails by 0.090 — but the worst setting is **`near`**, and `far` is 3
+points *above* `near`, so the spec's own stated worry ("stops fulfilling an ambitious plan")
+passes. Reported all three ways with the declared reading named as the gate; a mutant that
+swaps the gate to the flattering reading is RED in the suite. Moving a pre-declared threshold
+after seeing which side of it you landed on is the one thing this project cannot do.
+
+**A meaningless dial value buys 38% of the range.** `reach: blue` — same arm, same well-formed
+six-slot schema, off-vocabulary value — is distinguishable from `far` (t = −17.8) so the primary
+control passes, but it sits 0.379 of the way from `near` to `far`. Part of what the dial does is
+"a token is here", not "the token means far". A control reported as a boolean would have hidden
+that; the fraction is a field.
+
+**The 34-minute association table, in 81 seconds.** `train.reach.reach_distance` only *looks
+up* the pairs it is asked about, so the eval counts one streaming corpus pass restricted to the
+~3,200 unigrams and ~69,000 pairs it needs. Proved equal to the full table two ways: on a
+fixture corpus built both ways, and by re-deriving all 1,000 gold rows' stored
+`reach_distances` at full scale — **max abs error 0.0, `add_df` mismatches 0**, a hard refusal
+if not. The leave-one-out had to be made *exact* (subtract the story only from pairs it really
+contributes to) for that to work, because a generated `add` word need not be in the story at all.
+
+**`artifacts/` is git-ignored, so a side file cannot make a measurement reproducible.** All
+1,000 scenes and 7,000 generations are embedded in the published artifact, and
+`--rescore-from docs/measurements/reach-dial.json` round-trips byte-identical.
+
+**Two more hollow tests, caught by running the mutant rather than reading the test.** One
+asserted the first `add:` line wins using a *second think-block* — the `</think>` truncation was
+doing all the work, so dropping the `key not in found` guard passed. The other checked the gold
+reproduction using only an unscorable row, which emptied the error list and made `matches` False
+for the wrong reason. Both fixed by making the fixture able to fail. Also: stage 2's 4-gram
+degeneration metric scored **exactly 0.0000 on every setting** here — a skit turn is one
+sentence and rarely has four content words — while `"Snowmen are snowmen and snowmen"` sat in the
+sample. A metric that cannot fire is worse than no metric; replaced with type/token.
+
+### Task 4, review round 2 — the control that measured its own filter (2026-08-24)
+
+**A frequency control that was actually a null-enrichment filter, and I published its reading
+as a finding.** The df-matched subsample keeps pairs whose two `add` words have similar
+document frequency. When the dial emits the SAME word under both settings the frequencies are
+identical, so the pair is *always* kept — and its distance difference is **exactly 0.0 by
+construction**. 78–92% of each matched subsample was such a pair. Averaging a real effect over
+a pool padded with structural zeros shrinks it by the padding ratio, and I read that shrinkage
+as "a large share of the raw movement IS frequency" and as a 3–5× disagreement between the two
+controls. Over the *informative* pairs the two controls agree to three decimal places
+(+0.0630 vs +0.0604). **The instrument, not the subject, produced the finding** — the exact
+failure the global notes warn about, in a control I wrote specifically to be careful.
+
+**A hard-coded `not_monotone: true` under a key named `frequency_confound_here`.** It described
+the derivation's gold buckets, not this run; the run's realised `add_df` is strictly monotone
+(10.79 → 11.72 → 12.03, spearman +0.419). Any literal that describes a *different population*
+under a key claiming to describe *this* one is the same class of bug. Computed now, and the
+derivation's numbers are labelled as the derivation's.
+
+**Leaf-only test suites have now failed to catch this class eleven times.** Every decision
+function had a fixture test; the 340-line composer that wires them had none, and three
+one-line mutations inside it each rewrote a published claim while 1,505 tests passed — one of
+them (`add`-hit scored against the raw generation, which always contains `add: <word>`) flipped
+`eureka_criterion_met` from false to TRUE. `analyse` is now driven end to end on a synthetic
+corpus. **Both versions of that fixture were themselves vacuous first**: the first saturated
+(NPMI clamped to 0, every distance exactly 1.0) and the second let the control conditions emit
+a single word, tilting the nuisance fit so a pure frequency dial read as a reach dial. A
+fixture built to test a property of scale has to be checked for that property before anything
+is asserted on it.
+
+**A key name is a contract.** Renaming `cleaner_contrast` to something more honest broke
+`tests/test_reach_cli.py`, because `scripts/reach.py --about` quotes the field. The key is back
+with its provenance attached — and the CLI still states the spec's framing as a finding when
+this run does not support it. Flagged rather than edited: both files were out of scope.
+
+### Task 4, the 9000-step rerun — a plateau, not a floor (2026-08-24)
+
+Result: [`docs/measurements/reach-dial-9000.json`](docs/measurements/reach-dial-9000.json).
+Same eval, same 1,000 held-out scenes, same locally-defined thresholds; one variable, the
+checkpoint.
+
+**Both pre-declared questions came back negative, and that made the earlier result stronger.**
+The dial is unchanged at 3x the training budget: residualised `near<far` went **+0.060438 →
++0.060392, a change of −0.000046**, and every one of the six step-deltas moved by less than
+0.001. The `add` adherence gate **still fails** (shortfall 0.0896 → 0.1062, worst setting still
+`dial:near`, `far` still above `near`). So **undertraining is refuted** as the explanation for
+that gate, and my own claim that the 3000-step effects were "a FLOOR, measured below the
+model's trained ceiling" is **falsified** — they are a plateau. Corrected in the report rather
+than left standing.
+
+**When two runs agree to four decimal places, suspect the instrument first.** My first move was
+not to write the finding up but to ask whether I had evaluated the same checkpoint twice —
+a wrong `--arm-root`, a stale HF work-dir, a copied store all produce exactly this. Measured
+from the stored text: **38.8% of the 7,000 continuations differ**. That check is now a
+permanent field (`generation_churn`), because a near-zero churn beside "stable effects" would
+have been a fabricated finding, and the provenance strings would have looked perfect either way.
+
+**"Not converged" was the wrong frame, and it was mine.** The learning rate is CONSTANT 1e-5
+with no decay and no warmup. A constant-LR run cannot converge; it asymptotes, and it keeps
+producing small monotone val improvements indefinitely because the step size never anneals. So
+"val loss still falling" and "early stopping never fired" are what the RECIPE does, not evidence
+that the budget binds — 3x the steps bought 12.7% val improvement and zero effect change.
+`convergence_framing()` computes this from the manifests now. The consequence: a null here is no
+longer "undertrained", it is "this recipe has plateaued in practice".
+
+**A default path can destroy a published measurement, silently, with every test green.** Reusing
+the default `--out` for the longer-trained rerun would have overwritten the reviewed 3000-step
+artifact that `scripts/reach.py` quotes. `default_paths()` derives a suffixed path per
+(arm_root, step), `main` refuses to overwrite an artifact whose recorded step differs, and both
+are tested. The step/manifest provenance check was written in `main()` first and a mutation that
+deleted it survived — driver-only guards are unreachable from tests, the same hole as round 2's
+composer mutants. Extracted and tested.
+
+### Task 7, the `add` slot — a POS filter that would have worked for the wrong reason (2026-08-24)
+
+Report: `.superpowers/sdd/2026-08-23-reach-dial/task-7-report.md`. New artifact
+`artifacts/reach-content/` (24,376 skits); `artifacts/reach-skits/` untouched.
+
+The reach dial was statistically fine and read as nothing, because `add` is the highest-IDF
+*fresh* word and a TinyStories turn is three words long — so the slot's 25 commonest values
+(18.5% of it) were `look please hi hello love what wow why come yes thank ok okay …`. Now they
+are `look want love come give go doing friend need stop name help see try …`.
+
+**The filter I was about to ship would have been right by accident.** Tagged as written, the
+particles pile onto `NNP` — `hi` 120/120, `hello` 118/120, `wow` 115/120 — because they open a
+quoted utterance and are therefore *capitalised*. An NN/NNS-excluding-NNP filter scores well on
+this corpus and inverts the first time a particle appears mid-utterance. Worse, the same
+artifact tags `look` NNP 93/120 and `come` 84/120, and those are verbs that must be **kept**:
+the right answer and the wrong one came out of the same accident. `pos_tags_in_turn` lowercases
+every token before tagging, which removes the cue in both directions — and doing that
+**destroys the POS signal entirely**: `hi`, `hello`, `wow` all become `NN`, indistinguishable
+from `comet`. Which is the honest finding. *Part of speech cannot separate a greeting from a
+noun*, because `hello` in "say hello" genuinely is one. Grammar was never the axis; **where the
+word lives** is. `narration_rate` — the fraction of a word's corpus occurrences outside
+quotation marks — separates `give .584 come .509 look .503 love .293` from `okay .237 thank .182
+hi .070 please .066 wow .033 let's .014`, and the POS gate is demoted to what it is actually
+good at: rejecting adjectives, per instance.
+
+**Isolated-word tagging carries no signal at all here** — `nltk.pos_tag([w])` returns `NN` for
+every one of `please wow okay thank hey comet hello look love dragon kite hi`. The brief
+reported a *mixed* set of wrong tags; I could not reproduce that and the difference matters,
+because "backwards" and "uninformative" imply different fallbacks.
+
+**A threshold chosen on the thing you then measure is not measured.** `NARRATION_FLOOR = 0.20`
+was fitted against the brief's own 25-word ground truth; precision/recall are reported against
+250 observations hand-labelled *before the classifier ran* (0.9493 / 0.9424, majority floor
+0.556). Both sets are in the manifest, and the top-25 one is labelled **FIT, not a test**.
+
+**Report which gate is SOLELY responsible, not which fired.** Five gates, and `content_add_reasons`
+returns all of them rather than the first, precisely so the manifest can say that `clitic` fired
+4,384 times and was solely responsible **zero** times — redundant on this corpus, kept as a rule
+only because it generalises. The narration floor's 1,013 sole rejections are the real payoff
+(`ow`, `mmm`, `yuck`, `sir`, `dear`, `whee`) *and* its real cost in the same column (`belongs`,
+`deserve` — verbs the narrator never says).
+
+**The fix made the confound worse, and that is the headline finding, not a footnote.**
+`spearman(add_df, distance)` +0.2078 → **+0.2334**; `far`'s median `add_df` +32%. Removing the
+particles promoted the *common verbs* that were second choice in the same turns, so the slot got
+**more** concentrated (top-25 share 0.1846 → 0.2181, distinct 6,442 → 4,846). A slot can read
+better and measure worse at the same time.
+
+**A fixture of `comet` vs `hello` cannot test this classifier** — every candidate design,
+including two provably wrong ones, gets that pair right. The parametrisations are built on
+`look/love/come/want/give/doing/mean` and on real turns from the artifact, and the
+`SpeechProfile` fixtures carry the **real measured corpus counts**, because the floor's
+justification is where real words fall relative to it. Eleven mutants, each reverted: the ones
+that matter are `choose_add_word` ignoring its filter (4 red), `pos_tags_in_turn` no longer
+lowercasing (6 red, including `come`/`give` wrongly rejected), and a content run **defaulting
+onto `artifacts/reach-skits/`** — which is why `resolve_out_path` is a named function instead of
+two lines in `main`. The artifact test is the satisfying one: pointed at the old artifact it
+names **311 distinct particles** in the `add` slot; pointed at the new one the set is empty.
+
+## 2026-08-23/24 — the reach dial: a real control, on a corpus with nothing to reach for
+
+**Shelved after this entry.** The dial works, it is small, and the binding constraint turned out
+to be the corpus rather than the model. Suite **1655 passed, 2 skipped**.
+
+**The bet.** Stage 2's one publishable slot was `add`, and the reason was mechanical: its value is
+absent from the visible context ~40-44% of the time against **92.8% for `accept`**, which is mostly
+the protagonist's name. `add` is where the model names something not in front of it and then uses
+it. So: make that reach *controllable*. A `reach` slot — `near`/`mid`/`far` — derived as the tercile
+of the NPMI distance between the `add` word and what is already in play, rendered **before** `add`
+in the block because the block generates left to right and a dial declared after the word it
+governs cannot govern it.
+
+**It works.** Forcing the dial moves realised distance monotonically, scene-paired over 826
+held-out scenes, surviving frequency control: residualised `near`<`far` **+0.0604 (t 12.5)**, with
+~53% of the raw effect attributable to word frequency and ~47% surviving. A control arm that never
+saw the slot shows nothing. **The pre-declared EUREKA criterion was not met** on one gate — the
+`add`-hit rate — and I declined to loosen it, having earlier accepted an implementer's refusal to
+*tighten* a pre-declared gate after seeing data. That constraint is symmetric or it is worthless.
+
+**Three eliminations, each costing real compute.** More steps: at 3× the budget the effect moved
+0.08% — a plateau, not a floor, which **falsified my own published claim**. Undertraining: the
+adherence gate got *worse* at 9000 steps, refuting it. Vocabulary: a validated content-word filter
+(precision 0.949) removed every discourse particle and made the slot **more** concentrated with a
+**worse** frequency confound, because the particle mass collapsed onto common verbs. A slot can read
+better and measure worse.
+
+**The corpus is the ceiling.** TinyStories is 13,777 distinct words with the top 1,000 covering
+90.9% of tokens. `cathedral` 0, `submarine` 0, `meteor` 1. `far` collapsing to 88 distinct words
+against `near`'s 265 is a model faithfully reflecting a world with a thousand usable words in it.
+
+**Instrument problems, five of them, each found before it reached a conclusion.** NPMI's zero
+conflates "unrelated" with "never co-occurred". A story is a document of its own association table,
+so the zero-evidence rate collapsed to a structural 0.0000 until leave-one-out fixed it. The
+frequency confound runs *opposite* to the obvious worry — NPMI rewards rare pairs, so `far` selects
+*commoner* words. The df-matched "second control" was a **null-enrichment filter**: it retained 100%
+of scenes where the dial did nothing and ~7% where it changed the word, so its +0.0140 was a mean
+over a sample 78% definitional zeros — read correctly, the two controls **agree**. And POS tagging
+on isolated words is uninformative (everything returns `NN`); my own probe reported a `NNS`/`VBD`/`JJ`
+mix only because I passed all twelve words in one call and nltk tagged them as a sentence.
+
+**Twelve hollow tests now.** The eleventh and twelfth were the same shape and the shape is no longer
+a surprise: whole *composition* functions — `analyse`, `build_observations`, `per_setting_table`, a
+step/manifest guard — imported by no test, where every leaf underneath was fixture-tested. Three
+independent mutants each rewrote a published claim while all 1,505 tests passed, one flipping
+`eureka_criterion_met` from false to **true**. A leaf-only suite has failed to catch this every
+single time. The next spec should test composition by default rather than treat each instance as an
+oversight.
+
+**What is worth keeping.** A controllable-generation mechanism that measurably works on a 123M model
+with a null control. Three eliminated hypotheses with evidence. And a measurement apparatus better
+than the result it measured: `scripts/eval_reach.py --rescore-from` re-derives every published number
+from stored generations with no model, tokenizer, or device — verified byte-identical under an import
+blocker that raises on `torch`/`transformers`/`ttnn`/`ttml`, with gold distances at max absolute
+error 0.0.
+
+**Unfinished.** A noun-preferring rank key — the only untested reason `far` picks `look` over
+`comet` — was started and stopped when this was shelved. 93.4% of model turns offer 2+ candidates,
+so it would have acted nearly always; `comet`/`volcano`/`dragon` tag `NN` and survive the gate,
+while `unicorn`/`teddy` tag `JJ` and are rejected. Resume there if the corpus changes.
