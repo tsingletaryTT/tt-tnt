@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass, asdict
 from typing import Callable, Dict, List, Optional
 
+from train.dialogue import split_sentences_dialogue
+
 SLOT_NAMES = ("offer", "accept", "add", "stakes", "handback")
 STAKES_VALUES = ("up", "level", "down")
 
@@ -22,7 +24,6 @@ they them his her their him us we you your i me my not no nor do did does done h
 has had will would can could should may might must very just
 """.split())
 
-_SENT_SPLIT = re.compile(r'(?<=[.!?"])\s+')
 _WORD = re.compile(r"[A-Za-z']+")
 
 
@@ -39,7 +40,23 @@ class Slots:
 
 
 def split_sentences(text: str) -> List[str]:
-    return [s.strip() for s in _SENT_SPLIT.split(text.strip()) if s.strip()]
+    r"""Sentence split. Delegates to `train.dialogue.split_sentences_dialogue`.
+
+    CLEAN CUTOVER, 2026-08-23. This used to be ``re.split(r'(?<=[.!?"])\s+')``, which broke
+    ``'"It catches the light!" said her friend.'`` into two units -- the quote and its own
+    attribution tag -- and cost the stage-2 eval population 43% of the corpus's dialogue
+    (54.6% -> 31.0% of units). Approved in
+    ``docs/superpowers/specs/2026-08-23-reach-dial-design.md`` ("The splitter, fixed
+    properly"): ONE splitter in the tree, and stage 1 re-derived and REPUBLISHED with the
+    new numbers beside the old rather than silently overwritten -- see
+    ``docs/measurements/improv-stage1.json``'s ``superseded_by`` and
+    ``derivation_republished_2026_08_23``.
+
+    A thin delegation, not a copy: a second splitter in the tree is exactly what the spec
+    forbids. Everything reached through this name (``train.skit``, ``scripts.score_improv``,
+    ``scripts.derive_traces``, ``scripts.eval_skits``) picks up the new behaviour from here.
+    """
+    return split_sentences_dialogue(text)
 
 
 def content_words(text: str) -> List[str]:

@@ -28,19 +28,27 @@ Measured on 2,000 stories: 99.8% have >= 7 sentences, and a five-turn skit is me
 p99 257 / max 327 tokens, so 100% fit the 512 window even after tile alignment. The window
 is not a constraint here.
 
-KNOWN LIMITATION: split_sentences (in train.improv) over-splits dialogue with attribution.
-A sentence like '"It says!" said Person.' splits into two sentences: the quote and the
-dialogue tag separately. This causes some skits to drop when a model turn fails to carry
-any words from a partner turn that ended with dialogue. This is deliberate: the limitation
-exists in published stage-1 results and fixing the splitter would break reproducibility of
-those measurements. Skit derivation will show measurably higher drop rates on stories with
-dialogue-ending turns until the splitter is fixed as a standalone change with re-publication
-of stage-1 provenance.
+RESOLVED 2026-08-23 (was: KNOWN LIMITATION). split_sentences used to over-split dialogue
+with attribution -- '"It says!" said Person.' became two sentences, the quote and the tag --
+and skits dropped whenever a model turn could not carry a word from a partner turn that
+ended in dialogue. That was held deliberately, because the published stage-1 measurement
+sat behind the old splitter's output. The 2026-08-23 reach-dial spec approved the fix as a
+clean cutover WITH republication: `train.improv.split_sentences` now delegates to
+`train.dialogue.split_sentences_dialogue`, and `docs/measurements/improv-stage1.json`
+carries the new derivation numbers beside the old ones. Nothing in this module changed for
+it; the drop pressure named above simply went away.
+
+SENTENCE SLICING IS NOT THE ONLY SHAPE. `derive_skit` slices consecutive sentences, which
+means its "partner" turns are the same narrator continuing -- the reason
+`handback_anticipation` could not be measured in stage 2. `derive_skit_from_turns` is the
+same slot derivation over turns supplied by the CALLER, which is how
+`scripts/derive_dialogue_skits.py` builds skits from real two-speaker exchanges
+(`train.dialogue.extract_dialogue_turns`) without forking any of this.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from train.improv import (STAKES_EPSILON, Slots, content_words, render_think,
                           split_sentences)
@@ -119,25 +127,34 @@ def _slots_for_turn(offer_text: str, established: List[str], turn: str, prev_tur
     )
 
 
-def derive_skit(story: str, *, story_id: int, idf: Dict[str, float],
-                intensity: Callable[[str], float]) -> Optional[Skit]:
-    """One skit from one story, or None to drop it.
+def derive_skit_from_turns(prefix: str, turns: Sequence[str], *, story_id: int,
+                           idf: Dict[str, float],
+                           intensity: Callable[[str], float]) -> Optional[Skit]:
+    """One skit from a prefix and five ALREADY-CHOSEN turns, or None to drop it.
+
+    This is the slot derivation proper, with no opinion about where the turns came from.
+    `derive_skit` supplies consecutive sentences; `scripts/derive_dialogue_skits.py`
+    supplies real alternating quoted utterances. Both get identical slots, identical drop
+    semantics and identical `Skit` objects, because there is exactly one implementation --
+    forking it is how the two paths would silently diverge.
 
     DROP RULE: if ANY of the three model turns fails derivation, the WHOLE skit is dropped.
     A partial skit would silently change what the model sees, and a think-block present for
     two turns and absent for the third teaches the wrong thing.
+
+    `offer` for block 0 is the WHOLE prefix (there is no partner turn yet); for blocks 1 and
+    2 it is the immediately preceding partner turn. `established` is every content word in
+    the scene so far -- prefix plus all earlier turns -- so `add` means new to the SCENE and
+    not merely new to this turn. See `_slots_for_turn` for both, including the block-0
+    erratum in the stage-2 spec.
     """
-    sents = split_sentences(story)
-    if len(sents) < MIN_SENTENCES:
-        return None
-    prefix = " ".join(sents[0:2])
-    turns = tuple(sents[2:7])
-    if len(turns) != 5:
+    turns = tuple(turns)
+    if len(turns) != len(SKIT_ROLES):
         return None
 
     blocks: List[Slots] = []
     for i, t_idx in enumerate(MODEL_TURNS):
-        prev = turns[t_idx - 1] if t_idx > 0 else " ".join(sents[0:2])
+        prev = turns[t_idx - 1] if t_idx > 0 else prefix
         offer = prev
         established = content_words(prefix) + [w for j in range(t_idx)
                                                for w in content_words(turns[j])]
@@ -147,6 +164,21 @@ def derive_skit(story: str, *, story_id: int, idf: Dict[str, float],
             return None
         blocks.append(got)
     return Skit(story_id=story_id, prefix=prefix, turns=turns, blocks=tuple(blocks))
+
+
+def derive_skit(story: str, *, story_id: int, idf: Dict[str, float],
+                intensity: Callable[[str], float]) -> Optional[Skit]:
+    """One skit from one story by CONSECUTIVE-SENTENCE slicing, or None to drop it.
+
+    Prefix is sentences 0-1, turns are sentences 2-6. The "partner" turns this produces are
+    the same narrator continuing, which is why the dialogue path exists; this function is
+    kept unchanged because the published stage-2 measurement rests on it.
+    """
+    sents = split_sentences(story)
+    if len(sents) < MIN_SENTENCES:
+        return None
+    return derive_skit_from_turns(" ".join(sents[0:2]), sents[2:7], story_id=story_id,
+                                  idf=idf, intensity=intensity)
 
 
 def skit_segments(skit: Skit) -> List[Tuple[str, bool]]:
