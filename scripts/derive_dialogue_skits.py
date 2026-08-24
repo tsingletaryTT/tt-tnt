@@ -452,7 +452,13 @@ def ruling_c_report(lengths_all: List[int], lengths_kept: List[int], excluded: i
             "kept_max": max(lengths_kept) if lengths_kept else None,
             "note": "Excluded, NOT truncated. A truncated example teaches a scene that "
                     "stops mid-turn; task 1 measured 2.82% over the window and there is "
-                    "yield headroom, so they are dropped under their own rule."}
+                    "yield headroom, so they are dropped under their own rule.",
+            "denominator_caveat":
+                "candidates_measured is the skits that reached the length gate and were "
+                "either kept or excluded by it. The handful dropped LATER (reach_no_evidence) "
+                "had a length too, but it is not carried out of screen_candidate, so they are "
+                "absent here. That makes excluded_fraction very slightly overstated -- by "
+                "the reach_no_evidence share, which is under 1%."}
 
 
 def same_speaker_filter_report(counts: Dict[str, int], *, mode: str) -> dict:
@@ -855,6 +861,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "rule": "the eval split is the TAIL of the file in derivation order; no RNG "
                     "(same convention as scripts/train_skits.py's hold-out)",
             "each_row_carries_its_split": True,
+            "TRAINER_MUST_RESPECT_THIS":
+                "scripts/train_skits.py holds out its own tail of --val-size (default 256) "
+                "examples, which is NOT this split. If a reach arm trains with that default "
+                "it will train on most of the rows marked `eval` here, and the tercile cut "
+                "points -- fitted on `train` only -- stop meaning anything, because the eval "
+                "population was in the fit's population after all. Whatever trains on this "
+                "file must split on the `split` FIELD, not on a size.",
         },
         "reach": reach_report(
             distances_train, distances_all, buckets_train, buckets_eval, lo, hi,

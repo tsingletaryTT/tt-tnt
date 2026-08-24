@@ -35,8 +35,11 @@ table coverage. Two things are done about it:
   * The table is built over **ALL within-story content-word co-occurrence** (document = one
     whole story, symmetric, every pair), not over the sparse directional
     ``(prefix_word, turn_word)`` pairs that produced the original diagnosis. That alone cut
-    the exactly-zero rate on real observations from **6.7% to 0.54%** (measured, 50,000
-    stories; the shipped run re-measures it and writes it into the manifest).
+    the exactly-zero rate on real observations from **6.7% to 0.54%** -- measured over a table
+    of 50,000 stories scoring skits drawn from 400,000, so most scored stories were OUTSIDE
+    the table and the 0.54% is a genuine coverage figure. (When the scored story IS in the
+    table the rate collapses to a structural 0.0000, which is the tautology the holdout below
+    exists to undo.) The shipped run re-measures it and writes it into the manifest.
   * What remains is EXCLUDED, never binned. `reach_distance` returns **None** when no context
     word has any co-occurrence evidence with the `add` word, and the caller drops that skit
     under its own named rule. A pair that HAS evidence and still scores 0.0 (negatively
