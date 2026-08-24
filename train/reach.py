@@ -11,8 +11,8 @@ something that is not in front of it. This module turns that into a **dial**: th
 declares `reach: near|mid|far`, derived from how distant the `add` word is from the scene, and
 at inference the declaration becomes an INPUT -- set `reach: far`, get a more distant beat.
 
-TWO INSTRUMENT PROBLEMS, BOTH FOUND BEFORE THIS MODULE EXISTED
-==============================================================
+THREE INSTRUMENT PROBLEMS: TWO KNOWN BEFORE THIS MODULE EXISTED, ONE FOUND BUILDING IT
+======================================================================================
 
 **1. DIRECTION. High NPMI means TIGHTLY ASSOCIATED, which is a NEAR reach.** Verified against
 a real association table: ``npmi(dog, bark) = +0.1161``, ``npmi(dog, tail) = +0.1296``,
@@ -24,8 +24,8 @@ The structural defence, not just a comment: **nothing in this module ranks an as
 `reach_distance` returns ``1 - npmi``, an actual distance, so every comparison downstream
 reads in the natural direction -- small distance is `near`, large is `far`, `reach_bucket`
 uses plain ``<``, and there is no descending sort anywhere to get backwards.
-`test_a_hand_built_near_pair_and_far_pair_land_in_the_expected_buckets` pins it, and dies if
-the comparisons flip.
+`test_a_hand_built_near_pair_and_a_hand_built_far_pair_land_in_the_expected_buckets` pins
+it, and dies if the comparisons flip.
 
 **2. ZERO-INFLATION. `npmi` returns exactly 0.0 for BOTH "no association" and "never
 co-occurred in the table".** Those are opposite claims -- one is a measurement, the other is
@@ -50,6 +50,20 @@ table coverage. Two things are done about it:
     no-evidence rate falls to a structural 0.0000 and a rare `add` word paired with a rare
     context word scores a PERFECT association manufactured by the very scene being scored.
     See `pair_counts` for the measured size of that effect.
+
+**3. THE DIAL IS PARTLY A RARITY DIAL, and it runs opposite to the obvious worry.** NPMI is
+not frequency-neutral: two RARE words that co-occur at all score high, while a COMMON word's
+NPMI with anything is bounded low by its own marginal. So a rare `add` word tends to score
+NEAR and a common one tends to score FAR -- and `add` is chosen as the rarest fresh word in
+the turn. Measured: ``spearman(add-word document frequency, distance) = +0.306``; the `add`
+word's median document-frequency rank is 1,100 in `near` against 444 in `far`.
+
+This one is NOT fixed here, because it is a property of the measure rather than a bug in the
+plumbing. It is PUBLISHED as a number instead -- `frequency_confound`, per bucket, plus an
+`add_df` on every written row -- so an eval can control for it. The consequence is worth
+stating plainly: **a monotone, significant near < mid < far on realised distance is not by
+itself evidence the model reached further. It is equally consistent with the model reaching
+for a commoner word.**
 
 WHY `reach` IS RENDERED BEFORE `add`
 -----------------------------------
