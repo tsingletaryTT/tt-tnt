@@ -568,6 +568,122 @@ def _rel(path: Path) -> str:
         return str(p)
 
 
+class _EarlyStop(Exception):
+    """Raised from inside `EarlyStopOnPlateau.on_eval_end` to break `SFTTrainer.train()`.
+
+    `SFTTrainer.train()` iterates `for _ in tqdm(range(self.step, cfg.max_steps))` and
+    offers no `should_stop` flag, no early-exit return, and no way for a callback to
+    influence the loop -- the hooks are fire-and-forget. An exception is therefore the
+    only mechanism available, and it is used deliberately rather than as a shortcut:
+    control returns to `main`, which records WHY it stopped and saves a checkpoint at the
+    stopping step. Callers MUST catch it; an uncaught `_EarlyStop` would unwind past
+    `close_device_mesh` teardown as an ordinary failure.
+    """
+
+    def __init__(self, step: int, reason: str) -> None:
+        super().__init__(f"early stop at step {step}: {reason}")
+        self.step = step
+        self.reason = reason
+
+
+class EarlyStopOnPlateau:
+    """Stop training when validation loss has not improved for `patience` consecutive evals.
+
+    WHY THIS EXISTS
+    ---------------
+    The first pair of arms trained a flat 3000 steps -- an INHERITED budget matched to
+    stage 2, not a convergence criterion -- and both were still falling monotonically at
+    the end (dial 1.2046 -> 0.7124, nodial 1.2795 -> 0.7514). Every effect measured on
+    those arms is therefore a FLOOR, and one pre-declared adherence gate that failed may
+    be an undertraining artefact rather than a property of the dial. A budget that ends
+    when the val curve stops improving replaces "we ran out of steps" with a statement
+    about the model.
+
+    WHAT COUNTS AS AN IMPROVEMENT
+    -----------------------------
+    Strictly lower than the best validation loss seen so far (`min_delta` = 0.0 by
+    default). The counter resets on every improvement, so `patience` counts CONSECUTIVE
+    non-improving evals, not cumulative ones -- a curve that ratchets down slowly, one
+    improvement every few evals, keeps training. That is the intended behaviour: the
+    question is whether the curve has flattened, and a curve still finding new minima has
+    not.
+
+    Note that the run therefore ends `patience * eval_interval` steps AFTER the best
+    checkpoint. `best_step` / `best_loss` are recorded so the distinction between "the
+    step we stopped at" and "the step that was best" stays visible in the manifest rather
+    than being collapsed into one number.
+
+    Duck-typed on `TrainerCallback` for the same reason `LossRecorder` is: the trainer
+    calls exactly the hooks it fires and nothing enforces a base class.
+    """
+
+    def __init__(self, patience: int, min_delta: float = 0.0) -> None:
+        if patience < 0:
+            raise ValueError(f"patience must be >= 0, got {patience}")
+        self.patience = patience
+        self.min_delta = float(min_delta)
+        self.best_loss: float | None = None
+        self.best_step: int | None = None
+        #: consecutive evals since the last improvement
+        self.since_best = 0
+        self.stopped_at: int | None = None
+
+    # -- hooks the trainer fires; all no-ops but on_eval_end ------------------------
+    def on_train_begin(self, trainer) -> None:
+        pass
+
+    def on_after_forward(self, trainer, batch, loss) -> None:
+        pass
+
+    def on_after_backward(self, trainer, batch) -> None:
+        pass
+
+    def on_step_end(self, trainer, step, *args, **kwargs) -> None:
+        pass
+
+    def on_before_optimizer_step(self, trainer) -> None:
+        pass
+
+    def on_save(self, trainer, step, path) -> None:
+        pass
+
+    def on_train_end(self, trainer) -> None:
+        pass
+
+    def on_eval_end(self, trainer, step, eval_loss) -> None:
+        loss = float(eval_loss)
+        if self.best_loss is None or loss < self.best_loss - self.min_delta:
+            self.best_loss = loss
+            self.best_step = int(step)
+            self.since_best = 0
+            return
+        self.since_best += 1
+        # patience == 0 disables the stopper entirely: nothing to compare against yet on
+        # the first eval, and a zero budget for non-improvement would end every run at its
+        # second eval point.
+        if self.patience > 0 and self.since_best >= self.patience:
+            self.stopped_at = int(step)
+            raise _EarlyStop(
+                int(step),
+                f"validation loss has not improved for {self.since_best} consecutive "
+                f"evals (best {self.best_loss} at step {self.best_step})",
+            )
+
+    def report(self) -> Dict[str, Any]:
+        """The stopper's state, for the manifest."""
+        return {
+            "patience_evals": self.patience,
+            "min_delta": self.min_delta,
+            "best_val_loss": self.best_loss,
+            "best_val_step": self.best_step,
+            "evals_since_best_at_end": self.since_best,
+            "triggered": self.stopped_at is not None,
+            "triggered_at_step": self.stopped_at,
+            "rule": "stop when validation loss has not been beaten for `patience` "
+                    "CONSECUTIVE evals; the counter resets on every new minimum",
+        }
+
+
 def _order_fingerprint(loader, epoch: int = 0) -> Dict[str, Any]:
     """A checkable fingerprint of the order this loader will visit examples in.
 
@@ -621,6 +737,12 @@ def main(argv: List[str] | None = None) -> int:
                     help="SFTConfig.eval_interval -- steps between validation passes. "
                          "0 disables evaluation entirely, which is what silently cost "
                          "stage 1 its whole validation curve.")
+    ap.add_argument("--early-stop-patience", type=int, default=0,
+                    help="stop when validation loss has not improved for this many "
+                         "CONSECUTIVE evals (0 = never stop early, run the full --steps). "
+                         "At --eval-every 250 a patience of 6 is 1500 steps of no new "
+                         "minimum. Requires a validation curve (--val-cap > 0); with no "
+                         "eval dataloader no eval ever fires and this can never trigger.")
     ap.add_argument("--warm-start", type=Path, default=WARM_START_CKPT)
     ap.add_argument("--dry-run", action="store_true",
                     help="build the examples, run the split guard and report the length "
@@ -741,6 +863,14 @@ def main(argv: List[str] | None = None) -> int:
 
         curve_path = out / "loss_curve.jsonl"
         recorder = LossRecorder(curve_path)
+        stopper = (EarlyStopOnPlateau(args.early_stop_patience)
+                   if args.early_stop_patience > 0 and val_loader is not None else None)
+        if args.early_stop_patience > 0 and val_loader is None:
+            raise SystemExit(
+                "--early-stop-patience was given but there is no validation dataloader "
+                "(--val-cap 0, or no held-out rows survived). Early stopping would then "
+                "silently never trigger and the run would look like a full-budget run "
+                "that simply never converged.")
         trainer = SFTTrainer(
             model=model, train_dataloader=loader, eval_dataloader=val_loader,
             config=SFTConfig(max_steps=args.steps, learning_rate=args.lr, seed=args.seed,
@@ -751,13 +881,38 @@ def main(argv: List[str] | None = None) -> int:
                              max_grad_norm=1.0),
             optimizer={"type": "AdamW", "lr": args.lr, "weight_decay": 0.01,
                        "stochastic_rounding": True},
-            callbacks=[recorder],
+            callbacks=[recorder, stopper] if stopper is not None else [recorder],
         )
         assert_stochastic_rounding(trainer, args.arm)
         assert_eval_wired(trainer, val_size=len(val_examples), arm=args.arm)
 
-        trainer.train()
+        # `SFTTrainer.train()` has no early-exit path, so the stopper breaks out by
+        # raising. Catching it here -- and nowhere wider -- keeps a genuine failure
+        # distinguishable from a deliberate stop, and leaves the `finally:` device
+        # teardown below in charge either way.
+        stop_reason = "hit_max_steps"
+        try:
+            trainer.train()
+        except _EarlyStop as stop:
+            stop_reason = "converged"
+            print(f"[{args.arm}] EARLY STOP: {stop}")
         recorder.close()
+        stopping_step = int(trainer.step)
+        print(f"[{args.arm}] stopped at step {stopping_step} of a {args.steps}-step "
+              f"budget; reason={stop_reason}")
+        if stop_reason == "hit_max_steps" and stopper is not None:
+            print(f"[{args.arm}] NOTE: the budget was the binding constraint, not "
+                  f"convergence -- validation loss last improved at step "
+                  f"{stopper.best_step} ({stopper.since_best} eval(s) ago).")
+
+        # `save_interval` only fires on multiples of --save-every, so an early stop at, say,
+        # step 4250 would leave no checkpoint AT the stopping step and the gamma guard below
+        # nothing to check. Save one explicitly; `_save_checkpoint` writes to
+        # `step_{trainer.step}.pkl`, which is exactly the path the guard then reads.
+        final_ckpt = out / f"step_{stopping_step}.pkl"
+        if not final_ckpt.exists():
+            trainer._save_checkpoint()
+            print(f"[{args.arm}] saved stopping-step checkpoint {final_ckpt}")
 
         loss_start = recorder.history[0] if recorder.history else (None, None)
         loss_end = recorder.history[-1] if recorder.history else (None, None)
@@ -769,7 +924,8 @@ def main(argv: List[str] | None = None) -> int:
                   f"{recorder.eval_history[-1][0]}={recorder.eval_history[-1][1]}")
 
         # --- guard 2: did the gammas actually move? -------------------------------------
-        final_ckpt = out / f"step_{args.steps}.pkl"
+        # `final_ckpt` is the STOPPING-step checkpoint, saved above -- not step_{--steps},
+        # which an early-stopped run never reaches.
         gamma_report: Dict[str, Any]
         if final_ckpt.exists():
             gamma_report = compare_gammas(read_base_gammas(Path(args.warm_start)),
@@ -833,9 +989,29 @@ def main(argv: List[str] | None = None) -> int:
                                f"regardless."),
             "block_schema": schema,
             "steps": args.steps,
-            "steps_note": "3000 is an INHERITED BUDGET, matched to stage 2 for "
-                          "comparability. It is not a convergence criterion and no "
-                          "convergence was demonstrated at it.",
+            "steps_note": ("--steps is a CEILING, not a schedule. The first pair of arms "
+                           "ran a flat 3000 steps -- an inherited budget matched to stage "
+                           "2 for comparability, not a convergence criterion -- and both "
+                           "were still falling monotonically at the end. This run stops on "
+                           "the validation curve instead; see stop_reason."
+                           if stopper is not None else
+                           "no early-stopping criterion was in force: this run trained the "
+                           "full --steps budget by construction, so its endpoint says "
+                           "nothing about convergence."),
+            "max_steps_budget": args.steps,
+            "stopping_step": stopping_step,
+            "stop_reason": stop_reason,
+            "stop_reason_meaning": {
+                "converged": "validation loss went --early-stop-patience consecutive "
+                             "evals without a new minimum, and training was cut short of "
+                             "--steps",
+                "hit_max_steps": "the --steps ceiling was reached first. If an early-stop "
+                                 "criterion was in force and did NOT fire, the BUDGET is "
+                                 "still the binding constraint and this run, like the "
+                                 "3000-step arms before it, demonstrates no convergence.",
+            }[stop_reason],
+            "early_stopping": (stopper.report() if stopper is not None
+                               else {"enabled": False}),
             "lr": args.lr,
             "batch_size": args.batch_size,
             "eval_interval": args.eval_every if val_loader else 0,
@@ -868,6 +1044,10 @@ def main(argv: List[str] | None = None) -> int:
                                else None),
             "val_loss_last": (recorder.eval_history[-1] if recorder.eval_history
                               else None),
+            #: The whole validation trajectory, so "did it flatten?" is answerable from
+            #: the manifest alone rather than only from the interleaved per-step curve.
+            "val_loss_curve": [[int(st), float(lo)] for st, lo in recorder.eval_history],
+            "final_checkpoint": _rel(final_ckpt),
             "gamma_check": gamma_report,
         }
         (out / "train_manifest.json").write_text(json.dumps(manifest, indent=2))
