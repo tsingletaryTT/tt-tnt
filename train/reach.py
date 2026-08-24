@@ -354,6 +354,89 @@ def bucket_balance(buckets: Sequence[str]) -> Dict[str, object]:
     }
 
 
+def spearman(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
+    """Spearman rank correlation, TIE-AWARE, or None when either side has no spread.
+
+    Tie handling is not a detail here: the `x` this is used on is the `add` word's document
+    frequency, and the same word recurs across hundreds of observations, so a naive
+    ordinal-position ranking would invent an ordering inside every tied block and report a
+    correlation that is partly an artefact of input order. Ties get their average rank.
+
+    None rather than 0.0 when a side is constant -- "no variance to correlate" and "no
+    correlation" are different claims, and a published 0.0 would hide a degenerate input.
+    """
+    if len(xs) != len(ys):
+        raise ValueError(f"length mismatch: {len(xs)} vs {len(ys)}")
+    if len(xs) < 2:
+        return None
+
+    def ranks(vs: Sequence[float]) -> List[float]:
+        order = sorted(range(len(vs)), key=lambda i: vs[i])
+        out = [0.0] * len(vs)
+        i = 0
+        while i < len(order):
+            j = i
+            while j + 1 < len(order) and vs[order[j + 1]] == vs[order[i]]:
+                j += 1
+            avg = (i + j) / 2.0
+            for k in range(i, j + 1):
+                out[order[k]] = avg
+            i = j + 1
+        return out
+
+    rx, ry = ranks(xs), ranks(ys)
+    mx = sum(rx) / len(rx)
+    my = sum(ry) / len(ry)
+    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    den = math.sqrt(sum((a - mx) ** 2 for a in rx) * sum((b - my) ** 2 for b in ry))
+    if den == 0:
+        return None
+    return num / den
+
+
+def frequency_confound(add_dfs: Sequence[int], distances: Sequence[float],
+                       buckets: Sequence[str]) -> Dict[str, object]:
+    """How much of the dial is a RARITY dial rather than a semantic-distance dial.
+
+    THE MOST IMPORTANT CAVEAT THIS MODULE PUBLISHES, and it runs opposite to the obvious
+    worry. NPMI is not frequency-neutral: two RARE words that co-occur at all score high
+    (their expected co-occurrence under independence is tiny), while a COMMON word's NPMI with
+    anything is bounded low by its own marginal. So a rare `add` word tends to score NEAR and a
+    common one tends to score FAR -- which means `reach: far` partly selects COMMON words.
+
+    Measured on 20,000 stories before this function existed: spearman(add-word document
+    frequency, distance) = **+0.306**, and the median document-frequency RANK of the `add` word
+    is 1,100 in `near` against 444 in `far` (higher rank = rarer). Moderate, not total -- about
+    9% of rank variance -- but it is exactly the kind of thing that makes a "significant,
+    monotone" dial result mean something other than what it says on the tin.
+
+    Reported here, per bucket, so an eval can CONTROL for it rather than merely be warned:
+    every written row also carries its own `add_df`, so the covariate needs no re-derivation.
+    A positive `spearman_df_vs_distance` means commoner `add` words score as farther.
+    """
+    per_bucket: Dict[str, object] = {}
+    for v in REACH_VALUES:
+        dfs = sorted(df for df, b in zip(add_dfs, buckets) if b == v)
+        per_bucket[v] = {
+            "n": len(dfs),
+            "median_add_df": (dfs[len(dfs) // 2] if dfs else None),
+            "mean_add_df": (round(sum(dfs) / len(dfs), 1) if dfs else None),
+        }
+    rho = spearman(add_dfs, distances)
+    return {
+        "spearman_df_vs_distance": (round(rho, 4) if rho is not None else None),
+        "sign_means": "POSITIVE = commoner `add` words score as FARTHER, i.e. `reach: far` "
+                      "partly selects common words. This is a property of NPMI (rare words "
+                      "that co-occur at all score high; a common word's NPMI is bounded low "
+                      "by its own marginal), not of this implementation.",
+        "per_bucket": per_bucket,
+        "eval_must_control_for_this":
+            "A near<mid<far result on realised distance is NOT by itself evidence the model "
+            "reached further, because it could equally be evidence the model reached for a "
+            "commoner word. Every row carries `add_df`; match or covary on it.",
+    }
+
+
 # --------------------------------------------------------------------------------------
 # stakes, as a continuous delta  (ruling D)
 # --------------------------------------------------------------------------------------
@@ -514,7 +597,8 @@ def reach_slot_names_of(slots) -> Tuple[str, ...]:
 
 __all__ = ["REACH_VALUES", "REACH_SLOT_NAMES", "ReachSlots", "parse_reach_think", "Association", "pair_key", "pair_counts",
            "build_association", "pair_has_evidence", "npmi", "reach_distance",
-           "fit_reach_terciles", "reach_bucket", "bucket_balance", "stakes_delta",
+           "fit_reach_terciles", "reach_bucket", "bucket_balance", "spearman",
+           "frequency_confound", "stakes_delta",
            "format_stakes_delta", "parse_stakes_delta", "stakes_label",
            "block_context_words", "add_word_of", "skit_reach_distances",
            "skit_reach_distances_per_block",

@@ -87,9 +87,9 @@ from train.dialogue import (MIN_UTTERANCES, adjacent_gaps,  # noqa: E402
                             split_sentences_dialogue, voice_changes_throughout)
 from train.improv import content_words  # noqa: E402
 from train.reach import (REACH_SLOT_NAMES, REACH_VALUES, Association,  # noqa: E402
-                         bucket_balance, build_association, fit_reach_terciles,
-                         skit_reach_distances, skit_reach_distances_per_block,
-                         skit_stakes_deltas, with_reach)
+                         add_word_of, bucket_balance, build_association,
+                         fit_reach_terciles, frequency_confound, skit_reach_distances,
+                         skit_reach_distances_per_block, skit_stakes_deltas, with_reach)
 from train.skit import (MODEL_TURNS, PARTNER_TURNS, SKIT_ROLES,  # noqa: E402,F401
                         Skit, derive_skit_from_turns, skit_segments)
 
@@ -515,7 +515,7 @@ def reach_report(distances_train: List[float], distances_all: List[float],
                  buckets_train: List[str], buckets_eval: List[str],
                  lo: float, hi: float, zero_evidence_skits: int,
                  zero_evidence_observations: int, observations_examined: int,
-                 assoc_meta: dict) -> dict:
+                 assoc_meta: dict, add_dfs: List[int]) -> dict:
     """The manifest's `reach` block: the table, the zeros, the cut points, the balance.
 
     Everything an eval needs in order NOT to re-fit anything, and everything a reader needs
@@ -531,6 +531,9 @@ def reach_report(distances_train: List[float], distances_all: List[float],
       * `bucket_balance` -- train and eval separately: the eval split is bucketed with the
         TRAIN cut points, so its balance drifting is a real finding about the tail of the
         file, not a re-fit.
+      * `frequency_confound` -- how much of the dial is a RARITY dial. NPMI is not
+        frequency-neutral, so `far` partly selects COMMON `add` words. Published as a number
+        per bucket rather than as a caveat, because an eval can control for a number.
     """
     s = sorted(distances_all)
 
@@ -586,6 +589,8 @@ def reach_report(distances_train: List[float], distances_all: List[float],
         },
         "bucket_balance_train": bucket_balance(buckets_train),
         "bucket_balance_eval": bucket_balance(buckets_eval),
+        "frequency_confound": frequency_confound(add_dfs, distances_all,
+                                                 buckets_train + buckets_eval),
     }
 
 
@@ -805,6 +810,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     buckets_train: List[str] = []
     buckets_eval: List[str] = []
+    add_dfs: List[int] = []
     distances_all: List[float] = []
     lengths_kept: List[int] = []
     with args.out.open("w") as fh:
@@ -820,6 +826,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # test_bucket_balance_on_the_real_artifact on story 717.
             row["reach_distances"] = list(cand.distances)
             row["stakes_deltas"] = list(cand.deltas)
+            # The covariate the frequency confound has to be controlled for. Carried per
+            # observation so an eval never has to re-derive a document-frequency table to
+            # match on it. See train.reach.frequency_confound.
+            row["add_df"] = [assoc.uni.get(add_word_of(b), 0) for b in skit.blocks]
+            add_dfs.extend(row["add_df"])
             fh.write(json.dumps(row) + "\n")
             got = [b.reach for b in skit.blocks]
             (buckets_train if k < n_train else buckets_eval).extend(got)
@@ -874,6 +885,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             zero_evidence_skits=drops.get("reach_no_evidence", 0),
             zero_evidence_observations=counts["reach_observations_no_evidence"],
             observations_examined=counts["reach_observations"],
+            add_dfs=add_dfs,
             assoc_meta=association_meta(
                 assoc,
                 population=(f"the first {n_assoc:,} stories of the scan"

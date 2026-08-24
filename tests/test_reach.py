@@ -39,6 +39,7 @@ from train.reach import (REACH_SLOT_NAMES, REACH_VALUES, ReachSlots,  # noqa: E4
                          npmi, pair_counts, pair_has_evidence, pair_key,
                          parse_reach_think,
                          parse_stakes_delta,
+                         frequency_confound, spearman,
                          reach_bucket, reach_distance, reach_slot_names_of,
                          skit_reach_distances, skit_reach_distances_per_block,
                          skit_stakes_deltas, stakes_delta, stakes_label, with_reach)
@@ -290,6 +291,44 @@ def test_the_fitted_cuts_split_a_uniform_sample_into_near_thirds():
     assert bal["n"] == 300
     assert bal["max_fraction"] < 0.4, bal
     assert min(bal["counts"].values()) > 90, bal
+
+
+def test_spearman_is_tie_aware_and_says_when_there_is_no_spread():
+    """Tie handling is load-bearing: the x this runs on is the `add` word's document
+    frequency, and the same word recurs across hundreds of observations. A naive
+    ordinal-position ranking invents an order inside every tied block."""
+    assert spearman([1, 2, 3, 4], [1, 2, 3, 4]) == pytest.approx(1.0)
+    assert spearman([1, 2, 3, 4], [4, 3, 2, 1]) == pytest.approx(-1.0)
+    assert spearman([1, 1, 1], [1, 2, 3]) is None, "no spread is not zero correlation"
+    assert spearman([1.0], [2.0]) is None
+    # a fully tied x-block must not contribute an ordering: these two differ only in the
+    # ORDER of the tied entries, so a tie-blind implementation gives them different answers.
+    a = spearman([5, 5, 5, 9], [1, 2, 3, 4])
+    b = spearman([5, 5, 5, 9], [3, 2, 1, 4])
+    assert a == pytest.approx(b), (a, b)
+    with pytest.raises(ValueError, match="length mismatch"):
+        spearman([1, 2], [1])
+
+
+def test_frequency_confound_reports_the_direction_and_the_per_bucket_medians():
+    """The confound is published as a NUMBER so an eval can control for it.
+
+    Positive spearman = commoner `add` words score as FARTHER. The fixture is built with the
+    real direction (rare -> near) so the sign cannot be read backwards, and each bucket's
+    median document frequency is reported separately because that is what a matched eval needs.
+    """
+    dfs = [2, 3, 40, 50, 900, 1000]
+    dist = [0.1, 0.2, 0.5, 0.6, 0.9, 0.95]
+    buckets = ["near", "near", "mid", "mid", "far", "far"]
+    got = frequency_confound(dfs, dist, buckets)
+    assert got["spearman_df_vs_distance"] == pytest.approx(1.0)
+    assert got["per_bucket"]["near"]["median_add_df"] < \
+           got["per_bucket"]["far"]["median_add_df"]
+    assert got["per_bucket"]["mid"]["n"] == 2
+    assert "POSITIVE" in got["sign_means"]
+    # ...and the opposite direction really does flip the sign, so the fixture can fail
+    flipped = frequency_confound(dfs, list(reversed(dist)), buckets)
+    assert flipped["spearman_df_vs_distance"] == pytest.approx(-1.0)
 
 
 def test_bucket_balance_reports_the_majority_class_floor():

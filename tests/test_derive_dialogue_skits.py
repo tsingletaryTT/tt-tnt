@@ -754,7 +754,8 @@ def test_reach_report_records_everything_eval_must_not_refit():
                        ["near", "mid", "far"], ["far"], 0.5, 0.9,
                        zero_evidence_skits=3, zero_evidence_observations=4,
                        observations_examined=1000,
-                       assoc_meta={"documents": 7})
+                       assoc_meta={"documents": 7},
+                       add_dfs=[900, 50, 3, 40])
     assert rep["cut_points"]["lo"] == 0.5 and rep["cut_points"]["hi"] == 0.9
     assert rep["cut_points"]["n_fitted_on"] == 3
     assert rep["cut_points"]["npmi_equivalents"] == {"lo": 0.5, "hi": 0.1}
@@ -762,6 +763,7 @@ def test_reach_report_records_everything_eval_must_not_refit():
     assert rep["zero_evidence"]["skits_dropped"] == 3
     assert rep["bucket_balance_train"]["counts"] == {"near": 1, "mid": 1, "far": 1}
     assert rep["bucket_balance_eval"]["counts"] == {"near": 0, "mid": 0, "far": 1}
+    assert rep["frequency_confound"]["spearman_df_vs_distance"] is not None
     assert rep["slot_order"] == list(REACH_SLOT_NAMES)
     assert rep["distance_distribution"]["distinct"] == 4
 
@@ -790,6 +792,9 @@ def test_end_to_end_emits_the_reach_slot_and_records_the_cut_points(tmp_path):
         assert row["split"] in ("train", "eval")
         assert len(row["reach_distances"]) == len(MODEL_TURNS)
         assert len(row["stakes_deltas"]) == len(MODEL_TURNS)
+        assert len(row["add_df"]) == len(MODEL_TURNS)
+        assert all(n >= 1 for n in row["add_df"]), \
+            "an add word with df 0 could not have had evidence"
         for block in row["blocks"]:
             assert list(block) == list(REACH_SLOT_NAMES), "rendered slot order"
             assert block["reach"] in REACH_VALUES
@@ -989,6 +994,33 @@ def test_ruling_a_filter_cost_is_recorded_and_the_strict_reading_costs_more(reac
     assert sf["subject_reading"]["skits_dropped"] == \
         man["drops_by_rule"].get("same_voice_pair")
     assert sf["tag_only_pair_fraction"] > 0.25, "task 1 measured 0.3959 before the filter"
+
+
+@needs_artifacts(CORPUS, TOKENIZER, reason="the frequency confound is a scale property")
+def test_the_frequency_confound_is_measured_and_published(reach_scale):
+    """SPEC REQUIREMENT 5: every reported effect ships with its floor, and a
+    degenerate-by-construction metric says so inline.
+
+    NPMI is not frequency-neutral, so part of the dial is a RARITY dial: rare `add` words
+    score NEAR and common ones score FAR. That is not a bug to fix here, it is a confound to
+    publish -- and it must be published as a NUMBER, per bucket, because an eval can control
+    for a number and cannot control for a warning. The sign is asserted (not just the
+    magnitude) because reading it backwards would invert the advice given to the eval.
+    """
+    man, rows = reach_scale
+    fc = man["reach"]["frequency_confound"]
+    rho = fc["spearman_df_vs_distance"]
+    assert rho is not None
+    assert rho > 0.1, f"the confound is real on this corpus; got {rho}"
+    near = fc["per_bucket"]["near"]["median_add_df"]
+    far = fc["per_bucket"]["far"]["median_add_df"]
+    assert near < far, (near, far)          # near = rarer words, far = commoner words
+    assert all(fc["per_bucket"][v]["n"] > 0 for v in REACH_VALUES)
+    assert "add_df" in fc["eval_must_control_for_this"], \
+        "the advice must NAME the covariate, or an eval cannot act on it"
+    # the covariate really is on every row, so no eval has to rebuild a df table
+    total = sum(len(r["add_df"]) for r in rows)
+    assert total == man["kept"] * len(MODEL_TURNS)
 
 
 @needs_artifacts(CORPUS, TOKENIZER, reason="the stakes delta's spread is a scale property")
