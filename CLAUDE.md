@@ -2241,3 +2241,64 @@ lowercasing (6 red, including `come`/`give` wrongly rejected), and a content run
 onto `artifacts/reach-skits/`** — which is why `resolve_out_path` is a named function instead of
 two lines in `main`. The artifact test is the satisfying one: pointed at the old artifact it
 names **311 distinct particles** in the `add` slot; pointed at the new one the set is empty.
+
+## 2026-08-23/24 — the reach dial: a real control, on a corpus with nothing to reach for
+
+**Shelved after this entry.** The dial works, it is small, and the binding constraint turned out
+to be the corpus rather than the model. Suite **1655 passed, 2 skipped**.
+
+**The bet.** Stage 2's one publishable slot was `add`, and the reason was mechanical: its value is
+absent from the visible context ~40-44% of the time against **92.8% for `accept`**, which is mostly
+the protagonist's name. `add` is where the model names something not in front of it and then uses
+it. So: make that reach *controllable*. A `reach` slot — `near`/`mid`/`far` — derived as the tercile
+of the NPMI distance between the `add` word and what is already in play, rendered **before** `add`
+in the block because the block generates left to right and a dial declared after the word it
+governs cannot govern it.
+
+**It works.** Forcing the dial moves realised distance monotonically, scene-paired over 826
+held-out scenes, surviving frequency control: residualised `near`<`far` **+0.0604 (t 12.5)**, with
+~53% of the raw effect attributable to word frequency and ~47% surviving. A control arm that never
+saw the slot shows nothing. **The pre-declared EUREKA criterion was not met** on one gate — the
+`add`-hit rate — and I declined to loosen it, having earlier accepted an implementer's refusal to
+*tighten* a pre-declared gate after seeing data. That constraint is symmetric or it is worthless.
+
+**Three eliminations, each costing real compute.** More steps: at 3× the budget the effect moved
+0.08% — a plateau, not a floor, which **falsified my own published claim**. Undertraining: the
+adherence gate got *worse* at 9000 steps, refuting it. Vocabulary: a validated content-word filter
+(precision 0.949) removed every discourse particle and made the slot **more** concentrated with a
+**worse** frequency confound, because the particle mass collapsed onto common verbs. A slot can read
+better and measure worse.
+
+**The corpus is the ceiling.** TinyStories is 13,777 distinct words with the top 1,000 covering
+90.9% of tokens. `cathedral` 0, `submarine` 0, `meteor` 1. `far` collapsing to 88 distinct words
+against `near`'s 265 is a model faithfully reflecting a world with a thousand usable words in it.
+
+**Instrument problems, five of them, each found before it reached a conclusion.** NPMI's zero
+conflates "unrelated" with "never co-occurred". A story is a document of its own association table,
+so the zero-evidence rate collapsed to a structural 0.0000 until leave-one-out fixed it. The
+frequency confound runs *opposite* to the obvious worry — NPMI rewards rare pairs, so `far` selects
+*commoner* words. The df-matched "second control" was a **null-enrichment filter**: it retained 100%
+of scenes where the dial did nothing and ~7% where it changed the word, so its +0.0140 was a mean
+over a sample 78% definitional zeros — read correctly, the two controls **agree**. And POS tagging
+on isolated words is uninformative (everything returns `NN`); my own probe reported a `NNS`/`VBD`/`JJ`
+mix only because I passed all twelve words in one call and nltk tagged them as a sentence.
+
+**Twelve hollow tests now.** The eleventh and twelfth were the same shape and the shape is no longer
+a surprise: whole *composition* functions — `analyse`, `build_observations`, `per_setting_table`, a
+step/manifest guard — imported by no test, where every leaf underneath was fixture-tested. Three
+independent mutants each rewrote a published claim while all 1,505 tests passed, one flipping
+`eureka_criterion_met` from false to **true**. A leaf-only suite has failed to catch this every
+single time. The next spec should test composition by default rather than treat each instance as an
+oversight.
+
+**What is worth keeping.** A controllable-generation mechanism that measurably works on a 123M model
+with a null control. Three eliminated hypotheses with evidence. And a measurement apparatus better
+than the result it measured: `scripts/eval_reach.py --rescore-from` re-derives every published number
+from stored generations with no model, tokenizer, or device — verified byte-identical under an import
+blocker that raises on `torch`/`transformers`/`ttnn`/`ttml`, with gold distances at max absolute
+error 0.0.
+
+**Unfinished.** A noun-preferring rank key — the only untested reason `far` picks `look` over
+`comet` — was started and stopped when this was shelved. 93.4% of model turns offer 2+ candidates,
+so it would have acted nearly always; `comet`/`volcano`/`dragon` tag `NN` and survive the gate,
+while `unicorn`/`teddy` tag `JJ` and are rejected. Resume there if the corpus changes.

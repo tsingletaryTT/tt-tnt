@@ -42,13 +42,14 @@ five-slot think-blocks in **98%** of generations where a control arm emits none.
 | Multi-chip DDP | ✅ `[1,2]` / ⚠️ `[1,4]` | the 4-chip mesh froze the host |
 | Sparse MoE (Mixture of Enthusiasts) | ✅ | replicated at two seeds |
 | Die-region expert routing | ✅ | 0.0118 nats to freeze to physical address |
-| Thinking (five-slot think-blocks) | ✅ format / ⏳ effect | steers, does not yet govern |
+| Thinking (five-slot think-blocks) | ✅ format / ⚠️ effect | steers measurably; does not govern |
 | Per-core Gumbel sampling on device | ✅ | custom kernels, per-core RNG |
 | vLLM serving (TT plugin) | ✅ | OpenAI-compatible |
 | `tt-model` packaging | ✅ v4 / ⏳ v5 | v5 needs wheels assembled |
 | CPU-portable HF export | ✅ | runs without Tenstorrent hardware |
 | Tool calling / chat template | ➖ | base completion model by design |
-| Skits (multi-turn improv) | ⏳ | next |
+| Skits (multi-turn improv) | ✅ | five-turn scenes, real two-voice dialogue |
+| Reach dial (controllable surprise) | ⚠️ measured, small | +0.060 residualised; plateaus; see below |
 
 This card also records where the model fails, because a card that does not is
 not useful. It is not a claim that the model is good.
@@ -155,6 +156,65 @@ One process note kept deliberately: an earlier pass reported 0% adherence, from 
 all 17 RMSNorm gammas were provably frozen because `stochastic_rounding` defaults off on the SFT
 path. With the gammas free, 0% became 98%. Both runs are preserved in the repo's measurement
 files.
+
+## The reach dial, and why this line of work is paused
+
+**2026-08-23/24.** The last experiment on this checkpoint asked whether the model's declared
+plan can be turned into a *control*: force a `reach` slot to `near` / `mid` / `far` and see
+whether the model reaches a correspondingly distant word.
+
+**It works, and it is small.** Forcing the dial moves the realised semantic distance of the
+model's `add` word monotonically — `near` < `mid` < `far` — scene-paired over 826 held-out
+scenes, and it **survives frequency control**. NPMI is not frequency-neutral (rare co-occurring
+pairs score high, common words are capped low), so a raw effect would partly be "`far` picked a
+commoner word". Residualising on log document frequency:
+
+| contrast | raw | frequency-residualised |
+|---|---|---|
+| `near` < `mid` | +0.0839 (t 16.2) | +0.0324 (t 7.4) |
+| `mid` < `far` | +0.0456 (t 13.9) | +0.0281 (t 9.0) |
+| `near` < `far` | +0.1295 (t 23.3) | **+0.0604 (t 12.5)** |
+
+About **53% of the raw effect is word frequency; ~47% survives.** A control arm that never saw a
+`reach` slot shows nothing (t 2.36 / −0.30 / 2.35, not one step significant) — and two of those
+sit between stage 1's threshold and this eval's, so importing the old constant would have turned
+the *negative control* positive.
+
+**The pre-declared EUREKA criterion was not met**, on one gate: the `add` slot-hit rate does not
+hold across settings (worst-vs-best shortfall 0.0896). The failure is a *`near`-side dip*, not the
+`far`-side collapse the gate was written to catch — `far` is +0.030 **above** `near`. The gate was
+in the code before the data, so it stands as written rather than being narrowed afterwards.
+
+### Three explanations eliminated, with evidence
+
+- **More training does not help.** At 3× the budget (9000 steps) the effect is +0.060392 against
+  +0.060438 — a **0.08% change**, with 38.8% of continuations differing, so it is genuinely a
+  different checkpoint. These effects are a **plateau, not a floor**.
+- **The arms are not undertrained.** The adherence gate got *worse* at 9000 steps (0.0896 →
+  0.1062). Undertraining is refuted as the explanation. Separately: the recipe uses a **constant
+  1e-5 learning rate with no decay**, so "never converged" describes the recipe, not a shortage of
+  steps.
+- **The vocabulary is not fixable by filtering.** The `add` slot was a discourse-particle
+  vocabulary (`look`, `please`, `hi`, `hello` — 18.5% of observations in the top 25). A validated
+  content-word filter (precision 0.949, recall 0.942) removed every particle — and the slot got
+  **more** concentrated (top-25 share 0.185 → 0.218, distinct 6,442 → 4,846) with a **worse**
+  frequency confound (spearman +0.208 → +0.233). The particle mass collapsed onto common verbs.
+
+### Why it is paused: the constraint is the corpus
+
+The dial reaches for distant words. This corpus does not contain many. TinyStories is **13,777
+distinct words, with the top 1,000 covering 90.9% of all tokens** — `dragon` 959, `castle` 1,383,
+`volcano` 208, `comet` 176, but `cathedral` 0, `submarine` 0, `meteor` 1, `orchestra` 2. `far`
+collapsing to **88 distinct words** against `near`'s 265 is a model faithfully reflecting a world
+with about a thousand usable words in it.
+
+The mechanism is real and portable. The next investment is a corpus with range, not more training
+and not a better filter. One narrower experiment — a noun-preferring rank key — was started and
+stopped unfinished when this line of work was shelved.
+
+Everything above re-derives from `docs/measurements/reach-dial.json` via
+`scripts/eval_reach.py --rescore-from`, with **no model, tokenizer, or device** — verified
+byte-identical, with gold distances reproducing at max absolute error 0.0.
 
 ## What it cannot do
 
