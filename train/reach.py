@@ -158,6 +158,61 @@ def parse_reach_think(text: str) -> Optional[ReachSlots]:
     return ReachSlots(**found)
 
 
+#: The v3 block with the dial REMOVED -- the `nodial` control arm's schema. Derived from
+#: `REACH_SLOT_NAMES` by subtraction rather than written out again, so the two schemas
+#: cannot drift into differing on a slot other than `reach`, which is the only difference
+#: the control is allowed to have.
+NODIAL_SLOT_NAMES: Tuple[str, ...] = tuple(n for n in REACH_SLOT_NAMES if n != "reach")
+
+
+@dataclass(frozen=True)
+class NoDialSlots:
+    """The `nodial` control arm's five-slot block: v3 minus `reach`, nothing else changed.
+
+    WHY THIS EXISTS, and why it is not `train.improv.Slots`
+    ------------------------------------------------------
+    `Slots` has these same five field names in this same order, so it would RENDER
+    identically -- and that is exactly the trap. `Slots` is the published v2 schema whose
+    `stakes` is one of ``up``/``level``/``down`` and whose parser
+    (`train.improv.parse_think`) enforces that; the reach derivation carries `stakes` as a
+    continuous signed delta (``"+0.4"``). Reusing `Slots` would put a v3 value inside a v2
+    dataclass, and the first thing that validated it -- an adherence rate, say -- would
+    silently disagree with the training data. A separate name keeps the two schemas
+    separable at the type level, at the cost of one dataclass.
+
+    The control's whole claim is "identical to the dial arm except the dial is absent", so
+    the field ORDER here is `REACH_SLOT_NAMES` with `reach` deleted in place -- not a
+    re-listing. `train.improv.render_think` reads the field order off the object, so this
+    ordering is what reaches the training data.
+    `test_the_nodial_block_is_the_dial_block_minus_exactly_the_reach_line` pins it against
+    the rendered dial block, on a real skit.
+    """
+    offer: str
+    accept: str
+    add: str
+    stakes: str
+    handback: str
+
+    def as_dict(self) -> Dict[str, str]:
+        return asdict(self)
+
+
+def drop_reach(slots: ReachSlots) -> NoDialSlots:
+    """A `ReachSlots` with the dial removed and every other value carried across verbatim.
+
+    THE CONTROL ARM'S INDEPENDENT VARIABLE, in one named place. `nodial` is a valid negative
+    control for "forcing a `reach` token does nothing to a model that never learned one" only
+    if it differs from `dial` in the dial and in nothing else, so this copies the other five
+    values by NAME rather than by position -- a positional copy would survive a field
+    reordering in either dataclass while quietly re-labelling the slots.
+
+    Reads the field names off `NoDialSlots` rather than hard-coding them, so adding a slot to
+    the v3 schema is a `TypeError` here (a missing argument) instead of a silently dropped
+    value.
+    """
+    return NoDialSlots(**{f.name: getattr(slots, f.name) for f in fields(NoDialSlots)})
+
+
 # --------------------------------------------------------------------------------------
 # the association table  (document = one whole story)
 # --------------------------------------------------------------------------------------
@@ -613,7 +668,8 @@ def reach_slot_names_of(slots) -> Tuple[str, ...]:
     return tuple(f.name for f in fields(slots))
 
 
-__all__ = ["REACH_VALUES", "REACH_SLOT_NAMES", "ReachSlots", "parse_reach_think", "Association", "pair_key", "pair_counts",
+__all__ = ["REACH_VALUES", "REACH_SLOT_NAMES", "ReachSlots", "parse_reach_think",
+           "NODIAL_SLOT_NAMES", "NoDialSlots", "drop_reach", "Association", "pair_key", "pair_counts",
            "build_association", "pair_has_evidence", "npmi", "reach_distance",
            "fit_reach_terciles", "reach_bucket", "bucket_balance", "spearman",
            "frequency_confound", "stakes_delta",
