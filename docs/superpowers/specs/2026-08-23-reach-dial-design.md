@@ -80,8 +80,16 @@ that co-occur at all score *high* — their expected co-occurrence under indepen
 a common word's NPMI with anything is capped low by its own marginal. So a rare `add` word tends to
 score NEAR and a common one tends to score FAR. Measured on 20,000 stories:
 
-- `spearman(add-word document frequency, distance) = +0.306` (~9% of rank variance)
-- median `add`-word document-frequency rank: **1,100 in `near` vs 444 in `far`** (higher rank = rarer)
+- `spearman(add-word document frequency, distance) = +0.2078` at full corpus scale
+- median `add`-word document frequency: near **16,591** / mid **51,269** / far **39,367**
+
+**Correction, same day:** this amendment first cited `spearman = +0.306` and ranks 1,100-vs-444.
+Those were interim figures from a 20,000-story sample. At full corpus scale the confound is *weaker*
+and, more importantly, **not monotone**: `mid` has the *highest* median document frequency, not
+`far`. So the exposure is uneven — **near-vs-far is also rare-vs-common, but mid-vs-far is much less
+exposed.** The direction of this amendment stands; the numbers above are the corpus-scale ones.
+A practical consequence for the eval: `mid` vs `far` is the *cleaner* contrast and should be
+reported as such, rather than treating all three steps as equally confounded.
 
 Therefore **`near < mid < far` on realised distance is not, by itself, evidence the model reached
 further.** It is equally consistent with the model reaching for a *commoner* word. The criterion
