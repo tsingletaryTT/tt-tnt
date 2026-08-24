@@ -245,10 +245,8 @@ def test_the_quoted_figures_match_the_published_artifact():
     assert FACTS["raw_near_to_far"] == eff["raw_distance"]["near_lt_far"]["mean_delta"]
     assert (FACTS["residualised_near_to_far"]
             == eff["frequency_residualised_distance"]["near_lt_far"]["mean_delta"])
-    assert (FACTS["cleanest_contrast_t"]
+    assert (FACTS["mid_to_far_t"]
             == eff["frequency_residualised_distance"]["mid_lt_far"]["t"])
-    assert (eff["frequency_residualised_distance"]["cleaner_contrast"] == "mid_lt_far"), \
-        "the artifact no longer calls mid<far the cleaner contrast; --about says it does"
     ctrl = m["controls"]["nonsense_value_PRIMARY"]
     assert FACTS["nonsense_vs_near_delta"] == ctrl["vs_near"]["mean_delta"]
     assert FACTS["nonsense_vs_near_t"] == ctrl["vs_near"]["t"]
@@ -513,3 +511,15 @@ def test_the_cli_never_imports_a_device_library():
                                          "PYTHONPATH": str(ROOT)})
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "", f"scripts.reach imported {out.stdout.strip()}"
+
+
+def test_about_does_not_call_mid_vs_far_the_cleaner_contrast():
+    """The spec designated mid<far as `cleaner` from the DERIVATION's frequency distribution,
+    where mid had the highest median add_df. THIS run's realised confound is monotone
+    (mean log add_df 10.79 -> 11.72 -> 12.03), so the designation does not describe this
+    measurement. Printing it to a user states a false reason for a true number."""
+    text = about_text().lower()
+    assert "cleanest contrast" not in text, "--about revived the spec's designation as a finding"
+    assert "cleaner contrast" not in text
+    assert "confound is not monotone" not in text, (
+        "--about states the confound is not monotone; in this run it IS monotone")

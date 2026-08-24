@@ -129,9 +129,12 @@ FACTS: Dict[str, Any] = {
     "raw_near_to_far": 0.129473,
     # effects.frequency_residualised_distance.near_lt_far.mean_delta -- the headline.
     "residualised_near_to_far": 0.060438,
-    # effects.frequency_residualised_distance.mid_lt_far.t -- the cleanest contrast, because
-    # the corpus-scale frequency confound is not monotone (mid has the highest median add_df).
-    "cleanest_contrast_t": 8.954,
+    # effects.frequency_residualised_distance.mid_lt_far.t.
+    # NOT "the cleanest contrast". The spec designated mid<far as cleaner on the basis of the
+    # DERIVATION's frequency distribution, where mid had the highest median add_df. In THIS run
+    # the realised confound is monotone (mean log add_df 10.79 -> 11.72 -> 12.03), so that
+    # designation does not describe this measurement. All three steps survive frequency control.
+    "mid_to_far_t": 8.954,
     # controls.nonsense_value_PRIMARY.vs_near / .vs_far -- the nonsense dial value `blue`,
     # significantly displaced from BOTH endpoints, in opposite directions.
     "nonsense_vs_near_delta": 0.049069,
@@ -522,9 +525,8 @@ def about_text(width: int = 80) -> str:
         "",
         f"Over {f['n_scenes']} held-out scenes, scene-paired, forcing the dial moved the "
         f"realised distance of the model's `add` word monotonically: near < mid < far, all "
-        f"three steps significant at a Bonferroni-corrected threshold. The cleanest contrast "
-        f"(mid vs far, cleanest because the frequency confound is NOT monotone) reached "
-        f"t={f['cleanest_contrast_t']:.1f}.",
+        f"three steps significant at a Bonferroni-corrected threshold after frequency control. "
+        f"mid vs far reached t={f['mid_to_far_t']:.1f}.",
         "",
         "HOW BIG, HONESTLY",
         "",
