@@ -1179,3 +1179,267 @@ def test_per_setting_table_keeps_its_disclosures_out_of_the_condition_rows():
     keys. A consumer that does not will crash or, worse, average a string."""
     tbl = per_setting_table.__doc__
     assert "add_df" in tbl
+
+
+# =======================================================================================
+# THE LONGER-TRAINED RERUN: path safety, the 3000-vs-9000 diff, and the recipe's asymptote.
+# =======================================================================================
+from scripts.eval_reach import (DEFAULT_ARM_ROOT, DEFAULT_STEP,  # noqa: E402
+                                arm_dirs_for, check_step_matches_manifests,
+                                convergence_framing, default_paths, prior_step_of,
+                                versus_previous)
+
+
+def test_the_original_step_keeps_the_published_unsuffixed_paths():
+    """`docs/measurements/reach-dial.json` is published, reviewed and quoted by
+    `scripts/reach.py`. Its path must not move, or every reference to it breaks."""
+    got = default_paths(DEFAULT_ARM_ROOT, DEFAULT_STEP)
+    assert got["out"].name == "reach-dial.json"
+    assert got["store"].name == "eval-generations.json"
+
+
+def test_a_different_checkpoint_CANNOT_default_onto_the_published_artifact():
+    """THE PATH-SAFETY TEST. A longer-trained rerun that reused the default `--out` would
+    overwrite a published measurement in place, silently, while every test still passed. The
+    default must be a different file for a different checkpoint."""
+    published = default_paths(DEFAULT_ARM_ROOT, DEFAULT_STEP)["out"]
+    for root, step in ((DEFAULT_ARM_ROOT, 9000),
+                       (DEFAULT_ARM_ROOT.parent / "reach-conv", 9000),
+                       (DEFAULT_ARM_ROOT.parent / "reach-conv", 3000)):
+        got = default_paths(root, step)
+        assert got["out"] != published, (root, step)
+        assert str(step) in got["out"].name
+
+
+def test_the_rerun_never_writes_into_a_checkpoint_directory():
+    """`artifacts/reach/**` and `artifacts/reach-conv/**` are INPUTS. The store and the HF
+    work-dir for a non-default checkpoint must land outside them."""
+    conv = DEFAULT_ARM_ROOT.parent / "reach-conv"
+    got = default_paths(conv, 9000)
+    for key in ("store", "work_dir"):
+        assert conv not in got[key].parents, (key, got[key])
+
+
+def test_arm_dirs_for_reads_the_layout_from_one_place():
+    got = arm_dirs_for(Path("/x/y"))
+    assert got == {"dial": Path("/x/y/ckpt-dial"), "nodial": Path("/x/y/ckpt-nodial")}
+
+
+# ---- versus_previous ------------------------------------------------------------------
+def _artifact(*, step, resid_near_far, resid_t, rates, adherence_passes, shortfall,
+              worst, eureka, verdict="REACH DIAL", scenes=(1, 2, 3)):
+    def stepblk(d, t, sig):
+        return {"mean_delta": d, "t": t, "significant": sig}
+    eff = {}
+    for block in ("raw_distance", "frequency_residualised_distance"):
+        base = resid_near_far if block == "frequency_residualised_distance" else 0.13
+        eff[block] = {"near_lt_mid": stepblk(round(base / 2, 6), resid_t, True),
+                      "mid_lt_far": stepblk(round(base / 2, 6), resid_t, True),
+                      "near_lt_far": stepblk(base, resid_t, True)}
+    return {
+        "design": {"checkpoint": {"step": step},
+                   "conditions": [condition_key(a, v) for a, v in CONDITIONS]},
+        "thresholds": {"critical_t": CRITICAL_T, "n_tests": N_TESTS},
+        "effects": eff,
+        "adherence_guard": {"rates": rates, "shortfall": shortfall, "worst_setting": worst,
+                            "passes": adherence_passes},
+        "coherence_guard": {"drop_far_below_near": 0.03, "passes": True},
+        "dial_kind": {"verdict": verdict},
+        "headline": {"eureka_criterion_met": eureka},
+        "controls": {"nonsense_value_PRIMARY": {"reproduces_the_dial_pattern": False},
+                     "nodial_arm_secondary": {"monotone": False}},
+        "stored": {"rows": [{"story_id": i} for i in scenes]},
+    }
+
+
+_PRIOR = _artifact(step=3000, resid_near_far=0.060438, resid_t=12.47,
+                   rates={"dial:near": 0.477, "dial:mid": 0.567, "dial:far": 0.507},
+                   adherence_passes=False, shortfall=0.0896, worst="dial:near", eureka=False)
+
+
+def test_versus_previous_computes_the_effect_delta_rather_than_leaving_it_to_the_reader():
+    this = _artifact(step=9000, resid_near_far=0.090438, resid_t=18.0,
+                     rates={"dial:near": 0.60, "dial:mid": 0.62, "dial:far": 0.61},
+                     adherence_passes=True, shortfall=0.02, worst="dial:near", eureka=True)
+    got = versus_previous(this, _PRIOR)
+    head = got["question_1_does_the_effect_grow_with_training"]["headline"]
+    assert head["prior_mean_delta"] == 0.060438
+    assert head["this_mean_delta"] == 0.090438
+    assert head["change"] == pytest.approx(0.03, abs=1e-6)
+
+
+def test_versus_previous_computes_the_delta_in_the_right_direction():
+    """A backwards subtraction reports growth as shrinkage and vice versa -- and the whole
+    point of the rerun is the SIGN of this number."""
+    smaller = _artifact(step=9000, resid_near_far=0.030438, resid_t=6.0,
+                        rates={"dial:near": 0.477, "dial:mid": 0.567, "dial:far": 0.507},
+                        adherence_passes=False, shortfall=0.0896, worst="dial:near",
+                        eureka=False)
+    got = versus_previous(smaller, _PRIOR)
+    assert got["question_1_does_the_effect_grow_with_training"]["headline"]["change"] < 0
+
+
+def test_versus_previous_calls_a_resolved_gate_an_undertraining_artefact():
+    this = _artifact(step=9000, resid_near_far=0.09, resid_t=18.0,
+                     rates={"dial:near": 0.60, "dial:mid": 0.62, "dial:far": 0.61},
+                     adherence_passes=True, shortfall=0.02, worst="dial:near", eureka=True)
+    got = versus_previous(this, _PRIOR)["question_2_does_the_adherence_gate_resolve"]
+    assert got["resolved_with_more_training"] is True
+    assert "RESOLVED" in got["verdict"]
+    assert "undertraining artefact" in got["verdict"]
+
+
+def test_versus_previous_says_undertraining_is_REFUTED_when_the_gate_still_fails():
+    """THE OUTCOME THAT MUST NOT BE SOFTENED. If 3x the budget does not fix it, 'undertrained'
+    stops being the explanation and the guard is saying something about the model."""
+    this = _artifact(step=9000, resid_near_far=0.09, resid_t=18.0,
+                     rates={"dial:near": 0.50, "dial:mid": 0.60, "dial:far": 0.55},
+                     adherence_passes=False, shortfall=0.10, worst="dial:near", eureka=False)
+    got = versus_previous(this, _PRIOR)["question_2_does_the_adherence_gate_resolve"]
+    assert got["resolved_with_more_training"] is False
+    assert "REFUTED" in got["verdict"]
+    assert "STILL FAILS" in got["verdict"]
+
+
+def test_versus_previous_notices_a_regression():
+    prior_ok = dict(_PRIOR)
+    prior_ok["adherence_guard"] = dict(_PRIOR["adherence_guard"], passes=True, shortfall=0.01)
+    this = _artifact(step=9000, resid_near_far=0.09, resid_t=18.0,
+                     rates={"dial:near": 0.40, "dial:mid": 0.62, "dial:far": 0.55},
+                     adherence_passes=False, shortfall=0.22, worst="dial:near", eureka=False)
+    assert "REGRESSED" in versus_previous(this, prior_ok)[
+        "question_2_does_the_adherence_gate_resolve"]["verdict"]
+
+
+def test_versus_previous_checks_comparability_rather_than_assuming_it():
+    """Two runs over different held-out scenes are not two readings of one experiment. This
+    project's notes carry a case where exactly that comparison produced a phantom regression."""
+    other_scenes = _artifact(step=9000, resid_near_far=0.09, resid_t=18.0,
+                             rates={"dial:near": 0.6, "dial:mid": 0.62, "dial:far": 0.61},
+                             adherence_passes=True, shortfall=0.02, worst="dial:near",
+                             eureka=True, scenes=(4, 5, 6))
+    got = versus_previous(other_scenes, _PRIOR)["comparable"]
+    assert got["same_held_out_scenes"] is False
+    assert got["all_three"] is False
+
+    same = _artifact(step=9000, resid_near_far=0.09, resid_t=18.0,
+                     rates={"dial:near": 0.6, "dial:mid": 0.62, "dial:far": 0.61},
+                     adherence_passes=True, shortfall=0.02, worst="dial:near", eureka=True)
+    ok = versus_previous(same, _PRIOR)["comparable"]
+    assert ok["all_three"] is True
+
+
+def test_versus_previous_notices_a_changed_threshold():
+    loose = _artifact(step=9000, resid_near_far=0.09, resid_t=18.0,
+                      rates={"dial:near": 0.6, "dial:mid": 0.62, "dial:far": 0.61},
+                      adherence_passes=True, shortfall=0.02, worst="dial:near", eureka=True)
+    loose["thresholds"] = {"critical_t": 2.576, "n_tests": 4}
+    got = versus_previous(loose, _PRIOR)["comparable"]
+    assert got["same_alpha_and_critical_t"] is False
+    assert got["all_three"] is False
+
+
+# ---- convergence_framing ---------------------------------------------------------------
+def _man(lr, steps=9000, first=1.2056, last=0.6217, triggered=False):
+    m = {"lr": lr, "steps": steps, "val_loss_first": [250, first],
+         "val_loss_last": [steps, last], "stop_reason": "hit_max_steps",
+         "early_stopping": {"triggered": triggered}}
+    return {"dial": m, "nodial": dict(m)}
+
+
+def test_convergence_framing_names_the_constant_lr_as_the_reason_not_the_budget():
+    """THE FRAMING THAT CHANGED. 'Val loss still falling' under a CONSTANT learning rate is
+    what the recipe does, not evidence that more steps would help -- and an artifact that keeps
+    saying 'not converged' implies the fix is a bigger budget."""
+    got = convergence_framing(_man(1e-5))
+    assert got["lr_is_constant_for_every_step"] is True
+    assert got["lr_schedule"] == "NONE -- no decay, no warmup"
+    assert "ASYMPTOTE" in got["limitation"]
+    assert "CONSTANT" in got["why_it_matters"]
+    assert "plateaued in practice" in got["why_it_matters"]
+    assert "not converged" not in got["limitation"]
+
+
+def test_convergence_framing_computes_the_relative_improvement():
+    got = convergence_framing(_man(1e-5, first=1.0, last=0.9))
+    assert got["relative_val_improvement"] == pytest.approx(0.1, abs=1e-9)
+
+
+def test_convergence_framing_reports_that_early_stopping_never_fired():
+    assert convergence_framing(_man(1e-5))["early_stopping_triggered"] is False
+    assert convergence_framing(_man(1e-5, triggered=True))["early_stopping_triggered"] is True
+
+
+def test_a_checkpoint_that_disagrees_with_its_manifest_is_REFUSED():
+    """The provenance guard. `--step 9000` against the 3000-step directory would publish the
+    3000-step model's numbers beside the 9000-step run's lr, stop_reason, val losses and
+    convergence paragraph -- and nothing else in this file would notice.
+
+    It lived in `main()` and a mutation that deleted it survived, because a driver-only guard
+    is unreachable from any test. Same class as the composer mutants.
+    """
+    check_step_matches_manifests(_man(1e-5, steps=9000), 9000)          # no raise
+    with pytest.raises(RuntimeError, match="different runs"):
+        check_step_matches_manifests(_man(1e-5, steps=3000), 9000)
+    with pytest.raises(RuntimeError):
+        check_step_matches_manifests({"dial": {}}, 9000)                # missing entirely
+
+
+def test_the_prior_step_is_recoverable_from_an_artifact_that_predates_the_field():
+    """The FIRST published artifact has no `design.checkpoint`, and re-running it purely to add
+    one would rewrite a reviewed measurement. The step is recovered from its limitations block
+    instead, so the diff can still be keyed `versus_3000_steps`."""
+    assert prior_step_of({"design": {"checkpoint": {"step": 9000}}}) == 9000
+    assert prior_step_of({"limitations": [{"limitation": "x"},
+                                          {"limitation": "y", "steps": 3000}]}) == 3000
+    # the newer field wins when both are present
+    assert prior_step_of({"design": {"checkpoint": {"step": 9000}},
+                          "limitations": [{"steps": 3000}]}) == 9000
+    assert prior_step_of({}) is None, "guessing a step is worse than naming it unknown"
+
+
+def test_the_published_3000_step_artifact_still_yields_its_step():
+    """A property of the REAL artifact: if this stops working the diff silently keys itself
+    `versus_prior_steps` and the two runs stop being linkable by name."""
+    art = ROOT / "docs" / "measurements" / "reach-dial.json"
+    if not art.is_file():
+        pytest.skip("published artifact not present")
+    assert prior_step_of(json.loads(art.read_text())) == 3000
+
+
+def _with_gens(art, gens):
+    art = dict(art)
+    art["stored"] = dict(art.get("stored", {}), generations=gens)
+    return art
+
+
+def test_versus_previous_measures_whether_the_model_ACTUALLY_changed():
+    """The instrument check behind the headline. When two runs agree to four decimal places the
+    first suspect is the same checkpoint evaluated twice -- a wrong --arm-root, a stale HF
+    work-dir, a copied store. Churn answers it from the stored text, not from a provenance
+    string that a misconfigured run would also print."""
+    prior = _with_gens(_PRIOR, {"dial:near": ["a", "b", "c", "d"]})
+    changed = _with_gens(
+        _artifact(step=9000, resid_near_far=0.0604, resid_t=12.3,
+                  rates={"dial:near": 0.46, "dial:mid": 0.57, "dial:far": 0.51},
+                  adherence_passes=False, shortfall=0.106, worst="dial:near", eureka=False),
+        {"dial:near": ["a", "B", "C", "d"]})
+    got = versus_previous(changed, prior)["generation_churn"]
+    assert got["generations_compared"] == 4
+    assert got["generations_that_differ"] == 2
+    assert got["fraction_changed"] == pytest.approx(0.5)
+    assert got["the_model_really_did_change"] is True
+
+
+def test_versus_previous_flags_an_IDENTICAL_rerun_rather_than_reporting_a_stable_effect():
+    """The failure this exists to catch: evaluating the same checkpoint twice and reading the
+    agreement as a finding about training."""
+    prior = _with_gens(_PRIOR, {"dial:near": ["a", "b", "c", "d"]})
+    same = _with_gens(
+        _artifact(step=9000, resid_near_far=0.060438, resid_t=12.47,
+                  rates=_PRIOR["adherence_guard"]["rates"], adherence_passes=False,
+                  shortfall=0.0896, worst="dial:near", eureka=False),
+        {"dial:near": ["a", "b", "c", "d"]})
+    got = versus_previous(same, prior)["generation_churn"]
+    assert got["fraction_changed"] == 0.0
+    assert got["the_model_really_did_change"] is False

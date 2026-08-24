@@ -155,8 +155,56 @@ CORPUS = ROOT / "artifacts" / "corpus" / "tinystories.txt"
 TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
-ARM_DIRS = {"dial": ROOT / "artifacts" / "reach" / "ckpt-dial",
-            "nodial": ROOT / "artifacts" / "reach" / "ckpt-nodial"}
+#: The 3000-step arms this eval was written against. Kept as the DEFAULT so
+#: `docs/measurements/reach-dial.json` -- published, reviewed, and quoted by
+#: `scripts/reach.py` -- still reproduces from a bare `--rescore-from` with no extra flags.
+DEFAULT_ARM_ROOT = ROOT / "artifacts" / "reach"
+DEFAULT_STEP = 3000
+ARM_DIRS = {"dial": DEFAULT_ARM_ROOT / "ckpt-dial",
+            "nodial": DEFAULT_ARM_ROOT / "ckpt-nodial"}
+
+
+def _repo_relative(path: Path) -> str:
+    """`path` relative to the repo root when it is inside it, else its absolute form.
+
+    Paths go into the artifact as provenance, so an absolute path from this machine is noise
+    and a `relative_to` that raises on an outside path is a crash. Both handled in one place.
+    """
+    try:
+        return str(Path(path).resolve().relative_to(ROOT))
+    except ValueError:
+        return str(Path(path).resolve())
+
+
+def arm_dirs_for(arm_root: Path) -> Dict[str, Path]:
+    """`{arm: checkpoint directory}` under `arm_root`. One place the layout is known."""
+    return {"dial": arm_root / "ckpt-dial", "nodial": arm_root / "ckpt-nodial"}
+
+
+def default_paths(arm_root: Path, step: int) -> Dict[str, Path]:
+    """Output, store and work-dir defaults for one (arm_root, step) pair.
+
+    A NAMED FUNCTION because the alternative is a default that silently overwrites a published
+    measurement. `docs/measurements/reach-dial.json` is the 3000-step result: it is reviewed,
+    it is referenced by `scripts/reach.py`, and a longer-trained rerun that reused the default
+    `--out` would destroy it in place while every test still passed. The 3000-step pair keeps
+    the historical unsuffixed paths; every other pair gets its own suffix, so two runs cannot
+    collide by default and a reader can tell which checkpoint an artifact came from by its
+    name alone.
+
+    The work-dir and the generation store are also suffixed, and deliberately NOT placed under
+    the checkpoint directory: `artifacts/reach/**` and `artifacts/reach-conv/**` are inputs and
+    are written to by nothing here.
+    """
+    is_original = (arm_root.resolve() == DEFAULT_ARM_ROOT.resolve() and step == DEFAULT_STEP)
+    suffix = "" if is_original else f"-{step}"
+    return {
+        "out": ROOT / "docs" / "measurements" / f"reach-dial{suffix}.json",
+        "store": (ROOT / "artifacts" / "reach" / "eval-generations.json" if is_original
+                  else ROOT / "artifacts" / f"reach-eval{suffix}" / "eval-generations.json"),
+        "work_dir": (ROOT / "artifacts" / "reach" / "hf-eval" if is_original
+                     else ROOT / "artifacts" / f"reach-eval{suffix}" / "hf-eval"),
+    }
 
 #: (arm, forced dial value). `dial`/near|mid|far is the treatment; `dial`/blue is the PRIMARY
 #: control; `nodial`/near|mid|far is the secondary control.
@@ -616,12 +664,16 @@ def adherence_readings(rates: Dict[str, float], near_key: str, mid_key: str, far
         "reading_far_minus_best_of_near_mid": round(far_vs_best, 6),
         "reading_far_minus_best_passes": bool(far_vs_best >= -margin),
         "which_setting_is_worst": declared["worst_setting"],
-        "may_itself_be_undertraining": (
-            "the rate is 0.48-0.57 at EVERY setting: the model fulfils its own declared plan "
-            "barely half the time regardless of the dial. Neither arm is converged (see "
-            "limitations), so the most likely reading of this guard's failure is a weak "
-            "plan-follower rather than a dial-specific defect. That is an explanation, not an "
-            "excuse -- the gate still fails, and the verdict still stands."),
+        "is_this_undertraining": (
+            "The rate sits around 0.5 at EVERY setting: the model fulfils its own declared "
+            "plan barely half the time regardless of the dial, which looks far more like a "
+            "weak plan-follower than a dial-specific defect. Whether 'weak' means "
+            "'undertrained' is answerable rather than arguable -- run the identical eval on a "
+            "longer-trained checkpoint of the SAME run and look. If a `versus_*_steps` block "
+            "is present in this artifact, it has the answer; and note that the learning rate "
+            "is CONSTANT in this recipe, so 'val loss still falling' was never evidence that "
+            "more steps would fix it (see limitations). Either way the gate fails here and "
+            "the verdict stands: this is an explanation to test, not an excuse."),
         "READ_THIS": (
             "The three readings do not agree, and the direction of the failure matters. The "
             "declared gate fails, but the WORST setting is `near`, not `far`: the rate is "
@@ -1057,9 +1109,230 @@ def eureka_verdict(*, dial_kind: Dict[str, Any], coherence: Dict[str, Any],
     }
 
 
+def check_step_matches_manifests(manifests: Dict[str, Dict[str, Any]], step: int) -> None:
+    """RAISE unless every arm's manifest describes the checkpoint being evaluated.
+
+    A named function rather than three lines in `main()`, because it decides whether the
+    artifact's entire provenance block is true. Point `--step 9000` at the 3000-step
+    directory and the numbers are the 3000-step model's while every `lr`, `stop_reason`,
+    `val_loss_last` and convergence paragraph beside them describes a different run -- and
+    nothing else in this file would notice.
+
+    (Found by a mutation that deleted the check and survived: the guard was unreachable from
+    any test because it lived in the driver. Same class as the composer mutants.)
+    """
+    for arm, m in manifests.items():
+        got = m.get("steps")
+        if got is None or int(got) != int(step):
+            raise RuntimeError(
+                f"{arm} manifest says steps={got} but the checkpoint being evaluated is "
+                f"step_{step}: the checkpoint and the manifest describe different runs, and "
+                f"every provenance field in the artifact would be wrong")
+
+
+def prior_step_of(prior: Dict[str, Any]) -> Optional[int]:
+    """Which checkpoint step a previously published artifact describes.
+
+    `design.checkpoint.step` is where it lives now. The FIRST published artifact predates that
+    field, and re-running it just to add one would rewrite a reviewed measurement -- so this
+    also reads the step out of the limitations block, which that artifact does carry. Returns
+    None when neither is present, and the caller names the block `versus_prior_steps` rather
+    than guessing a number.
+    """
+    step = prior.get("design", {}).get("checkpoint", {}).get("step")
+    if step is not None:
+        return int(step)
+    for lim in prior.get("limitations", []):
+        if isinstance(lim, dict) and lim.get("steps") is not None:
+            return int(lim["steps"])
+    return None
+
+
+def versus_previous(this: Dict[str, Any], prior: Dict[str, Any]) -> Dict[str, Any]:
+    """Diff this run against a previously published one, with the deltas COMPUTED.
+
+    The two questions a longer-trained rerun exists to answer, answered rather than left for a
+    reader to subtract:
+
+      1. **Does the effect grow with training?** The shorter run's effects were published as a
+         FLOOR. This puts the residualised `near<far` side by side with its delta.
+      2. **Does the failing adherence gate resolve?** If it passes at the longer budget, the
+         failure was an undertraining artefact and this says so plainly. If it still fails,
+         undertraining is REFUTED as the explanation and the gate is telling us something about
+         the model -- which is the more interesting outcome and the one that must not be
+         softened.
+
+    Comparability is CHECKED, not assumed: same scenes, same conditions, same alpha. Two runs
+    over different held-out sets are not two readings of one experiment, and this project's
+    notes carry a case where exactly that comparison cost a day.
+    """
+    def scenes(a):
+        return sorted(r["story_id"] for r in a.get("stored", {}).get("rows", []))
+
+    same_scenes = scenes(this) == scenes(prior)
+    same_alpha = (this["thresholds"]["critical_t"] == prior["thresholds"]["critical_t"]
+                  and this["thresholds"]["n_tests"] == prior["thresholds"]["n_tests"])
+    same_conditions = (this["design"]["conditions"] == prior["design"]["conditions"])
+
+    def eff(a, block, step):
+        return a["effects"][block][step]
+
+    rows = {}
+    for block in ("raw_distance", "frequency_residualised_distance"):
+        for stp in ("near_lt_mid", "mid_lt_far", "near_lt_far"):
+            t_, p_ = eff(this, block, stp), eff(prior, block, stp)
+            rows[f"{block}.{stp}"] = {
+                "prior_mean_delta": p_["mean_delta"], "this_mean_delta": t_["mean_delta"],
+                "change": round(t_["mean_delta"] - p_["mean_delta"], 6),
+                "prior_t": p_["t"], "this_t": t_["t"],
+                "prior_significant": p_["significant"],
+                "this_significant": t_["significant"],
+            }
+
+    ta, pa = this["adherence_guard"], prior["adherence_guard"]
+    adherence = {
+        "prior_rates": pa["rates"], "this_rates": ta["rates"],
+        "prior_shortfall": pa["shortfall"], "this_shortfall": ta["shortfall"],
+        "shortfall_change": round(ta["shortfall"] - pa["shortfall"], 6),
+        "prior_worst_setting": pa["worst_setting"], "this_worst_setting": ta["worst_setting"],
+        "prior_passes": pa["passes"], "this_passes": ta["passes"],
+        "resolved_with_more_training": bool(ta["passes"] and not pa["passes"]),
+        "verdict": (
+            "RESOLVED: the guard failed at the shorter budget and passes here, so that failure "
+            "WAS an undertraining artefact."
+            if (ta["passes"] and not pa["passes"]) else
+            "STILL FAILS at 3x the training budget. Undertraining is REFUTED as the "
+            "explanation: the guard is telling us something real about the model, not about "
+            "the step count. Note the direction before reading it as a far-end collapse."
+            if (not ta["passes"] and not pa["passes"]) else
+            "the guard passed at the shorter budget too" if ta["passes"] else
+            "REGRESSED: it passed at the shorter budget and fails here."),
+    }
+
+    # DID THE MODEL ACTUALLY CHANGE? When two runs report effects that agree to four decimal
+    # places, the first thing to rule out is that the same checkpoint was evaluated twice --
+    # a wrong `--arm-root`, a stale HF work-dir, a copied store. This measures it directly
+    # instead of trusting the provenance strings: the fraction of the 7,000 stored
+    # continuations that differ. A near-zero churn means the instrument, not the model, is
+    # producing the agreement, and the comparison must be thrown away.
+    ga = this.get("stored", {}).get("generations", {})
+    gb = prior.get("stored", {}).get("generations", {})
+    churn = None
+    if ga and gb and set(ga) == set(gb):
+        tot = sum(len(ga[k]) for k in ga)
+        dif = sum(1 for k in ga for x, y in zip(ga[k], gb[k]) if x != y)
+        churn = {"generations_compared": tot, "generations_that_differ": dif,
+                 "fraction_changed": round(dif / tot, 4) if tot else None,
+                 "the_model_really_did_change": bool(tot and dif / tot > 0.05),
+                 "why": ("two runs whose effects agree to four decimal places are first "
+                         "suspected of being the SAME checkpoint evaluated twice. This rules "
+                         "that out from the stored text rather than from a provenance string. "
+                         "A high churn beside unchanged aggregates is the interesting "
+                         "outcome: the model's individual choices moved a lot and the dial's "
+                         "aggregate effect did not."),
+                 }
+
+    tc, pc = this["coherence_guard"], prior["coherence_guard"]
+    return {
+        "generation_churn": churn,
+        "compared_against_step": prior_step_of(prior),
+        "comparable": {
+            "same_held_out_scenes": same_scenes,
+            "same_conditions": same_conditions,
+            "same_alpha_and_critical_t": same_alpha,
+            "all_three": bool(same_scenes and same_conditions and same_alpha),
+            "why": ("a longer-trained rerun is only a rerun if the scenes, the conditions and "
+                    "the thresholds are identical. Checked here rather than asserted."),
+        },
+        "question_1_does_the_effect_grow_with_training": {
+            "headline": rows["frequency_residualised_distance.near_lt_far"],
+            "all_steps": rows,
+            "answer": (
+                "the frequency-controlled near->far effect moved from "
+                f"{rows['frequency_residualised_distance.near_lt_far']['prior_mean_delta']} to "
+                f"{rows['frequency_residualised_distance.near_lt_far']['this_mean_delta']} "
+                f"(change "
+                f"{rows['frequency_residualised_distance.near_lt_far']['change']:+.6f}). The "
+                "shorter run's effects were published as a floor; this says by how much."),
+        },
+        "question_2_does_the_adherence_gate_resolve": adherence,
+        "dial_kind": {"prior": prior["dial_kind"]["verdict"],
+                      "this": this["dial_kind"]["verdict"]},
+        "eureka": {"prior": prior["headline"]["eureka_criterion_met"],
+                   "this": this["headline"]["eureka_criterion_met"]},
+        "coherence": {"prior_drop": pc["drop_far_below_near"],
+                      "this_drop": tc["drop_far_below_near"],
+                      "prior_passes": pc["passes"], "this_passes": tc["passes"]},
+        "nonsense_control": {
+            "prior_reproduces_the_dial_pattern":
+                prior["controls"]["nonsense_value_PRIMARY"]["reproduces_the_dial_pattern"],
+            "this_reproduces_the_dial_pattern":
+                this["controls"]["nonsense_value_PRIMARY"]["reproduces_the_dial_pattern"]},
+        "nodial_control": {
+            "prior_monotone": prior["controls"]["nodial_arm_secondary"]["monotone"],
+            "this_monotone": this["controls"]["nodial_arm_secondary"]["monotone"]},
+    }
+
+
 # ---------------------------------------------------------------------------------------
 # Honest disclosures. Facts that weaken the story and must appear anyway.
 # ---------------------------------------------------------------------------------------
+def convergence_framing(manifests: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """What "not converged" actually means for THIS recipe -- which is not "run it longer".
+
+    THE FRAMING THAT CHANGED. The 3000-step artifact said "neither arm is converged, so a null
+    could be undertraining", which is correct as far as it goes and quietly implies the fix is
+    more steps. It is not, because **the learning rate is CONSTANT for every step of this
+    recipe -- no decay, no warmup, no schedule of any kind.** A constant-LR run does not
+    converge to anything; it asymptotes, and it keeps making small monotone improvements
+    indefinitely because SGD noise at a fixed step size never anneals. "Val loss was still
+    falling" is therefore a property of the RECIPE, not evidence that the budget was the
+    binding constraint.
+
+    That changes what a null MEANS at the longer budget. At 3000 steps "undertrained" was a
+    live explanation for a failing guard. Once 3x the budget buys only a small further
+    improvement on a curve that cannot flatten by construction, "undertrained" stops being a
+    live explanation and "this recipe has plateaued in practice" takes its place.
+
+    Read off the manifests rather than typed, so an arm trained with an actual schedule stops
+    getting this paragraph attached to it.
+    """
+    dial = manifests["dial"]
+    lrs = {a: m.get("lr") for a, m in manifests.items()}
+    constant_lr = len(set(lrs.values())) == 1 and all(v is not None for v in lrs.values())
+    first, last = dial.get("val_loss_first"), dial.get("val_loss_last")
+    improvement = None
+    if isinstance(first, list) and isinstance(last, list) and first[1]:
+        improvement = round((first[1] - last[1]) / first[1], 4)
+    return {
+        "limitation": ("the arms ASYMPTOTE rather than converge, and that is a property of the "
+                       "RECIPE, not a shortage of steps"),
+        "lr": lrs["dial"],
+        "lr_is_constant_for_every_step": constant_lr,
+        "lr_schedule": "NONE -- no decay, no warmup",
+        "steps": dial.get("steps"),
+        "stop_reason": dial.get("stop_reason"),
+        "early_stopping_triggered": dial.get("early_stopping", {}).get("triggered"),
+        "val_loss_first": first,
+        "val_loss_last": last,
+        "relative_val_improvement": improvement,
+        "why_it_matters": (
+            "The learning rate is CONSTANT at "
+            f"{lrs['dial']} for all {dial.get('steps')} steps -- there is no decay and no "
+            "schedule. A constant-LR run cannot converge; it asymptotes, and it goes on "
+            "producing small monotone validation improvements indefinitely because the step "
+            "size never anneals. So 'val loss was still falling' and 'early stopping never "
+            "fired' are NOT evidence that more steps would help; they are what this recipe "
+            "does. State it that way rather than repeating 'not converged' as though the fix "
+            "were a bigger budget. The consequence for reading this artifact: a null or a "
+            "failing guard here is no longer plausibly 'undertrained' -- it is 'this recipe "
+            "has plateaued in practice'."),
+        "what_would_actually_test_convergence": (
+            "an LR schedule (cosine or linear decay to ~0) so the run has a defined endpoint, "
+            "or a budget sweep with the schedule held fixed. Neither is in scope here."),
+    }
+
+
 def build_limitations(derive: Dict[str, Any], manifests: Dict[str, Dict[str, Any]],
                       *, particles: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Every fact a reader needs in order to disbelieve us, assembled as ONE function.
@@ -1082,44 +1355,7 @@ def build_limitations(derive: Dict[str, Any], manifests: Dict[str, Dict[str, Any
                             "conditional on a 1.94% slice selected for having five quoted "
                             "utterances, an acceptable offer at every model turn and NPMI "
                             "evidence for every `add` word. Mandatory disclosure above 50%.")},
-        {"limitation": "NEITHER ARM IS CONVERGED",
-         "dial_val_loss_first": dial.get("val_loss_first"),
-         "dial_val_loss_last": dial.get("val_loss_last"),
-         "nodial_val_loss_first": nodial.get("val_loss_first"),
-         "nodial_val_loss_last": nodial.get("val_loss_last"),
-         "steps": dial.get("steps"),
-         "steps_note": dial.get("steps_note"),
-         "why_it_matters": ("val loss was still falling monotonically at step 3000 in both "
-                            "arms. 3000 steps is an inherited budget, not a convergence "
-                            "criterion. THREE THINGS THIS QUALIFIES, not one: (1) a null dial "
-                            "result would have been undertraining-ambiguous; (2) the dial "
-                            "effect sizes reported here are a FLOOR, not a ceiling -- the "
-                            "measurement is taken below the model's trained ceiling; and (3) "
-                            "THE FAILING ADHERENCE GUARD may itself be undertraining. `add` "
-                            "slot-hit is 0.48-0.57, i.e. the model fulfils its own declared "
-                            "plan barely half the time at ANY setting, which is much more "
-                            "consistent with an under-trained plan-follower than with a "
-                            "dial-specific defect. See adherence_guard."),
-         "loss_pair_is_NOT_a_comparison": ("the two val-loss pairs are printed here so each "
-                                           "arm's own trajectory is visible. They are NOT "
-                                           "comparable to each other -- see the next "
-                                           "limitation -- and must not be subtracted.")},
-        {"limitation": "a truncation asymmetry exists between the arms, and its cause is the "
-                       "reach line's token cost rather than the dial's VALUE",
-         "dial_over_max_seq_len": rc.get("dial_over_max_seq_len"),
-         "nodial_over_max_seq_len": rc.get("nodial_over_max_seq_len"),
-         "of_training_rows": rc.get("of_training_rows"),
-         "max_tokens_either_arm": rc.get("max_tokens_either_arm"),
-         "resolution": dial.get("ruling_c_reapplied", {}).get("rule"),
-         "why_it_matters": ("the derivation's length gate ran BEFORE the reach slot was "
-                            "added, so it measured a five-slot block. 526 dial (1.43%) vs "
-                            "180 nodial (0.49%) examples exceeded 512 tokens and would have "
-                            "been silently truncated -- 3x more often in the dial arm, each "
-                            "losing its final supervised turn. Task 3 re-applied the "
-                            "exclusion to the UNION across arms, which restores pairing. "
-                            "derive_manifest.json's token_lengths is still wrong AT SOURCE "
-                            "(not re-derived, to avoid a 34-minute association-table "
-                            "rebuild).")},
+        convergence_framing(manifests),
         {"limitation": "the arms' training losses are NOT comparable",
          "warning": dial.get("loss_comparability_WARNING"),
          "why_it_matters": ("the dial arm supervises an extra slot line, so the two arms "
@@ -1189,8 +1425,16 @@ def particle_profile(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 # Generation.
 # ---------------------------------------------------------------------------------------
 def generate_all(rows: Sequence[Dict[str, Any]], *, work_dir: Path, max_new_tokens: int,
-                 batch_size: int) -> Tuple[Dict[str, List[str]], Dict[str, Any]]:
-    """Every condition's raw continuation for every scene. CPU only -- no ttml, no device."""
+                 batch_size: int, arm_dirs: Optional[Dict[str, Path]] = None,
+                 step: int = DEFAULT_STEP
+                 ) -> Tuple[Dict[str, List[str]], Dict[str, Any]]:
+    """Every condition's raw continuation for every scene. CPU only -- no ttml, no device.
+
+    `arm_dirs`/`step` select the checkpoint. Everything else about the procedure is fixed, so
+    a longer-trained rerun differs from the published one in the checkpoint and in nothing
+    else -- which is the only way the two are comparable.
+    """
+    arm_dirs = arm_dirs or ARM_DIRS
     from scripts.eval_improv import (generate_batched_from_ids, load_hf,
                                      sft_checkpoint_to_hf)
 
@@ -1198,11 +1442,15 @@ def generate_all(rows: Sequence[Dict[str, Any]], *, work_dir: Path, max_new_toke
     meta: Dict[str, Any] = {}
     for arm in ("dial", "nodial"):
         hf_dir = work_dir / arm
-        cfg = sft_checkpoint_to_hf(ARM_DIRS[arm] / "step_3000.pkl",
+        cfg = sft_checkpoint_to_hf(arm_dirs[arm] / f"step_{step}.pkl",
                                    warm_start_ckpt=WARM_START_CKPT,
                                    tokenizer_dir=TOKENIZER_DIR, out_dir=hf_dir)
         tok, model = load_hf(hf_dir)
         if arm == "dial":
+            meta["checkpoints"] = {
+                a: _repo_relative(arm_dirs[a] / f"step_{step}.pkl")
+                for a in ("dial", "nodial")}
+            meta["step"] = step
             meta["prompt_parity"] = check_prompt_parity(tok, rows)
             meta["model_config"] = {k: cfg[k] for k in
                                     ("hidden_size", "num_hidden_layers",
@@ -1428,7 +1676,9 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
             all_rows: Sequence[Dict[str, Any]], derive: Dict[str, Any],
             manifests: Dict[str, Dict[str, Any]], gen_meta: Dict[str, Any],
             df_match_tol: float, progress: int = 200000,
-            generate_cmd: str = "python scripts/eval_reach.py") -> Dict[str, Any]:
+            generate_cmd: str = "python scripts/eval_reach.py",
+            step: int = DEFAULT_STEP,
+            compare_to: Optional[Path] = None) -> Dict[str, Any]:
     """Every scored number and every verdict, as ONE CALLED FUNCTION.
 
     Pure apart from reading the corpus: given the same stored generations it reproduces the
@@ -1680,7 +1930,7 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
     raw_dial_own["agrees_with_the_headline"] = (
         raw_dial_own["monotone"] == raw_dial["monotone"])
 
-    return {
+    result = {
         "measurement": "reach dial -- the EUREKA measurement (task 4)",
         "spec": "docs/superpowers/specs/2026-08-23-reach-dial-design.md",
         "headline": eureka,
@@ -1722,6 +1972,17 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
                 "arm's rate is much lower -- it is off-schema three ways -- which is why the "
                 "dial-arm-only denominator is reported beside the headline one."),
             "eval_split": "rows whose own `split` field is `eval`",
+            "checkpoint": {
+                "step": step,
+                "paths": gen_meta.get("checkpoints"),
+                "lr": manifests["dial"].get("lr"),
+                "lr_schedule": ("CONSTANT -- there is no decay and no warmup in this recipe. "
+                                "See limitations."),
+                "stop_reason": manifests["dial"].get("stop_reason"),
+                "note": ("the ONLY variable between this artifact and any sibling "
+                         "reach-dial*.json is the checkpoint. Same scenes, same forced-dial "
+                         "procedure, same controls, same locally-defined alpha."),
+            },
             "cut_points": {**_CUTS,
                            "fitted_on": derive["reach"]["cut_points"]["fitted_on"],
                            "n_fitted_on": derive["reach"]["cut_points"]["n_fitted_on"],
@@ -1809,6 +2070,12 @@ def analyse(rows: Sequence[Dict[str, Any]], generations: Dict[str, List[str]], *
         "stored": {"rows": list(rows), "generations": generations,
                    "gen_meta": gen_meta},
     }
+    if compare_to is not None:
+        prior = json.loads(Path(compare_to).read_text())
+        key = f"versus_{prior_step_of(prior) or 'prior'}_steps"
+        result[key] = versus_previous(result, prior)
+        result[key]["source"] = _repo_relative(Path(compare_to))
+    return result
 
 
 # ---------------------------------------------------------------------------------------
@@ -1821,8 +2088,16 @@ def load_rows(skits: Path) -> List[Dict[str, Any]]:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", type=Path,
-                    default=ROOT / "docs" / "measurements" / "reach-dial.json")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="default: derived from --arm-root/--step by `default_paths`, so a "
+                         "longer-trained rerun CANNOT overwrite a published measurement")
+    ap.add_argument("--arm-root", type=Path, default=DEFAULT_ARM_ROOT,
+                    help="directory holding ckpt-dial/ and ckpt-nodial/")
+    ap.add_argument("--step", type=int, default=DEFAULT_STEP,
+                    help="checkpoint step to evaluate (step_<N>.pkl)")
+    ap.add_argument("--compare-to", type=Path, default=None,
+                    help="a previously published artifact to diff against; emits a top-level "
+                         "`versus_<step>_steps` block with the deltas COMPUTED")
     ap.add_argument("--skits", type=Path, default=DEFAULT_SKITS)
     ap.add_argument("--n-scenes", type=int, default=800,
                     help="eval-labelled scenes to use; 0 = every one of them")
@@ -1837,19 +2112,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="training skits for the groundedness NPMI table (stage-2 default)")
     ap.add_argument("--df-match-tol", type=float, default=0.25,
                     help="log-add_df tolerance for the frequency-matched paired subsample")
-    ap.add_argument("--work-dir", type=Path,
-                    default=ROOT / "artifacts" / "reach" / "hf-eval")
-    ap.add_argument("--store", type=Path,
-                    default=ROOT / "artifacts" / "reach" / "eval-generations.json")
+    ap.add_argument("--work-dir", type=Path, default=None)
+    ap.add_argument("--store", type=Path, default=None)
     ap.add_argument("--rescore-from", type=Path, default=None,
                     help="re-analyse stored generations: no model, no tokenizer, no device")
     args = ap.parse_args(argv)
 
+    # A relative --arm-root is resolved against the REPO ROOT, not the cwd: every other path
+    # in this file is repo-relative and a cwd-relative one would silently point elsewhere
+    # depending on where the command was typed.
+    args.arm_root = (args.arm_root if args.arm_root.is_absolute()
+                     else (ROOT / args.arm_root)).resolve()
+    arm_dirs = arm_dirs_for(args.arm_root)
+    paths = default_paths(args.arm_root, args.step)
+    out_path = args.out or paths["out"]
+    store_path = args.store or paths["store"]
+    work_dir = args.work_dir or paths["work_dir"]
+
     all_rows = load_rows(args.skits)
     derive = json.loads(DERIVE_MANIFEST.read_text())
-    manifests = {arm: json.loads((ARM_DIRS[arm] / "train_manifest.json").read_text())
-                 for arm in ARM_DIRS}
+    manifests = {arm: json.loads((arm_dirs[arm] / "train_manifest.json").read_text())
+                 for arm in arm_dirs}
+    check_step_matches_manifests(manifests, args.step)
     corpus_limit = args.corpus_limit or None
+
+    # A REFUSAL, not a warning. Overwriting a published measurement with a different
+    # checkpoint's numbers is silent and irreversible, and every test would still pass.
+    if out_path.is_file():
+        prior = json.loads(out_path.read_text())
+        prior_step = (prior.get("design", {}).get("checkpoint", {}).get("step"))
+        if prior_step is not None and int(prior_step) != args.step:
+            raise RuntimeError(
+                f"{out_path} is the step-{prior_step} measurement and --step is {args.step}. "
+                f"Refusing to overwrite a published artifact with another checkpoint's "
+                f"numbers. Pass an explicit --out if that is really what you want.")
 
     if args.rescore_from:
         print(f"[rescore] re-analysing {args.rescore_from} -- no generation, no model ...")
@@ -1872,22 +2168,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                f"measurement would be partly memorisation")
         print(f"  using {len(rows)} scenes, story_id overlap with train: 0")
         print("[2/4] converting checkpoints -> HF (CPU only, no ttml, no device) ...")
-        gens, gen_meta = generate_all(rows, work_dir=args.work_dir,
+        gens, gen_meta = generate_all(rows, work_dir=work_dir,
                                       max_new_tokens=args.max_new_tokens,
-                                      batch_size=args.batch_size)
-        args.store.parent.mkdir(parents=True, exist_ok=True)
+                                      batch_size=args.batch_size,
+                                      arm_dirs=arm_dirs, step=args.step)
+        store_path.parent.mkdir(parents=True, exist_ok=True)
         gen_meta["generate_cmd"] = (
-            f"python scripts/eval_reach.py --n-scenes {len(rows)} "
+            f"python scripts/eval_reach.py --arm-root {_repo_relative(args.arm_root)} "
+            f"--step {args.step} --n-scenes {len(rows)} "
             f"--batch-size {args.batch_size} --max-new-tokens {args.max_new_tokens}")
-        args.store.write_text(json.dumps({"rows": rows, "generations": gens,
+        store_path.write_text(json.dumps({"rows": rows, "generations": gens,
                                           "gen_meta": gen_meta}) + "\n")
-        print(f"  stored every generation -> {args.store}")
+        print(f"  stored every generation -> {store_path}")
 
     print("[3/4] scoring ...")
     result = analyse(rows, gens, corpus=args.corpus, corpus_limit=corpus_limit,
                      assoc_skits=args.assoc_skits, all_rows=all_rows, derive=derive,
                      manifests=manifests, gen_meta=gen_meta,
-                     df_match_tol=args.df_match_tol,
+                     df_match_tol=args.df_match_tol, step=args.step,
+                     compare_to=args.compare_to,
                      # The command that ACTUALLY produced these generations, carried through a
                      # rescore. The default `--n-scenes` is 800 and this run used 1,000, so a
                      # printed default is a reproduction instruction that does not reproduce.
@@ -1899,9 +2198,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"--corpus-limit {corpus_limit}: the association table is NOT the one the dial "
             f"was derived from. Not a publishable measurement.")
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(result, indent=2) + "\n")
-    print(f"[4/4] wrote {args.out}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(result, indent=2) + "\n")
+    print(f"[4/4] wrote {out_path}")
 
     print("\n--- per setting ---")
     for k, row in result["per_setting"].items():

@@ -2144,3 +2144,41 @@ is asserted on it.
 `tests/test_reach_cli.py`, because `scripts/reach.py --about` quotes the field. The key is back
 with its provenance attached — and the CLI still states the spec's framing as a finding when
 this run does not support it. Flagged rather than edited: both files were out of scope.
+
+### Task 4, the 9000-step rerun — a plateau, not a floor (2026-08-24)
+
+Result: [`docs/measurements/reach-dial-9000.json`](docs/measurements/reach-dial-9000.json).
+Same eval, same 1,000 held-out scenes, same locally-defined thresholds; one variable, the
+checkpoint.
+
+**Both pre-declared questions came back negative, and that made the earlier result stronger.**
+The dial is unchanged at 3x the training budget: residualised `near<far` went **+0.060438 →
++0.060392, a change of −0.000046**, and every one of the six step-deltas moved by less than
+0.001. The `add` adherence gate **still fails** (shortfall 0.0896 → 0.1062, worst setting still
+`dial:near`, `far` still above `near`). So **undertraining is refuted** as the explanation for
+that gate, and my own claim that the 3000-step effects were "a FLOOR, measured below the
+model's trained ceiling" is **falsified** — they are a plateau. Corrected in the report rather
+than left standing.
+
+**When two runs agree to four decimal places, suspect the instrument first.** My first move was
+not to write the finding up but to ask whether I had evaluated the same checkpoint twice —
+a wrong `--arm-root`, a stale HF work-dir, a copied store all produce exactly this. Measured
+from the stored text: **38.8% of the 7,000 continuations differ**. That check is now a
+permanent field (`generation_churn`), because a near-zero churn beside "stable effects" would
+have been a fabricated finding, and the provenance strings would have looked perfect either way.
+
+**"Not converged" was the wrong frame, and it was mine.** The learning rate is CONSTANT 1e-5
+with no decay and no warmup. A constant-LR run cannot converge; it asymptotes, and it keeps
+producing small monotone val improvements indefinitely because the step size never anneals. So
+"val loss still falling" and "early stopping never fired" are what the RECIPE does, not evidence
+that the budget binds — 3x the steps bought 12.7% val improvement and zero effect change.
+`convergence_framing()` computes this from the manifests now. The consequence: a null here is no
+longer "undertrained", it is "this recipe has plateaued in practice".
+
+**A default path can destroy a published measurement, silently, with every test green.** Reusing
+the default `--out` for the longer-trained rerun would have overwritten the reviewed 3000-step
+artifact that `scripts/reach.py` quotes. `default_paths()` derives a suffixed path per
+(arm_root, step), `main` refuses to overwrite an artifact whose recorded step differs, and both
+are tested. The step/manifest provenance check was written in `main()` first and a mutation that
+deleted it survived — driver-only guards are unreachable from tests, the same hole as round 2's
+composer mutants. Extracted and tested.
