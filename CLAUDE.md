@@ -2056,3 +2056,56 @@ and share no content word with what preceded them. The spec's own sample skit dr
 **A tenth-class test caught in the act.** `classify_turn_failure`'s four-row table passed against
 a mutant that checked the `add` gate before `accept`, because every row failed exactly one gate.
 Ordering needed a row where BOTH fail. Same shape as the ten before it.
+
+## Skits v2, task 4 — the EUREKA measurement, and the dial moves (2026-08-23)
+
+Design: [`docs/superpowers/specs/2026-08-23-reach-dial-design.md`](docs/superpowers/specs/2026-08-23-reach-dial-design.md).
+Result: [`docs/measurements/reach-dial.json`](docs/measurements/reach-dial.json).
+
+**The dial works.** Within-model, scene-paired, 826 scenes, one model turn each, everything
+teacher-forced except the four characters of the dial value. Realised distance runs
+**0.6497 → 0.7336 → 0.7792** across `near`/`mid`/`far`, all three steps significant at
+`CRITICAL_T = 2.843` (t = 16.2 / 13.9 / 23.3) and **all three still significant after
+residualising on log `add_df`** (t = 7.4 / 9.0 / 12.5). So it is a REACH dial, not a frequency
+dial. Coherence held: groundedness fell 0.030 at `far` against a 0.05 margin declared before
+the data existed.
+
+**The negative control needed the strict threshold to stay negative.** `nodial`'s three steps
+came in at t = 2.36 / −0.30 / 2.35. Two of those sit *between* stage 1's 2.576 and this eval's
+2.843. Importing the looser constant — the thing the spec forbade in writing — would have turned
+the negative control positive and destroyed the headline. That is not a hypothetical any more.
+
+**EUREKA is still "not met", on one gate, and the gate failed in the wrong direction.** The
+`add` slot-hit rate is non-monotone: near 0.477, mid 0.567, far 0.507. "Hold at every setting"
+(worst-vs-best, declared) fails by 0.090 — but the worst setting is **`near`**, and `far` is 3
+points *above* `near`, so the spec's own stated worry ("stops fulfilling an ambitious plan")
+passes. Reported all three ways with the declared reading named as the gate; a mutant that
+swaps the gate to the flattering reading is RED in the suite. Moving a pre-declared threshold
+after seeing which side of it you landed on is the one thing this project cannot do.
+
+**A meaningless dial value buys 38% of the range.** `reach: blue` — same arm, same well-formed
+six-slot schema, off-vocabulary value — is distinguishable from `far` (t = −17.8) so the primary
+control passes, but it sits 0.379 of the way from `near` to `far`. Part of what the dial does is
+"a token is here", not "the token means far". A control reported as a boolean would have hidden
+that; the fraction is a field.
+
+**The 34-minute association table, in 81 seconds.** `train.reach.reach_distance` only *looks
+up* the pairs it is asked about, so the eval counts one streaming corpus pass restricted to the
+~3,200 unigrams and ~69,000 pairs it needs. Proved equal to the full table two ways: on a
+fixture corpus built both ways, and by re-deriving all 1,000 gold rows' stored
+`reach_distances` at full scale — **max abs error 0.0, `add_df` mismatches 0**, a hard refusal
+if not. The leave-one-out had to be made *exact* (subtract the story only from pairs it really
+contributes to) for that to work, because a generated `add` word need not be in the story at all.
+
+**`artifacts/` is git-ignored, so a side file cannot make a measurement reproducible.** All
+1,000 scenes and 7,000 generations are embedded in the published artifact, and
+`--rescore-from docs/measurements/reach-dial.json` round-trips byte-identical.
+
+**Two more hollow tests, caught by running the mutant rather than reading the test.** One
+asserted the first `add:` line wins using a *second think-block* — the `</think>` truncation was
+doing all the work, so dropping the `key not in found` guard passed. The other checked the gold
+reproduction using only an unscorable row, which emptied the error list and made `matches` False
+for the wrong reason. Both fixed by making the fixture able to fail. Also: stage 2's 4-gram
+degeneration metric scored **exactly 0.0000 on every setting** here — a skit turn is one
+sentence and rarely has four content words — while `"Snowmen are snowmen and snowmen"` sat in the
+sample. A metric that cannot fire is worse than no metric; replaced with type/token.
