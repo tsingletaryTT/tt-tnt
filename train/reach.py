@@ -55,8 +55,9 @@ table coverage. Two things are done about it:
 not frequency-neutral: two RARE words that co-occur at all score high, while a COMMON word's
 NPMI with anything is bounded low by its own marginal. So a rare `add` word tends to score
 NEAR and a common one tends to score FAR -- and `add` is chosen as the rarest fresh word in
-the turn. Measured: ``spearman(add-word document frequency, distance) = +0.306``; the `add`
-word's median document-frequency rank is 1,100 in `near` against 444 in `far`.
+the turn. Measured on the shipped artifact: ``spearman(add_df, distance) = +0.2078``, with
+per-bucket median document frequency near 16,591 / mid 51,269 / far 39,367 -- so the effect is
+concentrated in the near vs not-near contrast rather than spread monotonically across the dial.
 
 This one is NOT fixed here, because it is a property of the measure rather than a bug in the
 plumbing. It is PUBLISHED as a number instead -- `frequency_confound`, per bucket, plus an
@@ -418,11 +419,14 @@ def frequency_confound(add_dfs: Sequence[int], distances: Sequence[float],
     anything is bounded low by its own marginal. So a rare `add` word tends to score NEAR and a
     common one tends to score FAR -- which means `reach: far` partly selects COMMON words.
 
-    Measured on 20,000 stories before this function existed: spearman(add-word document
-    frequency, distance) = **+0.306**, and the median document-frequency RANK of the `add` word
-    is 1,100 in `near` against 444 in `far` (higher rank = rarer). Moderate, not total -- about
-    9% of rank variance -- but it is exactly the kind of thing that makes a "significant,
-    monotone" dial result mean something other than what it says on the tin.
+    Measured on the shipped artifact (2.1M stories, 123,042 observations):
+    ``spearman(add_df, distance) = +0.2078``, with per-bucket median document frequency
+    **near 16,591 / mid 51,269 / far 39,367**. Read the shape, not just the sign: the confound is
+    concentrated in the NEAR vs NOT-NEAR contrast and is NOT monotone across the dial -- `mid` is
+    the commonest bucket, not `far`. So a near-vs-far comparison is also a rare-vs-common
+    comparison, while mid-vs-far is much less exposed. (At 20,000 stories the correlation was
+    +0.306 and looked monotone. It is not, which is its own argument against inheriting a number
+    measured on a different population.)
 
     Reported here, per bucket, so an eval can CONTROL for it rather than merely be warned:
     every written row also carries its own `add_df`, so the covariate needs no re-derivation.
