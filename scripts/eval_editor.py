@@ -68,6 +68,12 @@ def main() -> int:
     p.add_argument("--endpoint", default="http://localhost:8000/v1/completions")
     p.add_argument("--model", default="episod/tt-tnt-1024")
     p.add_argument("--out", type=Path, default=ROOT / "docs" / "measurements" / "editor-eval.json")
+    p.add_argument("--max-model-len", type=int, default=512,
+                   help="must match the served model's own max_model_len -- a request "
+                        "whose prompt+completion exceeds this crashes the WHOLE vLLM "
+                        "engine (an unrecoverable AssertionError deep in the model "
+                        "runner, not a per-request 400), so this is enforced client-side "
+                        "before any request is sent, not just documented")
     args = p.parse_args()
 
     from scripts.build_editor_pairs import build_pairs, sample_clean_sentences, select_corpus_files
@@ -84,12 +90,27 @@ def main() -> int:
 
     from scripts.story_tools import _post  # reuse the same HTTP call the harness uses
 
+    # build_editor_pairs.py's draft/better are raw corrupted corpus sentences with no
+    # length cap -- unlike train_editor.py's build_editor_example, which truncates every
+    # training example to MAX_SEQ_LEN. Real corpus sentences run long enough (measured:
+    # one draft alone tokenized past 1024) to exceed the served model's max_model_len,
+    # and that failure mode is fatal to the whole server, not just one request. Guard
+    # client-side with the real tokenizer rather than a word-count heuristic.
+    max_tokens = 40
+    from transformers import AutoTokenizer
+    tok = AutoTokenizer.from_pretrained(str(ROOT / "artifacts" / "tokenizer"))
+
     results = []
+    skipped_too_long = 0
     for pair in pairs:
         prompt = f"\nDraft: {pair['draft']}\nEdit: "
+        prompt_len = len(tok.encode(prompt))
+        if prompt_len + max_tokens > args.max_model_len:
+            skipped_too_long += 1
+            continue
         data = _post(
-            {"model": args.model, "prompt": prompt, "max_tokens": 40, "temperature": 0.0,
-             "stop": ["\n"]},
+            {"model": args.model, "prompt": prompt, "max_tokens": max_tokens,
+             "temperature": 0.0, "stop": ["\n"]},
             args.endpoint, 60.0,
         )
         edited = data["choices"][0]["text"].strip()
@@ -98,6 +119,10 @@ def main() -> int:
             **score_recovery(pair["better"], edited, vocab),
         })
 
+    if skipped_too_long:
+        print(f"skipped {skipped_too_long}/{len(pairs)} pairs whose prompt+completion "
+              f"would exceed max_model_len={args.max_model_len}")
+
     mean_overlap = sum(r["word_overlap"] for r in results) / len(results)
     fake_word_rate = sum(1 for r in results if r["has_fake_word"]) / len(results)
     print(f"n={len(results)}  mean_word_overlap={mean_overlap:.3f}  "
@@ -105,7 +130,8 @@ def main() -> int:
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({
-        "n": len(results), "mean_word_overlap": mean_overlap,
+        "n": len(results), "skipped_too_long": skipped_too_long,
+        "mean_word_overlap": mean_overlap,
         "fake_word_rate": fake_word_rate, "results": results,
     }, indent=2))
     print(f"wrote {args.out}")
