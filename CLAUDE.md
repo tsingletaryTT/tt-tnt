@@ -2302,3 +2302,55 @@ error 0.0.
 `comet` — was started and stopped when this was shelved. 93.4% of model turns offer 2+ candidates,
 so it would have acted nearly always; `comet`/`volcano`/`dragon` tag `NN` and survive the gate,
 while `unicorn`/`teddy` tag `JJ` and are rejected. Resume there if the corpus changes.
+
+## 2026-08-27 — 4-chip serving fixed; a story-writing toolchain finds two real limits
+
+**4-chip serving works.** Root cause of the `TT_FATAL: Could not find any forwarding direction
+from src (M0, D0) to dst (M0, D3)` from the earlier 4-chip investigation: `FABRIC_1D_RING`
+maps to `Topology::Ring`, which `is_2D_topology()` excludes -- so it silently takes the same
+single-hop-only routing branch as plain `FABRIC_1D` (the tracked upstream `#22524` limitation),
+regardless of the ring flag. `FABRIC_2D_TORUS_XY` maps to `Topology::Torus` (genuinely 2D) and
+works: `multidevice with 4 devices and grid (1, 4) is created`, real generation. Two of my own
+earlier "no difference" conclusions about `FABRIC_1D_RING`/`FABRIC_2D` were wrong for a boring
+reason -- `--additional-config` needs the JSON nested under a `"tt"` key
+(`vllm_tt_plugin/config.py:get_tt_config()`), and I'd sent it flat, so it silently no-op'd both
+times. Full account, including the dead ends: `AUTODEBUG.md`, `AUTOFIX.md`,
+`docs/serving-with-tt-kernel.md` §8.
+
+**But 4-chip output is measurably worse than 2-chip, on the exact same prompts.** A controlled
+A/B (`scripts/story_tools.py`, same prompt, same slot, same sampling settings) found 4-chip
+producing invented non-words ("Tryburg", "Alexandary", "Higheriq") across most candidates, where
+2-chip's candidates were grammatically rough but recognizable English throughout. This is a real
+quality regression in `FABRIC_2D_TORUS_XY`'s collective ops (numerical correctness is the leading
+suspect, unconfirmed) -- not this checkpoint's ordinary ceiling. Documented as a "do not use for
+anything quality-sensitive yet" caveat in the serving doc. 2-chip remains the config to trust.
+
+**A tool-calling storytelling harness (`scripts/story_tools.py`) surfaced two more real limits,
+both worth keeping.** Built to drive `tt-tnt-1024-dialogue` one short, judged turn at a time --
+the turn structure deliberately reuses the *skits* checkpoints' five-slot schema
+(`offer/accept/add/stakes/handback`, `train/skit.py`) as a prompting-and-judging discipline, not
+as something this checkpoint was trained on. Two findings:
+
+1. **Chaining short restarts does not obviously beat one long unguided generation.** 24
+   candidates across three parameter settings for a single `accept` turn came back almost
+   uniformly broken (`"she had"`/`"one day"`/`"alone"` filler loops). Each fresh short call
+   re-rolls this model's fragile sentence-onset behavior from a cold start; a long generation
+   only has to survive that onset once. The earlier-looking "success" of long unguided
+   completions may partly be exactly this -- fewer rolls of the same weak die, not better
+   underlying quality.
+2. **Prompting the model to "edit" its own draft turn does nothing.** Framed explicitly as an
+   editing task (`self_edit()` in `story_tools.py`: "Draft: ... / Better version:"), the same
+   base model produced *worse*, unrelated fragments, not a cleaned-up draft. tt-tnt-1024-dialogue
+   was never trained to critique or revise text, and prompting alone does not manufacture that
+   capability.
+
+**Follow-up worth funding, not just noting: train the model to actually be an editor.** Given
+(2)'s clean negative result, the honest next lever isn't a better prompt -- it's a training
+objective. A concrete shape: fine-tune (or continue-train) on paired (draft, better) text where
+"better" is a real edit -- grammar-fixed, de-repeated, or otherwise improved -- so the model
+learns "revise this" as a task the way `tt-tnt-1024-dialogue`'s thin 2% Q&A slice taught it
+"answer this." This is also where the standing "skits and dialogue aren't orthogonal" goal
+connects: an editor objective, a dialogue objective, and the skits turn-structure objective are
+three lenses on the same underlying question -- can this model do something with text beyond
+raw next-token continuation -- and a future checkpoint that trains on more than one of them
+together is the actual integration point, not three permanently-separate checkpoints.

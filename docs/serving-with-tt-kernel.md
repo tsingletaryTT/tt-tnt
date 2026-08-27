@@ -661,14 +661,25 @@ including the already-deployed 2-chip config, at an untested fabric setting. Unt
 also verified under `FABRIC_2D_TORUS_XY` (it hasn't been), keep this as an explicit opt-in
 command rather than the manifest default.
 
-**Open correctness question, not yet resolved.** Across a handful of prompts at both greedy and
-sampled decoding, roughly half terminated abnormally early (6–14 tokens, garbled — e.g. `"Hept
-in the forest."`) while the rest ran to the requested length (repetitive, but consistent with
-this checkpoint's already-documented weakness). Whether this early-termination rate is elevated
-relative to the 2-chip config, or just this checkpoint's ordinary behavior surfacing on a
-different prompt sample, has not been established — it would need a controlled same-prompt A/B
-against 2-chip, not yet run. Do not read "the server comes up cleanly" as "generation is
-verified correct" for this configuration.
+**Correctness regression, now confirmed by a controlled A/B — do not use this for anything
+quality-sensitive yet.** The same prompt, same slot-style short-generation ask
+(`scripts/story_tools.py`), same sampling settings, run back-to-back on 4-chip
+(`FABRIC_2D_TORUS_XY`) and 2-chip (`MESH_DEVICE=P150`, `TT_VISIBLE_DEVICES` unset):
+
+| | sample |
+|---|---|
+| 4-chip | `'Shepat, the intruder set themselves Tryburg and drive Jennie Griffin into the waitingress's's "‑TheButt.'` |
+| 2-chip | `'Every day, she was a curious and she was always tried to discover a small, just for herself.'` |
+
+2-chip is grammatically rough (consistent with this checkpoint's already-documented weakness),
+but every candidate was recognizable English. 4-chip produced invented non-words
+("Tryburg", "Alexandary", "Higheriq") across most candidates, in a pattern distinct from
+ordinary repetition-collapse. This is a real quality regression specific to
+`FABRIC_2D_TORUS_XY` on this config, not this checkpoint's ordinary ceiling — root cause
+unknown (a numerical correctness issue in that fabric's collective ops is the leading
+suspect, untested). Treat the mesh-open/generate success above as proof the *packaging* path
+works, exactly the same caveat §7 makes for the original decode-defect story — not proof the
+*output* is trustworthy.
 
 ---
 
