@@ -195,6 +195,31 @@ def build_combined_examples(
     return [e for e in examples if e is not None]
 
 
+def _pad_to_max_seq_len(example: dict, pad_token_id: int) -> dict:
+    """Right-pads `input_ids`/`labels` to exactly `MAX_SEQ_LEN`.
+
+    Necessary because of a real hardware failure (2026-08-27 training run, step 75):
+    `sft_collate_fn` pads each batch only to that batch's OWN longest example (capped
+    at `MAX_SEQ_LEN`), so batch shape varies step to step on this dataset's wide length
+    distribution (min 12, median 473, max 512). ttml's SDPA backward kernel sizes an
+    internal scratch tensor (`u_scaler`) from the FIRST batch it sees and asserts
+    (`TT_FATAL: u_scaler shape mismatch`) rather than resizing when a LATER batch is
+    larger -- it does not support a growing shape mid-run. Padding every example to the
+    cap up front makes every batch exactly `(batch_size, MAX_SEQ_LEN)` from step 1
+    onward, so no later batch can ever exceed the first one's shape. `input_ids` is
+    padded with `pad_token_id`; `labels` with `-100`, so `sft_collate_fn`'s existing
+    loss-masking already ignores every padded position -- same convention it already
+    uses for its own per-batch padding, just applied uniformly instead of variably.
+    """
+    input_ids = list(example["input_ids"])
+    labels = list(example["labels"])
+    n = MAX_SEQ_LEN - len(input_ids)
+    if n > 0:
+        input_ids = input_ids + [pad_token_id] * n
+        labels = labels + [-100] * n
+    return {"input_ids": input_ids, "labels": labels}
+
+
 def _current_dialogue_checkpoint() -> Path:
     manifest = json.loads((ROOT / "docs" / "current_model.json").read_text())
     checkpoints_dir = ROOT / manifest["current"]["checkpoints"]
@@ -272,12 +297,18 @@ def main(argv: List[str] | None = None) -> int:
     # (1, 1) ONLY -- see this file's module docstring and this plan's Global Constraints.
     ttml.open_device_mesh((1, 1))
     try:
+        # Pad every example to a FIXED MAX_SEQ_LEN here -- not inside build_combined_examples
+        # -- so the length report printed above still reflects real, unpadded content.
+        # See _pad_to_max_seq_len's docstring for why this is load-bearing, not cosmetic.
+        train_examples_padded = [_pad_to_max_seq_len(e, pad_token_id) for e in train_examples]
+        val_examples_padded = [_pad_to_max_seq_len(e, pad_token_id) for e in val_examples]
+
         collate = partial(sft_collate_fn, max_seq_len=MAX_SEQ_LEN, pad_token_id=pad_token_id)
-        loader = InMemoryDataloader(train_examples, batch_size=args.batch_size,
+        loader = InMemoryDataloader(train_examples_padded, batch_size=args.batch_size,
                                     collate_fn=collate, shuffle=True, seed=args.seed)
-        val_loader = (InMemoryDataloader(val_examples, batch_size=args.batch_size,
+        val_loader = (InMemoryDataloader(val_examples_padded, batch_size=args.batch_size,
                                          collate_fn=collate, shuffle=False, seed=args.seed)
-                      if val_examples else None)
+                      if val_examples_padded else None)
 
         out = Path(args.out_root).resolve()
         out.mkdir(parents=True, exist_ok=True)

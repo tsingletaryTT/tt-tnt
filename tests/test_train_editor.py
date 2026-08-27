@@ -3,7 +3,12 @@
 """Example-building and masking only. No `ttml`/`ttnn` import, no device -- these tests run
 in a bare CPU environment, same convention as tests/test_corrupt.py.
 """
-from scripts.train_editor import MAX_SEQ_LEN, build_editor_example, build_poetry_example
+from scripts.train_editor import (
+    MAX_SEQ_LEN,
+    _pad_to_max_seq_len,
+    build_editor_example,
+    build_poetry_example,
+)
 
 
 class _FakeTok:
@@ -107,6 +112,24 @@ def test_build_editor_example_returns_none_when_prompt_alone_exceeds_max_seq_len
     pair = {"draft": draft, "better": "x y"}
     ex = build_editor_example(pair, tok, pad_token_id=99)
     assert ex is None
+
+
+def test_pad_to_max_seq_len_pads_short_example_to_exactly_the_cap():
+    example = {"input_ids": [1, 2, 3], "labels": [-100, -100, 3]}
+    padded = _pad_to_max_seq_len(example, pad_token_id=99)
+    assert len(padded["input_ids"]) == MAX_SEQ_LEN
+    assert len(padded["labels"]) == MAX_SEQ_LEN
+    assert padded["input_ids"][:3] == [1, 2, 3]
+    assert padded["input_ids"][3:] == [99] * (MAX_SEQ_LEN - 3)
+    assert padded["labels"][:3] == [-100, -100, 3]
+    assert padded["labels"][3:] == [-100] * (MAX_SEQ_LEN - 3)
+
+
+def test_pad_to_max_seq_len_is_a_noop_on_an_already_full_example():
+    example = {"input_ids": list(range(MAX_SEQ_LEN)), "labels": [-100] * MAX_SEQ_LEN}
+    padded = _pad_to_max_seq_len(example, pad_token_id=99)
+    assert padded["input_ids"] == example["input_ids"]
+    assert padded["labels"] == example["labels"]
 
 
 def test_build_poetry_example_truncates_from_the_end_to_max_seq_len():
