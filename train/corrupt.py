@@ -10,10 +10,12 @@ training pipeline. That independence is deliberate -- see the design spec's §1 
 at inference time; neither is built here).
 
 Every function takes and returns a single SENTENCE (no internal sentence splitting) and a
-`severity` in [0, 1] controlling how much it does, not whether it does anything -- at
-severity 0 every corruptor still changes something (there is no free "silently do nothing"
-severity), and `corrupt(..., n_corruptors=0)` is the only way to get the input back
-unchanged.
+`severity` in [0, 1] controlling how much it does, not whether it does anything on a TYPICAL
+input -- but each corruptor has its own early no-op case (too short, no eligible word,
+nothing to change) and can leave short or atypical sentences untouched even at severity 1.0.
+`scripts/build_editor_pairs.py::build_pairs` exists specifically to handle that: it retries
+with a different seed/corruptor and drops the sentence if every attempt still no-ops (a real
+measured rate on this corpus: 14/100).
 """
 
 from __future__ import annotations
@@ -171,8 +173,11 @@ _CORRUPTORS: List[Callable[..., str]] = [
 def corrupt(text: str, *, seed: int, severity: float = 0.5, n_corruptors: int = 1) -> str:
     """Apply `n_corruptors` randomly-chosen corruptors (from the four above) in sequence.
 
-    `n_corruptors=0` returns `text` unchanged -- the only way to get a no-op out of this
-    module, so a caller building a `draft == better` example (a bug) cannot happen silently.
+    `n_corruptors=0` returns `text` unchanged by design -- but it is not the ONLY way to
+    get a no-op: each individual corruptor can also no-op on a short or atypical sentence
+    even with `n_corruptors>=1` (see the module docstring). A caller building `draft`/
+    `better` pairs must check for and handle that case itself --
+    `scripts/build_editor_pairs.py::build_pairs` does, via a bounded retry-then-drop loop.
     """
     if n_corruptors <= 0:
         return text

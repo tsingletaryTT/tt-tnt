@@ -43,18 +43,23 @@ def test_garble_word_replaces_an_ordinary_word():
 
 
 def test_garble_word_skips_existing_proper_nouns():
-    # "Mira" is capitalized mid-sentence -- an existing proper noun, must survive untouched.
-    text = "The girl named Mira walked to the old mill by the river."
+    # "Mira" is capitalized mid-sentence with NO naming cue before it ("met", not
+    # "named"/"called"/"nicknamed") -- isolates the capitalization rule specifically,
+    # so a mutant that deletes only the naming-cue check cannot pass this test.
+    text = "She met Mira at the old quiet mill by the river near the village."
     for seed in range(20):
         out = garble_word(text, seed=seed, severity=1.0)
         assert "Mira" in out.split(), f"seed={seed} corrupted a protected proper noun: {out!r}"
 
 
 def test_garble_word_skips_word_after_named_or_called():
-    text = "The dog was called Bramble and lived in the barn near the pond."
+    # "bramble" is LOWERCASE (not a proper noun) and protected ONLY by following
+    # "named" -- isolates the naming-cue rule specifically, so a mutant that deletes
+    # only the capitalization check cannot pass this test.
+    text = "The dog was named bramble and lived near the old quiet pond by the mill."
     for seed in range(20):
         out = garble_word(text, seed=seed, severity=1.0)
-        assert "Bramble" in out.split(), f"seed={seed} corrupted a protected coined name: {out!r}"
+        assert "bramble" in out.split(), f"seed={seed} corrupted a protected coined name: {out!r}"
 
 
 def test_drop_or_double_function_word_changes_length_or_doubles():
@@ -79,9 +84,12 @@ def test_corrupt_applies_requested_corruptor_count_and_is_deterministic():
     out_a = corrupt(text, seed=42, n_corruptors=2)
     out_b = corrupt(text, seed=42, n_corruptors=2)
     assert out_a == out_b
-    out_c = corrupt(text, seed=43, n_corruptors=2)
-    # different seed, overwhelmingly likely to differ on this input
-    assert out_c != out_a or True  # documents intent; not a strict guarantee for one input
+
+    # Different seeds should overwhelmingly produce different output on real text --
+    # checked across 20 seeds rather than asserted (and ignored) for exactly one, so
+    # this is a real claim instead of `X or True`.
+    distinct = {corrupt(text, seed=s, n_corruptors=2) for s in range(1, 21)}
+    assert len(distinct) >= 15, f"only {len(distinct)}/20 seeds produced distinct output"
 
 
 def test_corrupt_with_zero_corruptors_returns_input_unchanged():

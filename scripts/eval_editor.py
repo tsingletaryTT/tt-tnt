@@ -20,6 +20,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Set
 
@@ -41,12 +42,14 @@ def recovers_real_words(text: str, vocab: Set[str]) -> bool:
     return all(w in vocab for w in _words(text))
 
 
+def _word_overlap(a: str, b: str) -> float:
+    a_words = set(_words(a))
+    b_words = set(_words(b))
+    return len(a_words & b_words) / len(a_words) if a_words else 0.0
+
+
 def score_recovery(better: str, edited: str, vocab: Set[str]) -> dict:
-    better_words = set(_words(better))
-    edited_words = set(_words(edited))
-    overlap = (
-        len(better_words & edited_words) / len(better_words) if better_words else 0.0
-    )
+    overlap = _word_overlap(better, edited)
     has_fake_word = not recovers_real_words(edited, vocab)
     return {"word_overlap": overlap, "has_fake_word": has_fake_word}
 
@@ -114,8 +117,13 @@ def main() -> int:
             args.endpoint, 60.0,
         )
         edited = data["choices"][0]["text"].strip()
+        # draft_overlap is the baseline this check is actually specified against --
+        # "closer to real English than the draft was" (module docstring, spec sec.5.1)
+        # is a comparison, not a bare edited-vs-better number.
+        draft_overlap = _word_overlap(pair["better"], pair["draft"])
         results.append({
             "draft": pair["draft"], "better": pair["better"], "edited": edited,
+            "draft_overlap": draft_overlap,
             **score_recovery(pair["better"], edited, vocab),
         })
 
@@ -123,15 +131,33 @@ def main() -> int:
         print(f"skipped {skipped_too_long}/{len(pairs)} pairs whose prompt+completion "
               f"would exceed max_model_len={args.max_model_len}")
 
+    if not results:
+        print(f"n=0 -- every pair was skipped as too long, nothing to score")
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps({
+            "n": 0, "skipped_too_long": skipped_too_long, "results": [],
+        }, indent=2))
+        print(f"wrote {args.out}")
+        return 0
+
     mean_overlap = sum(r["word_overlap"] for r in results) / len(results)
+    mean_draft_overlap = sum(r["draft_overlap"] for r in results) / len(results)
+    improved = sum(1 for r in results if r["word_overlap"] > r["draft_overlap"])
+    worsened = sum(1 for r in results if r["word_overlap"] < r["draft_overlap"])
     fake_word_rate = sum(1 for r in results if r["has_fake_word"]) / len(results)
-    print(f"n={len(results)}  mean_word_overlap={mean_overlap:.3f}  "
+    print(f"n={len(results)}  mean_word_overlap={mean_overlap:.3f} "
+          f"(draft baseline {mean_draft_overlap:.3f})  "
+          f"improved={improved}  worsened={worsened}  "
           f"fake_word_rate={fake_word_rate:.3f}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({
+        "model": args.model, "endpoint": args.endpoint, "seed": args.seed,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "n": len(results), "skipped_too_long": skipped_too_long,
         "mean_word_overlap": mean_overlap,
+        "mean_draft_overlap": mean_draft_overlap,
+        "improved_over_draft": improved, "worsened_vs_draft": worsened,
         "fake_word_rate": fake_word_rate, "results": results,
     }, indent=2))
     print(f"wrote {args.out}")

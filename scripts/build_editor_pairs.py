@@ -4,9 +4,9 @@
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
 """Build (draft, better) editor-training pairs from real corpus sentences.
 
-`better` is always a real, clean line drawn from the nine per-source files under
+`better` is always a real, clean line drawn from the ten per-source files under
 `artifacts/corpus/` (never `blend.txt` or `corpus.txt`, the two aggregate files built FROM
-those nine -- sampling from the aggregates too would double-count their content) -- never
+those ten -- sampling from the aggregates too would double-count their content) -- never
 model-generated, so it is guaranteed grammatical English by construction. `draft` is the
 same line after 1-2 seeded corruptors from `train/corrupt.py`, retried (and, on persistent
 failure, dropped) so that `draft == better` is never emitted -- see `build_pairs`.
@@ -38,7 +38,7 @@ DELIMITER_STRINGS = ["Draft:", "Edit:"]
 
 #: The two fixed, well-established aggregate filenames this project builds under
 #: `artifacts/corpus/` -- `blend.txt` (the full training blend) and `corpus.txt` (the legacy
-#: TinyStories-only aggregate). Both are concatenations of the same nine per-source files
+#: TinyStories-only aggregate). Both are concatenations of the same ten per-source files
 #: this script otherwise samples from, so including them alongside the per-source files
 #: double-counts (in fact multiply-counts) every line they contain, biasing the sample toward
 #: duplicated content -- not just a resource-usage problem. Excluded by name, not by a
@@ -121,9 +121,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--corpus-dir", type=Path, default=ROOT / "artifacts" / "corpus")
     p.add_argument("--n", type=int, default=20000,
-                   help="number of pairs to build (default matches the skits-200k order "
-                        "of magnitude before its own drop rate, not after it -- there is no "
-                        "drop rate here, so this is the real final count)")
+                   help="number of SENTENCES sampled (not the final pair count -- "
+                        "build_pairs drops any sentence whose corruption attempts all "
+                        "no-op after retrying, a real measured rate on a 100-sentence "
+                        "sample of ~14%%; see build_pairs' own docstring)")
     p.add_argument("--seed", type=int, default=5489)
     p.add_argument("--out", type=Path, default=ROOT / "artifacts" / "editor-pairs" / "pairs.jsonl")
     args = p.parse_args()

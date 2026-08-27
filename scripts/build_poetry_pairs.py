@@ -46,10 +46,14 @@ DELIMITER_STRINGS = ["Continue this poem:", "Continuation:", "Write a poem about
 #: Task 4's dry-run against the real corpus found 99.86% of poetry-instructions examples
 #: exceeding MAX_SEQ_LEN=512 tokens -- Gutenberg poems in this corpus run long (median
 #: combined example length 655 tokens, max 1796), and build_pairs never bounded poem length
-#: against the training window. This module has no tokenizer available, so word count is a
-#: heuristic proxy for token count, not exact: 300 words at ~1.6 tokens/word (the most
-#: token-hungry source measured elsewhere in this project's corpus, wikipedia_simple) is
-#: ~480 tokens, leaving headroom under 512 for the short prompt template's own ~15-20 tokens.
+#: against the training window. This module has no tokenizer available, so word count is
+#: only a first-pass reduction, not a guarantee: a follow-up measurement with the real
+#: tokenizer found this corpus's tokens/word ratio has a heavy tail (median 1.71, p90 1.95,
+#: max 3.13) that no flat word cap bounds reliably -- at this cap alone, ~55% of poetry
+#: examples still exceeded 512 tokens. The actual guarantee lives in
+#: scripts/train_editor.py's `_truncate_to_max_seq_len`, which truncates `input_ids`/
+#: `labels` to MAX_SEQ_LEN explicitly, with the real tokenizer, at construction time. This
+#: cap is kept anyway because it still cuts extreme cases cheaply before that.
 MAX_POEM_WORDS = 300
 
 

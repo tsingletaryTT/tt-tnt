@@ -92,7 +92,8 @@ existing corpus in Task 2 below (grep for the exact strings) rather than assumed
 literal risk is measured, not just judged small in the abstract.
 
 Loss is masked exactly the way the dialogue slice already masks its Q&A pairs
-(`labels = [-100]*(len(prompt_ids)) + completion_ids + [-100]` — see the 2026-08-20 improv-
+(`labels = [-100]*(len(prompt_ids)-1) + completion_ids + [-100]`, keeping the last prompt
+position supervised since its target is the first completion token — see the 2026-08-20 improv-
 thinking entry in `CLAUDE.md` for the precedent): the model is only ever scored on producing
 the `<edit>` half, so the loss signal is specifically "given a draft, produce the correction,"
 not "predict a draft is likely."
