@@ -20,15 +20,20 @@ skits (`scripts.derive_skits.build_skit_example`, unchanged), and a base-blend r
 freely in one list.
 
 **The base-blend slice was added in a follow-up run (2026-08-27), after the first run
-measured a real regression.** Design spec sec.4 mandates a MAJORITY base-blend
-anti-forgetting slice; the first run implemented none (0%), training on 100% task data with
-no anti-forgetting refresh -- exactly the failure mode spec sec.Risks warned about, and the
-leading candidate cause of that run's measured regression (see CLAUDE.md). Unlike the other
-three types, base-blend examples are NOT masked SFT pairs -- `labels == input_ids` with no
-`-100` anywhere, ordinary next-token language modeling, matching how the base checkpoint
-itself was trained. Sampling directly from the pre-tokenized `train_ids.npy` (rather than
-re-tokenizing `artifacts/corpus/blend.txt`) is deliberate: that array already reflects the
-corpus's settled per-source shares (it is what tt-tnt-1024-dialogue itself trained on), so no
+measured a real regression -- and its FIRST attempt trained a second, worse-broken
+checkpoint before a labels-shift bug was caught and fixed (see CLAUDE.md for the full
+account: matched-window loss 15.03 nats, every "spine"-register prompt collapsing into
+one repeated word).** Design spec sec.4 mandates a MAJORITY base-blend anti-forgetting
+slice; the first run implemented none (0%), training on 100% task data with no
+anti-forgetting refresh -- exactly the failure mode spec sec.Risks warned about, and the
+leading candidate cause of that run's measured regression. Unlike the other three types,
+base-blend examples are NOT masked SFT pairs -- every position is supervised, no `-100`
+anywhere, ordinary next-token language modeling matching how the base checkpoint itself was
+trained. Critically, `labels` is SHIFTED (`labels[t] == input_ids[t+1]`, ttml's own
+convention -- see `build_base_blend_example`'s docstring), NOT `labels == input_ids`.
+Sampling directly from the pre-tokenized `train_ids.npy` (rather than re-tokenizing
+`artifacts/corpus/blend.txt`) is deliberate: that array already reflects the corpus's
+settled per-source shares (it is what tt-tnt-1024-dialogue itself trained on), so no
 new tokenization or share computation is needed.
 
     gozer run --chips 1 --who "claude:editor-training" --reason "editor+skits SFT" -- \
@@ -262,16 +267,28 @@ def stratified_split(categories: Dict[str, List[dict]], val_size: int) -> tuple:
 
 
 def build_base_blend_example(window) -> Dict[str, list]:
-    """Plain next-token language-modeling example from a contiguous corpus window.
+    """Plain next-token language-modeling example from a contiguous corpus window of
+    length `seq_len + 1`.
 
-    Full supervision (`labels == input_ids`, no `-100` anywhere) -- unlike
-    `build_editor_example`/`build_poetry_example`/`build_skit_example`, which mask a
-    prompt. That is what makes this an anti-forgetting REFRESH rather than a fourth
-    task-specific slice: the loss signal is exactly the one the base checkpoint was
-    already trained on, not a new objective.
+    `input_ids = window[:-1]`, `labels = window[1:]` -- full supervision (no `-100`
+    anywhere), but SHIFTED: `labels[t] == input_ids[t+1]`, matching ttml's own
+    convention (the same one `build_editor_example`/`build_poetry_example` already use
+    correctly: `labels = [-100]*(len(p_ids)-1) + c_ids + [-100]`, which aligns
+    `labels[t]` to the token that should be predicted from inputs up to and including
+    position `t`). `labels == input_ids` (unshifted, HF-style) was this function's
+    original, WRONG implementation, live only in the 2026-08-27 follow-up run that
+    trained a catastrophically broken checkpoint before this was caught (matched-window
+    held-out loss 15.03 nats, worse than the ln(32000)=10.37 uniform ceiling; every
+    "spine"-register frozen prompt collapsed into repeating one word from token one --
+    see CLAUDE.md) -- the exact bug class the 2026-08-20 improv-thinking entry already
+    documented once for a different builder. `input_ids[t]` is a poor "prediction
+    target" for the hidden state AT position `t`, since that hidden state was computed
+    FROM `input_ids[t]` as part of its own input -- it rewards a trivial, causally
+    self-referential shortcut instead of real next-token prediction, and that shortcut
+    dominating 60% of every batch is what broke the shared weights.
     """
     ids = list(window)
-    return {"input_ids": ids, "labels": list(ids)}
+    return {"input_ids": ids[:-1], "labels": ids[1:]}
 
 
 def sample_base_blend_examples(
@@ -280,19 +297,23 @@ def sample_base_blend_examples(
     """Sample `n` random `seq_len`-token windows from the pre-tokenized corpus stream at
     `token_path` (independently drawn -- overlap between two windows is possible, not
     systematically avoided). Reads via mmap so the ~1.4GB array is never fully loaded.
+
+    Each window is fetched at length `seq_len + 1` -- one extra token beyond `seq_len`
+    -- so `build_base_blend_example` has a real "next token" for every one of the
+    `seq_len` positions in `input_ids`, rather than needing to mask the last position.
     """
     import numpy as np
 
     arr = np.load(token_path, mmap_mode="r")
-    if len(arr) < seq_len:
+    if len(arr) < seq_len + 1:
         raise ValueError(
-            f"{token_path} has only {len(arr)} tokens, fewer than seq_len={seq_len}"
+            f"{token_path} has only {len(arr)} tokens, fewer than seq_len+1={seq_len + 1}"
         )
     rng = random.Random(seed)
     examples = []
     for _ in range(n):
-        start = rng.randrange(0, len(arr) - seq_len + 1)
-        window = arr[start : start + seq_len].tolist()
+        start = rng.randrange(0, len(arr) - seq_len)
+        window = arr[start : start + seq_len + 1].tolist()
         examples.append(build_base_blend_example(window))
     return examples
 

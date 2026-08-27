@@ -167,11 +167,18 @@ def test_build_poetry_example_returns_none_when_prompt_alone_exceeds_max_seq_len
     assert ex is None
 
 
-def test_build_base_blend_example_is_full_supervision_no_masking():
-    window = list(range(10, 20))
+def test_build_base_blend_example_shifts_labels_by_one_not_unshifted():
+    # window has length seq_len+1 = 11; input_ids drops the last token, labels drops
+    # the first -- labels[t] must equal input_ids[t+1] (ttml's convention), NOT
+    # input_ids[t] (the HF-style bug this function originally shipped with and that
+    # broke a real training run -- see this function's docstring).
+    window = list(range(10, 21))
     ex = build_base_blend_example(window)
-    assert ex["input_ids"] == window
-    assert ex["labels"] == window
+    assert ex["input_ids"] == list(range(10, 20))
+    assert ex["labels"] == list(range(11, 21))
+    assert ex["input_ids"] != ex["labels"]
+    for t in range(len(ex["input_ids"]) - 1):
+        assert ex["labels"][t] == ex["input_ids"][t + 1]
     assert -100 not in ex["labels"]
 
 
@@ -179,7 +186,7 @@ def test_build_base_blend_example_returns_independent_lists():
     window = [1, 2, 3]
     ex = build_base_blend_example(window)
     ex["input_ids"].append(99)
-    assert ex["labels"] == [1, 2, 3]
+    assert ex["labels"] == [2, 3]
 
 
 def test_sample_base_blend_examples_reads_real_windows_from_disk(tmp_path):
@@ -191,10 +198,13 @@ def test_sample_base_blend_examples_reads_real_windows_from_disk(tmp_path):
     assert len(examples) == 5
     for ex in examples:
         assert len(ex["input_ids"]) == 32
-        assert ex["input_ids"] == ex["labels"]
-        # every window must be a real contiguous slice of arr, not fabricated
+        assert len(ex["labels"]) == 32
+        # every window must be a real contiguous slice of arr, not fabricated, and
+        # labels must be input_ids shifted by exactly one position (arange makes
+        # this checkable: labels[t] == input_ids[t] + 1 for every t)
         start = ex["input_ids"][0]
         assert ex["input_ids"] == list(range(start, start + 32))
+        assert ex["labels"] == list(range(start + 1, start + 33))
 
 
 def test_sample_base_blend_examples_is_deterministic_given_the_same_seed(tmp_path):

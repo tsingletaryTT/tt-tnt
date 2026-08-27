@@ -2502,3 +2502,57 @@ repeat count, so the "before" negative result (pre-training) and the "after" res
 above were scored by two different, though closely related, detectors. The direction is
 conservative here — the stricter post-fix detector is the one that still flags the editor
 checkpoint's output, so the conclusion holds — but the two runs were not scored identically.
+
+## The base-blend follow-up's first attempt trained a second, worse-broken checkpoint (2026-08-27)
+
+Implemented `scripts/train_editor.py`'s missing base-blend anti-forgetting slice (spec sec.4)
+-- `build_base_blend_example`/`sample_base_blend_examples` sample random windows directly
+from `artifacts/tokens-v3/train_ids.npy` (the pre-tokenized stream tt-tnt-1024-dialogue
+itself trained on, so no re-tokenization or share computation needed), sized at
+`--base-blend-ratio 0.6` (a majority, per spec) against the existing editor+poetry+skits mix,
+plus a real fix for the val-split bug the final review had only documented before (it was
+100% skits): `stratified_split` now holds out an even share from every category's own tail.
+Real dry-run: base_blend=129,043 (60.0%), total 215,072 examples (was 86,029).
+
+**The first real training run on this code produced a catastrophically broken checkpoint,
+not an improvement.** Ran clean (3000 steps, ~10 min, gammas moved 34.6%, both quality
+guards passed) and looked fine by every SIGNAL the run itself prints -- but the CPU-only,
+device-independent no-regression check against `tt-tnt-1024-dialogue` was unambiguous:
+**matched-window held-out loss went from 2.7726 to 15.0296 nats** -- worse than the
+`ln(32000) ≈ 10.37` uniform-random ceiling -- alongside `4-gram repeat rate` at **420.29x**
+the seed floor and `longest repeated span` at **849.98x**, both far beyond even the first
+(already-regressed) run's 21.76x/30.17x. Direct generation confirmed it: an ordinary
+TinyStories-style prompt ("Once upon a time, there was a little...") still produced fluent,
+coherent text, but every one of the six "spine"-register frozen prompts tested collapsed
+into repeating a single word from the very first generated token --
+`"to to to to..."`/`",,,,..."`/`"but but but..."`/`"one one one..."`/`"and and and..."`/
+`"that that that..."`, a different word each time, always immediate and total. This is not
+"didn't help" -- it is a real, severe, reproducible break, and the CPU-only instrument caught
+it before any hardware time was spent trying to serve or further evaluate the checkpoint.
+
+**Root cause: a labels-shift bug in the base-blend example builder, the same bug class the
+2026-08-20 improv-thinking entry already documented once, in a different function.**
+`build_base_blend_example` shipped as `labels = list(ids)` (unshifted, HF-style) --
+identical to `input_ids`. ttml's own convention, which `build_editor_example`/
+`build_poetry_example` already implement correctly a few functions above it in the SAME
+file, is that `labels[t]` is the token that should be predicted GIVEN inputs up to and
+including position `t`, i.e. `labels[t] == input_ids[t+1]`, not `input_ids[t]`. Training a
+causal transformer to predict "the token that is already at this exact position" from a
+hidden state that was computed FROM that same token is a trivial, causally self-referential
+shortcut -- and at a 60% majority share, that shortcut competing against real next-token
+prediction on the same shared weights is sufficient to catastrophically corrupt the model's
+actual language-modeling ability, which is exactly what the 15.03-nat held-out loss and the
+prompt-collapse pattern show.
+
+**Fixed.** `sample_base_blend_examples` now fetches windows of length `seq_len + 1` (one
+extra token) and `build_base_blend_example` splits them as `input_ids = window[:-1]`,
+`labels = window[1:]` -- correctly shifted, still full supervision, no `-100` anywhere. Two
+tests that had asserted the WRONG (unshifted) behavior as correct were rewritten to check the
+shift explicitly (`labels[t] == input_ids[t+1]` for every `t`, and a case where
+`input_ids != labels` on the same window) -- the old tests would have passed against either
+implementation, which is exactly the "hollow test" pattern this project has hit many times
+before: a test that only checks shape/type, never the actual semantic content the bug lived
+in. `artifacts/checkpoints-1024-editor-blend` (the broken run) and
+`artifacts/hf-tt-tnt-1024-editor-blend` are left on disk as the broken-run artifact, not
+promoted, not registered as a candidate to build on -- the corrected run gets a fresh
+`--out-root`. Real hardware re-run with the fix is the next step.
