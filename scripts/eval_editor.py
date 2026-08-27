@@ -70,9 +70,14 @@ def main() -> int:
     p.add_argument("--out", type=Path, default=ROOT / "docs" / "measurements" / "editor-eval.json")
     args = p.parse_args()
 
-    from scripts.build_editor_pairs import build_pairs, sample_clean_sentences
+    from scripts.build_editor_pairs import build_pairs, sample_clean_sentences, select_corpus_files
 
-    corpus_paths = sorted(args.corpus_dir.glob("*.txt"))
+    # NOT a plain glob("*.txt") -- that would include blend.txt/corpus.txt, the two
+    # aggregate files build_editor_pairs.py's own select_corpus_files excludes because
+    # they multiply-count already-upsampled per-source content. Reusing the same
+    # exclusion here keeps this held-out sample drawn from the same population Task 2's
+    # training pairs were, rather than biased toward the training blend's own upsampling.
+    corpus_paths = select_corpus_files(args.corpus_dir)
     vocab = build_vocab(corpus_paths)
     sentences = sample_clean_sentences(corpus_paths, args.n, seed=args.seed)
     pairs = build_pairs(sentences, seed=args.seed)
