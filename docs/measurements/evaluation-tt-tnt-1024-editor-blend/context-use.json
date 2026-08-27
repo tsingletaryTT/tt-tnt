@@ -1,0 +1,53 @@
+{
+  "hf_model": "artifacts/hf-tt-tnt-1024-editor-blend",
+  "tokens": "/home/ttuser/code/tt-tnt/artifacts/tokens-v3/val_ids.npy",
+  "seq_len": 512,
+  "n_windows": 256,
+  "batch_size": 32,
+  "seed": 0,
+  "bucket_edges": [
+    0,
+    32,
+    64,
+    128,
+    256,
+    512
+  ],
+  "overall": [
+    {
+      "lo": 0,
+      "hi": 32,
+      "mean": 14.247984098531845,
+      "sem": 0.13143384238578437,
+      "n_windows": 256
+    },
+    {
+      "lo": 32,
+      "hi": 64,
+      "mean": 14.537075188861422,
+      "sem": 0.13975303978384132,
+      "n_windows": 256
+    },
+    {
+      "lo": 64,
+      "hi": 128,
+      "mean": 14.780409074446275,
+      "sem": 0.12792123144849066,
+      "n_windows": 256
+    },
+    {
+      "lo": 128,
+      "hi": 256,
+      "mean": 15.095198120448472,
+      "sem": 0.11356906100582456,
+      "n_windows": 256
+    },
+    {
+      "lo": 256,
+      "hi": 512,
+      "mean": 15.218393709145976,
+      "sem": 0.1107986558552252,
+      "n_windows": 256
+    }
+  ]
+}
