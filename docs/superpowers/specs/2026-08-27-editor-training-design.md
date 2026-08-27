@@ -66,14 +66,30 @@ construction). `draft` = the same sentence after one or more corruptors are appl
 (1–2 corruptors per example, severity sampled, so the training set spans mild-to-severe rather
 than a single fixed corruption strength).
 
-## 2. Task framing: two new added tokens
+## 2. Task framing: plain-text delimiters, NOT new special tokens
 
-Two new added tokens, `<draft>` and `<edit>`, the same way `</s>` was added for document
-boundaries (byte-level BPE cannot split or absorb an added token). Format:
+**Corrected during planning, after the first draft of this spec proposed new added tokens
+(`<draft>`/`<edit>`), the same way `</s>` was added.** That precedent doesn't transfer:
+`</s>` became an added token during the tokenizer's *original from-scratch training*, when
+the full 32000-slot vocab was still being decided. This checkpoint's vocab is already fixed
+and fully populated (BPE reached exactly 32000 tokens with no shortfall — see
+`convert/tokenizer.py:SPECIAL_TOKENS`, ids 0–3 fixed at that original build). Adding a new
+special token *now* means growing the vocab to 32002 and resizing the (tied) embedding/
+lm_head table by 2 rows before any continued training can resume — real model surgery, and
+a silent way to corrupt a plain `--resume` if done carelessly. Not worth it for this
+objective.
+
+Instead: plain-text delimiters, encoded with the existing vocab like any other text —
+`\nDraft: ` and `\nEdit: `. Format:
 
 ```
-<draft> {corrupted sentence} <edit> {clean sentence} </s>
+\nDraft: {corrupted sentence}\nEdit: {clean sentence}</s>
 ```
+
+Trade-off, stated plainly: a real sentence in the corpus containing the literal words
+"Draft:"/"Edit:" at line-start would collide with the delimiter. Checked against the
+existing corpus in Task 2 below (grep for the exact strings) rather than assumed away — the
+literal risk is measured, not just judged small in the abstract.
 
 Loss is masked exactly the way the dialogue slice already masks its Q&A pairs
 (`labels = [-100]*(len(prompt_ids)) + completion_ids + [-100]` — see the 2026-08-20 improv-

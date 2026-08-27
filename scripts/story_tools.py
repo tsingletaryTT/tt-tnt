@@ -54,13 +54,14 @@ _SLOT_HINT = {
     # Ask for a continuation that keeps whatever the previous turn introduced in view,
     # rather than changing the subject.
     "accept": "",
-    # The one slot worth a real prompt nudge: this project's own measurements
-    # (`docs/measurements/reach-dial.json` and the task-7 particle-filter work) found that
-    # without a push, this model's "fresh word" choices collapse onto the same ~25 common
-    # verbs/particles. Asking explicitly for something new is a cheap, honest nudge -- it
-    # does not guarantee a good word, it only widens what gets proposed for the caller to
-    # judge.
-    "add": " Something new should appear now:",
+    # Tried a colon-style nudge here first ("Something new should appear now:") on the
+    # theory that this project's own measurements (`docs/measurements/reach-dial.json`,
+    # the task-7 particle-filter work) show this model's "fresh word" choices collapse
+    # onto ~25 common verbs/particles without a push. It backfired: a trailing colon
+    # reads as a list/label continuation to this model, not a sentence prompt, and every
+    # candidate came back as a sub-sentence fragment ("a special.", "to her power.").
+    # No hint at all, letting the story continue naturally, is what's left.
+    "add": "",
     # Stakes egress: no separate prompt hint (a coherent continuation is the whole ask);
     # whether stakes moved is a judgment call for the caller, not a probe-time distinction.
     "stakes": "",
@@ -147,6 +148,15 @@ def propose(
 
 _WORD_RE = re.compile(r"[A-Za-z']+")
 
+# Excluded from the internal_repeat count: a pronoun or article appearing 3+ times across
+# several clauses of one sentence is normal English, not the collapse this check is for.
+# Found by inspection -- an early version flagged 'One night and she had a star in the
+# young, as she had used to watch, as she never.' purely because "she" occurs three times.
+_STOPWORDS = frozenset(
+    "a an the she he it they i you we was were is are had has have to and but or of in on "
+    "at for with as that this".split()
+)
+
 
 def _words(text: str) -> List[str]:
     return [w.lower() for w in _WORD_RE.findall(text)]
@@ -183,7 +193,8 @@ def score_candidates(story_so_far: str, candidates: List[Candidate]) -> List[Can
         if len(cw) < 3:
             continue
         cand_tri = trigrams(cw)
-        if len(cw) != len(set(cw)) and max(cw.count(w) for w in set(cw)) >= 3:
+        non_stop = [w for w in cw if w not in _STOPWORDS]
+        if non_stop and max((non_stop.count(w) for w in set(non_stop)), default=0) >= 3:
             cand.repetition_flag = "internal_repeat"
         elif cand_tri & context_tri:
             cand.repetition_flag = "repeats_context"

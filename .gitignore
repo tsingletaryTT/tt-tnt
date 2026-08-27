@@ -28,3 +28,7 @@ model_cache/
 
 # Superpowers SDD worktrees — scratch workspaces, never committed.
 .worktrees/
+
+# Test-generated scratch fixture (tests/test_build_editor_pairs.py writes here at
+# runtime; not real project content, regenerated every run).
+tests/fixtures/
