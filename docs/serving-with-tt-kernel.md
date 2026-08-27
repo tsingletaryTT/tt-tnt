@@ -605,6 +605,26 @@ of tokenizer, corpus, corpus revision, context length, weights and tt-metal buil
 still worth attacking is the paged-attention decode control path — page-table / slot-mapping
 and position handling per decode step.
 
+**New evidence, 2026-08-27, pointing at exactly that surface.** Serving a local (unpublished)
+checkpoint directly through `server_example_tt.py` (not a Hub-registered bundle) hit a hard
+crash — `AssertionError: Sequence length 1024 exceeds max seq len 512` in
+`models/tt_transformers/tt/model.py:389`'s `prepare_inputs_prefill`, killing the whole
+`EngineCore` process (`EngineDeadError`, not a per-request 400) — after a small, consistent
+number of **independent, single-turn completion requests** (18 succeeded before the 19th
+failed with `--max-num-batched-tokens 512` alone; still crashed, later, with
+`--no-enable-prefix-caching` added too). Each request was a fresh, unrelated prompt with no
+continuation between them — nothing about the workload should accumulate position across
+requests. That it does anyway (crossing the 512 threshold after enough *unrelated* requests,
+not enough tokens in *one* request — every individual prompt measured well under 200 tokens)
+is consistent with `start_pos`/slot state carrying over between logically-independent
+sequences rather than resetting per request, exactly the "position handling per decode step"
+surface named above. Disabling prefix caching changed the failure count but did not fix it,
+so prefix caching is not the (sole) mechanism. Not root-caused further — this was hit while
+evaluating `tt-tnt-1024-editor` (`.superpowers/sdd/2026-08-27-editor-training/`), a training
+task, not a serving-infra debugging task, and the ninth hypothesis above already spent real
+effort on a closely related area. Recorded here as a new, reproducible data point for whoever
+next attacks this surface, not as a new fix.
+
 One thing to carry away if you are gating a serving path of your own: the `tt_transformers`
 PCC check passed at **0.9940–0.9998** throughout, because it exercises prefill far harder than
 long decode. **A green PCC is not evidence of correct generation.**
