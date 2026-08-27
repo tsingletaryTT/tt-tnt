@@ -2423,10 +2423,30 @@ surface it names as still worth attacking. `--max-num-batched-tokens 512` and
 evidence in §7, not chased further — a pre-existing, already-extensively-investigated serving
 defect is not this task's job to root-cause.
 
+**A whole-branch review caught a real spec gap this write-up first missed: the run never
+implements spec §4's mandated base-blend anti-forgetting slice.** §4 calls for four sources
+per step — a *majority* base-blend refresh (resampled from the existing nine-source
+`artifacts/corpus/blend.txt`, at the settled shares, specifically to prevent forgetting) plus
+minority editor/skits shares. `build_combined_examples` has only three: editor pairs (22.8% of
+the realized mix), skits (21.6%), and poetry-instructions — which is not in the spec at all and
+ended up the *majority*, 56.0%. There is no base-blend slice at 0%, no `--blend` argument, and
+no ledger ruling that deliberately dropped it — the plan's own Self-Review claims §4 coverage
+that was never implemented. Combined with the plan's `--resume` → `--warm-start` switch (a
+separate, documented, and independently fine decision), the run is 3000 steps of pure
+fresh-optimizer SFT on 100% task data with zero base-corpus refresh — exactly the failure mode
+spec §Risks names by name ("too large an editor/skits share risks displacing base fluency").
+This is the leading mechanistic explanation for the regression measured below, not merely "the
+mixing ratio" as an earlier draft of this entry put it, and it means the editor *objective*
+itself has not actually been tested under the design the spec called for.
+
 **On-device checks, bounded by that crash.** Held-out corruption recovery
 (`docs/measurements/editor-eval.json`, n=15 — kept below the ~18-request crash threshold
 rather than force a larger n through repeated server restarts against a decode path already
-documented as unreliable): mean word-overlap 0.463, fake-word rate 0.400. Re-running
+documented as unreliable): mean word-overlap 0.463 — and, once the review caught that the
+check never computed the comparison the spec and this module's own docstring actually specify
+("closer to real English than the draft was"), the draft baseline itself: mean draft-vs-better
+overlap **0.859**. Edited output is closer to target than the uncorrected draft on **0 of 15**
+pairs, and worse on 12 of 15. Fake-word rate 0.400. Re-running
 `story_tools.py::self_edit()` on the exact 2026-08-27 negative-result draft ("The girl wished
 she had no one night and she was always had been very special.") against the new checkpoint:
 all 3 candidates still flagged `internal_repeat` — the same failure shape as before training.
@@ -2447,11 +2467,38 @@ below the 1.2× floor rule); `prompt engagement` clears the floor but not its ow
 minimum-detectable difference. Full table: `docs/measurements/evaluation-tt-tnt-1024-dialogue-
 vs-tt-tnt-1024-editor.md`.
 
+**One correction to the earlier draft of this entry.** The training run's own validation
+curve (1.599 → 1.574 across the run, quoted in Task 5's entry above as "the real signal") is
+**not** a signal for the editor or poetry objectives at all. `train_editor.py` holds out the
+literal tail of a list concatenated as editor → poetry → skits; because the skits block
+(18,610 examples) is larger than the 256-example val slice, every held-out example is a skit.
+The number is real and correctly computed — it is just a skits-only validation curve, not
+evidence about editor or poetry training quality, the way `train_skits.py`'s own tail-split
+precedent assumed a *homogeneous* list where the tail is representative.
+
 **Read plainly: this run made the model repeat itself more and terminate less, while
 delivering only a small, floor-less loss improvement and no confirmed editor-capability gain.**
 The intended objective (fix `self_edit()`'s negative result) did not measurably succeed on the
-one check that could show it, and the one check clean of the serving confound shows a real
-cost. Whether the *cause* is the editor pairs, the poetry pairs, the skits slice, the specific
-mixing ratio, or all three's cumulative effect on a checkpoint that had only 3000 continued-
-training steps is not separated by this run — Task 6 measured the blend as shipped, not each
-ingredient. `tt-tnt-1024-editor` is a documented negative result, not a checkpoint to promote.
+one check that could show it — now confirmed by a real comparison, not just an absent gain, per
+the corrected numbers above — and the one check clean of the serving confound shows a real
+cost. The leading candidate cause is no longer a shrug: the missing base-blend slice (above)
+means this run trained on 100% task data with no anti-forgetting refresh, which is exactly the
+failure mode the spec's own risk section predicted for too large a task-data share. A follow-up
+run implementing that missing slice, before drawing any further conclusion about the editor
+objective itself, is the obvious next step — not "try a different mixing ratio blind."
+`tt-tnt-1024-editor` is a documented negative result, not a checkpoint to promote.
+
+**Two more caveats from the same review, both real, neither changing the verdict.** (1)
+`build_editor_pairs.py`'s `better` targets are corpus *lines*, not sentences — measured on the
+shipped `artifacts/editor-pairs/pairs.jsonl`: only 57.4% end in terminal punctuation, 33.6% do
+not start with a capital letter, 8.8% are under 4 words (hard-wrapped Gutenberg fragments and
+wiki table rows like `"Sparsbach (67475)"`). The module's docstring claim that `better` is
+"guaranteed grammatical English by construction" does not hold at the line level, and training
+on lowercase/unterminated fragments is a second plausible contributor to the measured
+repetition/termination regression, on top of the missing base-blend slice above. (2) The
+`self_edit()` before/after comparison spans a detector change: commit `73b6f53` (recovered
+earlier this session) fixed `story_tools.py::score_candidates` to exclude stopwords from its
+repeat count, so the "before" negative result (pre-training) and the "after" result quoted
+above were scored by two different, though closely related, detectors. The direction is
+conservative here — the stricter post-fix detector is the one that still flags the editor
+checkpoint's output, so the conclusion holds — but the two runs were not scored identically.
