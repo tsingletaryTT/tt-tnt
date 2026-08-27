@@ -2395,3 +2395,63 @@ multi-record format `train/run.py` writes) under `artifacts/checkpoints-1024-edi
 Not yet evaluated for the thing that actually matters — whether `step_3000.pkl` can edit a
 draft turn better than the clean negative result `story_tools.py::self_edit()` found on the
 un-trained base checkpoint, and whether it regresses base/dialogue capability. That is Task 6.
+
+## `feat/editor-training` Task 6 — the before/after evaluation, and a real regression (2026-08-27)
+
+Converted `step_3000.pkl` to `artifacts/hf-tt-tnt-1024-editor` (CPU-only, `sft_checkpoint_to_hf`)
+and ran the three checks Task 6's plan asked for. Two are on-device (vLLM/ttnn); one is
+CPU-only (`scripts/evaluate.py`, transformers, no device). **Verdict: the editor objective did
+not fix the negative result, and introduced a real, confirmed regression on repetition and
+termination.**
+
+**Serving hit two real bugs on the way, both fixed; a third, pre-existing one was found and
+deliberately not chased further.** (1) `gozer run --chips all` auto-exports
+`TT_VISIBLE_DEVICES`, which `docs/serving-with-tt-kernel.md` §4.2 already documents as
+breaking single-device serving — fixed by wrapping the actual server invocation in
+`env -u TT_VISIBLE_DEVICES`. (2) `scripts/eval_editor.py`'s held-out draft/better pairs are
+raw, uncapped real corpus sentences (unlike training examples, which are truncated to
+`MAX_SEQ_LEN`); one long draft crashed the *entire* vLLM engine (a fatal `AssertionError`, not
+a per-request error) — fixed with a client-side tokenizer length guard before any request is
+sent (commit `e837f4d`). (3) A genuinely new crash surfaced after ~18 sequential, *independent*
+single-turn completion requests (`AssertionError: Sequence length 1024 exceeds max seq len
+512`, killing the engine) — every individual prompt measured well under 200 tokens, so this is
+position/slot state carrying over across unrelated requests, not one long request. This
+matches §7's already-standing, already-investigated (nine hypotheses refuted) "on-device
+generation is degenerate" limitation, specifically the "position handling per decode step"
+surface it names as still worth attacking. `--max-num-batched-tokens 512` and
+`--no-enable-prefix-caching` changed the failure point but did not fix it. Recorded as new
+evidence in §7, not chased further — a pre-existing, already-extensively-investigated serving
+defect is not this task's job to root-cause.
+
+**On-device checks, bounded by that crash.** Held-out corruption recovery
+(`docs/measurements/editor-eval.json`, n=15 — kept below the ~18-request crash threshold
+rather than force a larger n through repeated server restarts against a decode path already
+documented as unreliable): mean word-overlap 0.463, fake-word rate 0.400. Re-running
+`story_tools.py::self_edit()` on the exact 2026-08-27 negative-result draft ("The girl wished
+she had no one night and she was always had been very special.") against the new checkpoint:
+all 3 candidates still flagged `internal_repeat` — the same failure shape as before training.
+Given §7's decode defect predates and is independent of this training work, on-device
+generation quality cannot currently distinguish "the editor objective didn't help" from "the
+serving path can't show it either" for a checkpoint this size.
+
+**The CPU-only comparison is not confounded by that defect, and it is unambiguous.**
+`scripts/evaluate.py --model hf-tt-tnt-1024-editor --against hf-tt-tnt-1024-dialogue
+--skip-trajectory` runs entirely through `transformers` on CPU — no ttnn, no device — so its
+result is a real behavioural comparison, not a serving artifact. Matched-window loss improved
+slightly (2.7726 → 2.7092, −0.0634; no seed floor exists for this instrument, so read
+alongside the signals below rather than alone). Three of ten behavioural signals clear both
+the seed floor and their own paired interval as real, confirmed regressions: **termination
+rate worse** (2.14× the floor), **4-gram repeat rate much worse** (21.76× the floor), **longest
+repeated span much worse** (30.17× the floor). Five signals are `NOT INTERPRETABLE` (at or
+below the 1.2× floor rule); `prompt engagement` clears the floor but not its own paired
+minimum-detectable difference. Full table: `docs/measurements/evaluation-tt-tnt-1024-dialogue-
+vs-tt-tnt-1024-editor.md`.
+
+**Read plainly: this run made the model repeat itself more and terminate less, while
+delivering only a small, floor-less loss improvement and no confirmed editor-capability gain.**
+The intended objective (fix `self_edit()`'s negative result) did not measurably succeed on the
+one check that could show it, and the one check clean of the serving confound shows a real
+cost. Whether the *cause* is the editor pairs, the poetry pairs, the skits slice, the specific
+mixing ratio, or all three's cumulative effect on a checkpoint that had only 3000 continued-
+training steps is not separated by this run — Task 6 measured the blend as shipped, not each
+ingredient. `tt-tnt-1024-editor` is a documented negative result, not a checkpoint to promote.
