@@ -2354,3 +2354,44 @@ connects: an editor objective, a dialogue objective, and the skits turn-structur
 three lenses on the same underlying question -- can this model do something with text beyond
 raw next-token continuation -- and a future checkpoint that trains on more than one of them
 together is the actual integration point, not three permanently-separate checkpoints.
+
+## `feat/editor-training` Task 5 — the real run, and a shape bug the corpus's own variety exposed (2026-08-27)
+
+Following through on "skits and dialogue aren't orthogonal": `scripts/train_editor.py`
+(subagent-driven, Tasks 1-4) blends editor pairs (`train/corrupt.py`'s four corruptors over
+real corpus sentences), poetry-instructions pairs (a from-scratch dataset, HF's
+`isaacrehg/poetry-instructions` being unusable on licensing grounds), and the existing skits
+corpus into one continued-training stage, warm-started from `tt-tnt-1024-dialogue`.
+
+**First attempt crashed at step 75/3000** with a real device-side `TT_FATAL` inside ttml's
+SDPA backward kernel: `u_scaler shape mismatch: expected (*, 63360, 32), got Shape([1, 1,
+65536, 32])`. Root cause: `sft_collate_fn` pads each batch only to that batch's own longest
+example (capped at `MAX_SEQ_LEN=512`), so batch shape varies step to step on this dataset's
+wide length distribution (min 12, median 473, max 512 tokens — far more varied than the
+skits/dialogue corpora that exercised this same collate function without ever tripping this).
+ttml sizes an internal backward-pass scratch tensor from the *first* batch's shape and asserts
+rather than resizing when a later batch is larger — confirmed by the direction of the mismatch
+(expected/cached value smaller than the actual one). Fixed on our side, no tt-metal edit: pad
+every example to the fixed `MAX_SEQ_LEN` cap *before* it reaches the dataloader
+(`_pad_to_max_seq_len`), so every batch is exactly `(batch_size, MAX_SEQ_LEN)` from step 1
+onward and no later batch can ever exceed the first one's shape. Two tests added; the CPU-only
+`--dry-run` reproduces Task 4's exact committed example-construction numbers unchanged — the
+fix touches only what reaches the device.
+
+**The real run**, `--steps 3000 --save-every 1000`, one leased Blackhole chip, `(1,1)` mesh
+only: **9m11s wall clock**, ~5.5–5.6 it/s steady state. Both pre-flight/post-flight guards
+(reused from `scripts/train_skits.py`) passed: `stochastic_rounding` read back `True` from the
+optimizer state before training started, and 17 RMSNorm gammas moved by 32.7% of their
+elements (5,695/17,408, max|Δ| up to 0.0234) against the warm-start base — not frozen, not
+degenerate. Train loss (noisy, mixed editor/poetry/skit per-batch) fell from **7.156 → 3.688**
+across the run; the real signal is validation loss (256 held-out examples, evaluated every 250
+steps), which fell smoothly and monotonically at every checkpoint: **1.599 → 1.597 → 1.596 →
+1.591 → 1.589 → 1.587 → 1.583 → 1.583 → 1.580 → 1.578 → 1.576 → 1.574** (steps 250 through
+3000). Three checkpoints written (`step_1000.pkl`, `step_2000.pkl`, `step_3000.pkl`,
+491,857,839 bytes each — an `SFTTrainer`-format `{"step","model_state"}` pickle, not the ttml
+multi-record format `train/run.py` writes) under `artifacts/checkpoints-1024-editor/`
+(gitignored). `artifacts/checkpoints-1024-dialogue/` was not touched.
+
+Not yet evaluated for the thing that actually matters — whether `step_3000.pkl` can edit a
+draft turn better than the clean negative result `story_tools.py::self_edit()` found on the
+un-trained base checkpoint, and whether it regresses base/dialogue capability. That is Task 6.
