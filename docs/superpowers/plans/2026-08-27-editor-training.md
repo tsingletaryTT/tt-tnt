@@ -2,22 +2,28 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give `tt-tnt-1024-dialogue` a real editor (draft → corrected) capability, and fold
-the already-derived skits five-turn data into the same continued-training stage, so dialogue
-and skits stop being separate checkpoint lineages.
+**Goal:** Give `tt-tnt-1024-dialogue` a real editor (draft → corrected) capability, fold the
+already-derived skits five-turn data into the same continued-training stage so dialogue and
+skits stop being separate checkpoint lineages, and add a licensed poetry-instructions
+capability built from this project's own corpus rather than an unlicensed HF dataset.
 
 **Architecture:** A pure, reusable text-corruption module builds `(draft, better)` pairs from
-real corpus sentences. A new SFT training entrypoint, modeled directly on
-`scripts/train_skits.py`'s structure and quality gates, warm-starts from
-`artifacts/checkpoints-1024-dialogue`'s final checkpoint and trains on a mix of editor pairs
-and the existing skits corpus, using masked next-token loss (loss only on the corrected/skit
-side). A new eval script proves the objective actually worked, before/after, against the
-harness that found it missing in the first place (`scripts/story_tools.py::self_edit`).
+real corpus sentences. A second builder produces poetry-instructions pairs (continuation /
+write-about-keywords) from the corpus's own CC0 poetry slice. A new SFT training entrypoint,
+modeled directly on `scripts/train_skits.py`'s structure and quality gates, warm-starts from
+`artifacts/checkpoints-1024-dialogue`'s final checkpoint and trains on a mix of editor pairs,
+poetry pairs, and the existing skits corpus, using masked next-token loss (loss only on the
+corrected/target/skit side). A new eval script proves the editor objective actually worked,
+before/after, against the harness that found it missing in the first place
+(`scripts/story_tools.py::self_edit`).
 
 **Tech Stack:** Python, `ttml`/`ttnn` (Tenstorrent training stack), `transformers`
 (tokenizer only), pytest.
 
 **Spec:** [`docs/superpowers/specs/2026-08-27-editor-training-design.md`](../specs/2026-08-27-editor-training-design.md)
+(the poetry-instructions task, Task 3, was added directly during planning at the user's
+request and is not separately covered by that spec — see the Self-Review Notes at the end of
+this plan.)
 
 ## Global Constraints
 
@@ -570,7 +576,265 @@ git commit -m "feat(editor): build draft/better training pairs from real corpus 
 
 ---
 
-### Task 3: `scripts/train_editor.py` — the training entrypoint
+### Task 3: `scripts/build_poetry_pairs.py` — poetry-instructions, built from our own corpus
+
+**Why this exists.** `isaacrehg/poetry-instructions` (HF) has the right SHAPE — four
+instruction templates for guided poetry writing — but declares no license, and one of its
+two upstream sources (`merve/poetry`) also declares none. Rather than ingest an unlicensed
+dataset, this task rebuilds the same instruction *shape* from this project's own
+already-licensed corpus slice (`biglam/gutenberg-poetry-corpus`, CC0-1.0, already at 1%
+share in `artifacts/corpus/poetry.txt`).
+
+**Scope reduction, stated plainly.** Two of `isaacrehg`'s four templates ("write in the
+style of `<author>`", "about `<keywords>` in the style of `<author>`") need real per-poem
+author attribution. `biglam/gutenberg-poetry-corpus`'s raw schema is `{"line": str,
+"gutenberg_id": int}` — no author field survives into this project's corpus pipeline. This
+task builds only the two templates that don't need it: continue-this-poem, and
+write-about-these-keywords. Author-style templates are not attempted here rather than
+faked with invented or looked-up-after-the-fact attribution.
+
+**Files:**
+- Create: `scripts/build_poetry_pairs.py`
+- Test: `tests/test_build_poetry_pairs.py`
+
+**Interfaces:**
+- Produces: `split_poems(poetry_txt: Path) -> list[str]`, `build_idf(poems: list[str]) ->
+  dict[str, float]`, `top_keywords(poem: str, idf: dict[str, float], n: int = 4) ->
+  list[str]`, `build_pairs(poems: list[str], *, seed: int) -> list[dict]` (each dict:
+  `{"kind": "continuation" | "keywords", "input": str | None, "arg": list[str] | None,
+  "target": str}`).
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# tests/test_build_poetry_pairs.py
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
+from scripts.build_poetry_pairs import build_idf, build_pairs, split_poems, top_keywords
+
+
+def test_split_poems_splits_on_separator(tmp_path):
+    path = tmp_path / "poetry.txt"
+    path.write_text("Roses are red\nViolets are blue\n</s>\nThe wind blows cold\n</s>\n")
+    poems = split_poems(path)
+    assert poems == ["Roses are red\nViolets are blue", "The wind blows cold"]
+
+
+def test_split_poems_drops_empty_segments(tmp_path):
+    path = tmp_path / "poetry.txt"
+    path.write_text("A poem here\n</s>\n</s>\nAnother poem\n</s>\n")
+    poems = split_poems(path)
+    assert poems == ["A poem here", "Another poem"]
+
+
+def test_build_idf_rare_word_scores_higher_than_common_word():
+    poems = ["the cat sat on the mat", "the dog ran in the park",
+              "the sun was bright over the hills", "nightingale sang in the moonlight"]
+    idf = build_idf(poems)
+    assert idf["nightingale"] > idf["the"]
+
+
+def test_top_keywords_prefers_high_idf_words_present_in_the_poem():
+    idf = {"the": 0.1, "moonlight": 2.0, "nightingale": 2.5, "sang": 1.0}
+    poem = "the nightingale sang in the moonlight"
+    kw = top_keywords(poem, idf, n=2)
+    assert kw == ["nightingale", "moonlight"]
+
+
+def test_build_pairs_covers_both_kinds_and_target_is_real_poem_text():
+    poems = [
+        "Roses are red\nViolets are blue\nSugar is sweet\nAnd so are you",
+        "The wind blows cold across the moor\nAnd shadows creep along the floor",
+    ]
+    pairs = build_pairs(poems, seed=0)
+    assert len(pairs) == len(poems)
+    kinds = {p["kind"] for p in pairs}
+    assert kinds <= {"continuation", "keywords"}
+    for p in pairs:
+        if p["kind"] == "continuation":
+            assert p["input"] and p["target"]
+            assert p["input"] + "\n" + p["target"] == poems[0] or \
+                   p["input"] + "\n" + p["target"] == poems[1]
+        else:
+            assert p["arg"] and p["target"] in poems
+
+
+def test_build_pairs_is_deterministic():
+    poems = ["A quiet field beneath the summer sky\nWhere all the wild things go to sleep"]
+    a = build_pairs(poems, seed=5)
+    b = build_pairs(poems, seed=5)
+    assert a == b
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `python -m pytest tests/test_build_poetry_pairs.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.build_poetry_pairs'`
+
+- [ ] **Step 3: Write the implementation**
+
+```python
+#!/usr/bin/env python3
+# scripts/build_poetry_pairs.py
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
+"""Poetry-instructions, in the shape of isaacrehg/poetry-instructions (HF), built from
+this project's own CC0-1.0 poetry corpus slice instead of that dataset -- see this task's
+entry in docs/superpowers/plans/2026-08-27-editor-training.md for why.
+
+Two instruction shapes only (the two that don't need per-poem author attribution, which
+this project's corpus pipeline does not carry):
+
+  - continuation: "Continue this poem: <first part>" -> "<rest of the poem>"
+  - keywords:     "Write a poem about: <keywords>"    -> "<the whole poem>"
+
+Keywords are the top-N highest-IDF content words actually present in the poem -- a plain,
+auditable substitute for isaacrehg's "keyphrase model", consistent with this project's
+general preference for simple, explainable detectors over an added ML dependency.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import random
+import re
+import sys
+from collections import Counter
+from pathlib import Path
+from typing import Dict, List
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+_WORD_RE = re.compile(r"[a-z']+")
+_STOPWORDS = frozenset(
+    "a an the of in on at to for with as that this and but or so is was were be been "
+    "i you he she it we they my your his her its our their".split()
+)
+
+#: The exact delimiter phrases the SFT prompt templates use (Task 4's build_poetry_example) --
+#: checked for collisions the same way Task 2 checks its own delimiters.
+DELIMITER_STRINGS = ["Continue this poem:", "Continuation:", "Write a poem about:", "Poem:"]
+
+
+def check_delimiter_collisions(poetry_txt: Path) -> List[str]:
+    text = poetry_txt.read_text(encoding="utf-8", errors="replace")
+    return [
+        line.strip()[:100] for line in text.splitlines()
+        if any(d in line for d in DELIMITER_STRINGS)
+    ]
+
+
+def split_poems(poetry_txt: Path) -> List[str]:
+    """Split on the corpus's own document-separator convention (a line that is exactly
+    `</s>`), dropping empty segments (e.g. two consecutive separators)."""
+    text = poetry_txt.read_text(encoding="utf-8", errors="replace")
+    segments = text.split("</s>")
+    return [s.strip("\n") for s in segments if s.strip()]
+
+
+def _words(text: str) -> List[str]:
+    return [w for w in _WORD_RE.findall(text.lower()) if w not in _STOPWORDS]
+
+
+def build_idf(poems: List[str]) -> Dict[str, float]:
+    """Standard IDF: log(N / doc_freq(word)), documents = poems."""
+    n = len(poems)
+    doc_freq: Counter = Counter()
+    for poem in poems:
+        doc_freq.update(set(_words(poem)))
+    return {word: math.log(n / freq) for word, freq in doc_freq.items()}
+
+
+def top_keywords(poem: str, idf: Dict[str, float], n: int = 4) -> List[str]:
+    """The `n` distinct words in `poem` with the highest IDF score, in descending order."""
+    seen: Dict[str, float] = {}
+    for w in _words(poem):
+        if w in idf and w not in seen:
+            seen[w] = idf[w]
+    ranked = sorted(seen.items(), key=lambda kv: kv[1], reverse=True)
+    return [w for w, _ in ranked[:n]]
+
+
+def build_pairs(poems: List[str], *, seed: int) -> List[dict]:
+    """One pair per poem, kind chosen deterministically per-poem by `seed`."""
+    idf = build_idf(poems)
+    rng = random.Random(seed)
+    pairs = []
+    for poem in poems:
+        lines = poem.split("\n")
+        if rng.random() < 0.5 and len(lines) >= 4:
+            cut = max(1, len(lines) * 2 // 3)
+            pairs.append({
+                "kind": "continuation",
+                "input": "\n".join(lines[:cut]),
+                "arg": None,
+                "target": "\n".join(lines[cut:]),
+            })
+        else:
+            kw = top_keywords(poem, idf, n=4)
+            pairs.append({"kind": "keywords", "input": None, "arg": kw, "target": poem})
+    return pairs
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--poetry-txt", type=Path, default=ROOT / "artifacts" / "corpus" / "poetry.txt")
+    p.add_argument("--seed", type=int, default=5489)
+    p.add_argument("--out", type=Path, default=ROOT / "artifacts" / "poetry-pairs" / "pairs.jsonl")
+    args = p.parse_args()
+
+    collisions = check_delimiter_collisions(args.poetry_txt)
+    if collisions:
+        print(f"WARNING: {len(collisions)} line(s) contain a literal delimiter string. "
+              f"First 5:")
+        for line in collisions[:5]:
+            print(f"  {line}")
+    else:
+        print("No delimiter-string collisions found in poetry.txt.")
+
+    poems = split_poems(args.poetry_txt)
+    print(f"{len(poems)} poems split from {args.poetry_txt}")
+    pairs = build_pairs(poems, seed=args.seed)
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("w", encoding="utf-8") as f:
+        for pair in pairs:
+            f.write(json.dumps(pair) + "\n")
+    kind_counts = Counter(p["kind"] for p in pairs)
+    print(f"wrote {len(pairs)} pairs ({dict(kind_counts)}) -> {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `python -m pytest tests/test_build_poetry_pairs.py -v`
+Expected: PASS (6 tests)
+
+- [ ] **Step 5: Run against the real corpus**
+
+Run: `python scripts/build_poetry_pairs.py`
+Expected: reports the delimiter-collision check result (record it, same as Task 2's Step
+5), the real poem count from `artifacts/corpus/poetry.txt`, and writes
+`artifacts/poetry-pairs/pairs.jsonl`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/build_poetry_pairs.py tests/test_build_poetry_pairs.py
+git commit -m "feat(editor): poetry-instructions pairs from our own CC0 poetry corpus, not an unlicensed HF dataset"
+```
+
+---
+
+### Task 4: `scripts/train_editor.py` — the training entrypoint
 
 **Files:**
 - Create: `scripts/train_editor.py`
@@ -579,9 +843,13 @@ git commit -m "feat(editor): build draft/better training pairs from real corpus 
 **Interfaces:**
 - Consumes: `train.corrupt` (not directly — pairs are pre-built by Task 2's script),
   `scripts.derive_skits.build_skit_example(skit, tok, *, with_think, pad_token_id) -> dict`
-  (existing), `train.skit.Skit` (existing), `train.model.create_model` (existing),
-  `train.enthusiasts.warm_start` (existing).
-- Produces: `build_editor_example(pair: dict, tok, *, pad_token_id: int) -> dict` (returns
+  (existing), `train.skit.Skit` (existing), `train.improv.Slots` (existing),
+  `train.model.create_model` (existing), `train.enthusiasts.warm_start` (existing),
+  `scripts.train_skits.{LossRecorder, assert_eval_wired, assert_gammas_moved,
+  assert_stochastic_rounding, compare_gammas, read_arm_gammas, read_base_gammas}`
+  (existing, reused rather than reimplemented).
+- Produces: `build_editor_example(pair: dict, tok, *, pad_token_id: int) -> dict` and
+  `build_poetry_example(pair: dict, tok, *, pad_token_id: int) -> dict` (both return
   `{"input_ids", "labels"}`, same shape as `build_skit_example`), `main(argv=None) -> int`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -593,7 +861,7 @@ git commit -m "feat(editor): build draft/better training pairs from real corpus 
 """Example-building and masking only. No `ttml`/`ttnn` import, no device -- these tests run
 in a bare CPU environment, same convention as tests/test_corrupt.py.
 """
-from scripts.train_editor import build_editor_example
+from scripts.train_editor import build_editor_example, build_poetry_example
 
 
 class _FakeTok:
@@ -624,6 +892,28 @@ def test_build_editor_example_input_ids_and_labels_are_pre_shift_aligned_length(
     tok = _FakeTok()
     ex = build_editor_example(pair, tok, pad_token_id=99)
     assert len(ex["input_ids"]) == len(ex["labels"])
+
+
+def test_build_poetry_example_continuation_prompt_masks_input_and_supervises_target():
+    pair = {"kind": "continuation", "input": "a b", "arg": None, "target": "c d"}
+    tok = _FakeTok()
+    ex = build_poetry_example(pair, tok, pad_token_id=99)
+    prompt = "\nContinue this poem:\na b\nContinuation:\n"
+    p_ids = tok.encode(prompt)
+    assert ex["input_ids"][: len(p_ids)] == p_ids
+    assert all(l == -100 for l in ex["labels"][: len(p_ids) - 1])
+    c_ids = tok.encode("c d", add_special_tokens=False)
+    supervised = [l for l in ex["labels"] if l != -100]
+    assert len(supervised) == len(c_ids)
+
+
+def test_build_poetry_example_keywords_prompt_includes_the_keyword_list():
+    pair = {"kind": "keywords", "input": None, "arg": ["moon", "shadow"], "target": "x y z"}
+    tok = _FakeTok()
+    ex = build_poetry_example(pair, tok, pad_token_id=99)
+    prompt = "\nWrite a poem about: moon, shadow\nPoem:\n"
+    p_ids = tok.encode(prompt)
+    assert ex["input_ids"][: len(p_ids)] == p_ids
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -638,8 +928,8 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.train_editor'
 # scripts/train_editor.py
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
-"""Continued-training stage: editor pairs + the existing skits corpus, warm-started from
-tt-tnt-1024-dialogue.
+"""Continued-training stage: editor pairs + poetry-instructions pairs + the existing skits
+corpus, warm-started from tt-tnt-1024-dialogue.
 
 Modeled directly on `scripts/train_skits.py`'s structure and quality gates -- this is a new
 objective on the SAME dense architecture (no new tokens, no shape change), so every
@@ -648,9 +938,10 @@ only (a four-chip open hard-froze this host once, no reproduction, not retried),
 `stochastic_rounding` asserted before and after, gamma-movement verified against the
 warm-start base at the end.
 
-Two example TYPES feed the same `InMemoryDataloader`: editor pairs (this file's
-`build_editor_example`) and skits (`scripts.derive_skits.build_skit_example`, unchanged).
-Both return `{"input_ids", "labels"}`, so they mix freely in one list.
+Three example TYPES feed the same `InMemoryDataloader`: editor pairs (this file's
+`build_editor_example`), poetry-instructions pairs (this file's `build_poetry_example`), and
+skits (`scripts.derive_skits.build_skit_example`, unchanged). All three return
+`{"input_ids", "labels"}`, so they mix freely in one list.
 
     gozer run --chips 1 --who "claude:editor-training" --reason "editor+skits SFT" -- \
         python3 scripts/train_editor.py --steps 3000
@@ -686,6 +977,7 @@ from train.skit import Skit  # noqa: E402
 TOKENIZER_DIR = ROOT / "artifacts" / "tokenizer"
 MODEL_YAML = ROOT / "train" / "configs" / "model" / "tt-tnt-1024.yaml"
 DEFAULT_PAIRS = ROOT / "artifacts" / "editor-pairs" / "pairs.jsonl"
+DEFAULT_POETRY_PAIRS = ROOT / "artifacts" / "poetry-pairs" / "pairs.jsonl"
 DEFAULT_SKITS = ROOT / "artifacts" / "skits-200k" / "skits.jsonl"
 DEFAULT_OUT_ROOT = ROOT / "artifacts" / "checkpoints-1024-editor"
 #: The currently-designated dialogue checkpoint -- this run's warm-start base.
@@ -715,7 +1007,34 @@ def build_editor_example(pair: Dict[str, str], tok, *, pad_token_id: int) -> Dic
     return {"input_ids": input_ids, "labels": labels}
 
 
+def build_poetry_example(pair: Dict[str, Any], tok, *, pad_token_id: int) -> Dict[str, list]:
+    """`{"input_ids", "labels"}` for one poetry-instructions pair (Task 3's
+    `scripts/build_poetry_pairs.py`). Same masking convention as `build_editor_example`;
+    only the prompt template differs by `pair["kind"]`.
+    """
+    if pair["kind"] == "continuation":
+        prompt = f"\nContinue this poem:\n{pair['input']}\nContinuation:\n"
+    elif pair["kind"] == "keywords":
+        prompt = f"\nWrite a poem about: {', '.join(pair['arg'])}\nPoem:\n"
+    else:
+        raise ValueError(f"unknown poetry pair kind: {pair['kind']!r}")
+    completion = pair["target"]
+    p_ids = tok.encode(prompt)
+    c_ids = tok.encode(completion, add_special_tokens=False)
+    if not p_ids:
+        raise ValueError("prompt tokenized to zero ids; label shifting requires at least "
+                         "one prompt token")
+    input_ids = p_ids + c_ids
+    labels = [-100] * (len(p_ids) - 1) + c_ids + [-100]
+    return {"input_ids": input_ids, "labels": labels}
+
+
 def load_editor_pairs(path: Path) -> List[Dict[str, str]]:
+    with path.open(encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def load_poetry_pairs(path: Path) -> List[Dict[str, Any]]:
     with path.open(encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 
@@ -740,12 +1059,17 @@ def load_skits(path: Path) -> List[Skit]:
 
 
 def build_combined_examples(
-    pairs: List[Dict[str, str]], skits: List[Skit], tok, *, pad_token_id: int,
+    pairs: List[Dict[str, str]], poetry_pairs: List[Dict[str, Any]], skits: List[Skit],
+    tok, *, pad_token_id: int,
 ) -> List[dict]:
-    """Editor examples first, then skits examples (with_think=False -- this stage is about
-    editing and turn-structure, not the separate think-block objective).
+    """Editor examples, then poetry-instructions examples, then skits examples
+    (with_think=False -- this stage is about editing/turn-structure/poetry, not the
+    separate think-block objective).
     """
     examples = [build_editor_example(p, tok, pad_token_id=pad_token_id) for p in pairs]
+    examples += [
+        build_poetry_example(p, tok, pad_token_id=pad_token_id) for p in poetry_pairs
+    ]
     examples += [
         build_skit_example(s, tok, with_think=False, pad_token_id=pad_token_id)
         for s in skits
@@ -766,6 +1090,7 @@ def main(argv: List[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pairs", type=Path, default=DEFAULT_PAIRS)
+    ap.add_argument("--poetry-pairs", type=Path, default=DEFAULT_POETRY_PAIRS)
     ap.add_argument("--skits", type=Path, default=DEFAULT_SKITS)
     ap.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     ap.add_argument("--steps", type=int, default=3000)
@@ -791,8 +1116,10 @@ def main(argv: List[str] | None = None) -> int:
     pad_token_id = tok.pad_token_id or 0
 
     pairs = load_editor_pairs(args.pairs)
+    poetry_pairs = load_poetry_pairs(args.poetry_pairs)
     skits = load_skits(args.skits)
-    examples = build_combined_examples(pairs, skits, tok, pad_token_id=pad_token_id)
+    examples = build_combined_examples(pairs, poetry_pairs, skits, tok,
+                                       pad_token_id=pad_token_id)
 
     # Held out as the TAIL of the combined, file-order list -- deterministic, matching
     # train_skits.py's D3. No shuffle before this split, so a re-run with the same input
@@ -803,7 +1130,8 @@ def main(argv: List[str] | None = None) -> int:
 
     lengths = sorted(len(e["input_ids"]) for e in examples)
     over_max = sum(1 for l in lengths if l > MAX_SEQ_LEN)
-    print(f"pairs={len(pairs):,}  skits={len(skits):,}  total_examples={len(examples):,}  "
+    print(f"pairs={len(pairs):,}  poetry_pairs={len(poetry_pairs):,}  "
+          f"skits={len(skits):,}  total_examples={len(examples):,}  "
           f"train={len(train_examples):,}  val={len(val_examples):,}")
     print(f"token lengths: min {lengths[0]}  median {lengths[len(lengths)//2]}  "
           f"max {lengths[-1]}  >{MAX_SEQ_LEN}: {over_max} ({over_max/len(lengths):.2%})")
@@ -903,15 +1231,16 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_train_editor.py -v`
-Expected: PASS (2 tests)
+Expected: PASS (4 tests)
 
-- [ ] **Step 5: Dry-run against the real Task 2 output (no device, no lease needed)**
+- [ ] **Step 5: Dry-run against the real Task 2/3 output (no device, no lease needed)**
 
-Run: `python scripts/train_editor.py --dry-run --pairs artifacts/editor-pairs/pairs.jsonl`
-Expected: prints example counts and the length distribution; exits 0 without touching a
-device. If `artifacts/editor-pairs/pairs.jsonl` does not yet exist at full scale, first run
-Task 2's script for real (`python scripts/build_editor_pairs.py` with its default `--n
-20000`).
+Run: `python scripts/train_editor.py --dry-run`
+Expected: prints example counts (pairs/poetry_pairs/skits/total) and the length
+distribution; exits 0 without touching a device. If `artifacts/editor-pairs/pairs.jsonl` or
+`artifacts/poetry-pairs/pairs.jsonl` do not yet exist at full scale, first run Task 2's
+script for real (`python scripts/build_editor_pairs.py` with its default `--n 20000`) and
+Task 3's (`python scripts/build_poetry_pairs.py`).
 
 - [ ] **Step 6: Commit**
 
@@ -922,9 +1251,9 @@ git commit -m "feat(editor): SFT training entrypoint, warm-started from tt-tnt-1
 
 ---
 
-### Task 4: Run the real training
+### Task 5: Run the real training
 
-**Files:** none created — this task executes Task 3's script on real hardware.
+**Files:** none created — this task executes Task 4's script on real hardware.
 
 - [ ] **Step 1: Acquire a single-chip lease and run**
 
@@ -938,7 +1267,7 @@ Expected: training completes without error; `artifacts/checkpoints-1024-editor/`
 `step_3000.pkl` (an `SFTTrainer`-format `{"step", "model_state"}` pickle — NOT the ttml
 multi-record format `train/run.py` writes) and `loss_curve.jsonl`. `main()` itself asserts
 stochastic rounding before training and gamma movement after (both reused directly from
-`scripts/train_skits.py`, per Task 3) — a run that reaches "training complete" printed the
+`scripts/train_skits.py`, per Task 4) — a run that reaches "training complete" printed the
 gamma-movement report and did not raise, so a passing exit code already confirms both
 guards; there is nothing further to verify by hand here.
 
@@ -951,7 +1280,7 @@ written after Step 1 completes, not specified here.
 
 ---
 
-### Task 5: `scripts/eval_editor.py` — before/after proof
+### Task 6: `scripts/eval_editor.py` — before/after proof
 
 **Files:**
 - Create: `scripts/eval_editor.py`
@@ -1006,7 +1335,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.eval_editor'`
 # scripts/eval_editor.py
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
-"""Before/after evaluation for the editor objective (Task 5 of the 2026-08-27 editor-
+"""Before/after evaluation for the editor objective (Task 6 of the 2026-08-27 editor-
 training plan). Three checks, run against a served checkpoint:
 
 1. Held-out corruption recovery: corrupt sentences NEVER used in training (a fresh sample,
@@ -1122,7 +1451,7 @@ Expected: PASS (3 tests)
 
 - [ ] **Step 5: Convert and serve the new checkpoint**
 
-Task 4's checkpoint is an `SFTTrainer`-format pickle, not the ttml multi-record format
+Task 5's checkpoint is an `SFTTrainer`-format pickle, not the ttml multi-record format
 `scripts/convert_checkpoint.py`/`convert/to_hf.py` expect — use the existing
 `sft_checkpoint_to_hf` helper (`scripts/eval_improv.py`, already used by
 `scripts/eval_skits.py` for exactly this), not the ttml-native converter:
@@ -1164,13 +1493,13 @@ git commit -m "feat(editor): before/after evaluation against the story_tools sel
 
 ---
 
-### Task 6: Checkpoint registration
+### Task 7: Checkpoint registration
 
 **Files:**
 - Modify: `docs/current_model.json`
 
 **Interfaces:**
-- Consumes: Task 4's final checkpoint path, Task 5's evaluation numbers.
+- Consumes: Task 5's final checkpoint path, Task 6's evaluation numbers.
 
 - [ ] **Step 1: Add the new candidate entry**
 
@@ -1183,13 +1512,13 @@ checkpoint is not promoted until the evaluation numbers actually support it):
   "label": "tt-tnt-1024-editor",
   "hf_model": "artifacts/hf-tt-tnt-1024-editor",
   "training_window": 512,
-  "note": "PLACEHOLDER -- replace with a one-line summary of Task 5's real numbers (mean_word_overlap, fake_word_rate, the self_edit before/after result, and the evaluate.py no-regression verdict) before committing this file. Do not commit this literal placeholder text."
+  "note": "PLACEHOLDER -- replace with a one-line summary of Task 6's real numbers (mean_word_overlap, fake_word_rate, the self_edit before/after result, and the evaluate.py no-regression verdict) before committing this file. Do not commit this literal placeholder text."
 }
 ```
 
 (The literal word "PLACEHOLDER" above is deliberate and must not survive into the commit —
 it exists so a reviewer can `grep -r PLACEHOLDER docs/current_model.json` and fail the
-review if this step was skipped. Replace it with Task 5's actual measured numbers.)
+review if this step was skipped. Replace it with Task 6's actual measured numbers.)
 
 - [ ] **Step 2: Verify the file is still valid JSON and the schema-required fields are present**
 
@@ -1211,14 +1540,23 @@ git commit -m "docs: register tt-tnt-1024-editor as a candidate checkpoint"
 ## Self-Review Notes
 
 - **Spec coverage:** §1 (corruption module) → Task 1. §2 (delimiter framing, corrected
-  during planning) → Task 3's `build_editor_example`. §3 (skits fold-in) → Task 3's
-  `build_combined_examples`. §4 (blend/warm-start mechanics) → Task 3/4. §5 (evaluation) →
-  Task 5. §6 (checkpoint identity) → Task 6.
-- **Placeholder scan:** Task 6 Step 1 contains a literal "PLACEHOLDER" string by design —
+  during planning) → Task 4's `build_editor_example`. §3 (skits fold-in) → Task 4's
+  `build_combined_examples`. §4 (blend/warm-start mechanics) → Task 4/5. §5 (evaluation) →
+  Task 6. §6 (checkpoint identity) → Task 7.
+- **Placeholder scan:** Task 7 Step 1 contains a literal "PLACEHOLDER" string by design —
   it's a self-enforcing gate (Step 2's grep), not an unfixed gap; flagged explicitly so it
   isn't mistaken for one.
-- **Type/signature consistency checked:** `build_editor_example` and `build_skit_example`
-  both return `{"input_ids": list[int], "labels": list[int]}`, confirmed compatible in
-  `build_combined_examples`. `train.corrupt.corrupt`'s signature matches across Task 1's
-  definition and Task 2/5's call sites (`seed`, `severity`, `n_corruptors` all keyword,
-  matching Task 1 Interfaces exactly).
+- **Type/signature consistency checked:** `build_editor_example`, `build_poetry_example`, and
+  `build_skit_example` all return `{"input_ids": list[int], "labels": list[int]}`, confirmed
+  compatible in `build_combined_examples`. `train.corrupt.corrupt`'s signature matches across
+  Task 1's definition and Task 2/6's call sites (`seed`, `severity`, `n_corruptors` all
+  keyword, matching Task 1 Interfaces exactly).
+- **Task 3 (poetry-instructions) is a plan-level addition, not spec-covered:** added directly
+  during planning at the user's explicit request (an HF dataset with the desired shape,
+  `isaacrehg/poetry-instructions`, turned out to have no license, and one of its two upstream
+  sources — `merve/poetry` — has none either; `matthh/gutenberg-poetry-corpus` is CC0-1.0).
+  Scoped down to the two of its four instruction templates this project's own corpus can
+  actually support without fabricating attribution (no per-poem author field survives
+  `biglam/gutenberg-poetry-corpus`'s raw `{"line", "gutenberg_id"}` schema into this
+  project's pipeline) — the "in the style of `<author>`" templates are out of scope for this
+  plan, stated as a real limitation rather than worked around.
