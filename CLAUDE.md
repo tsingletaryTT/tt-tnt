@@ -2556,3 +2556,51 @@ in. `artifacts/checkpoints-1024-editor-blend` (the broken run) and
 `artifacts/hf-tt-tnt-1024-editor-blend` are left on disk as the broken-run artifact, not
 promoted, not registered as a candidate to build on -- the corrected run gets a fresh
 `--out-root`. Real hardware re-run with the fix is the next step.
+
+## The corrected base-blend run: a real, partial fix (2026-08-27)
+
+Re-ran with the labels-shift fix, `artifacts/checkpoints-1024-editor-blend-v2`, otherwise
+identical settings (3000 steps, `--base-blend-ratio 0.6`). Both quality guards passed
+(gammas moved 31.2%, not frozen), val loss fell smoothly 2.637 -> 2.390. Generation on the
+exact "spine" prompts that catastrophically collapsed in the broken run now produces real,
+grammatical sentences again -- the specific failure mode (immediate single-word repetition
+from token one) is gone, confirmed by direct generation before trusting any aggregate number.
+
+**The three-way comparison against `tt-tnt-1024-dialogue`, all from the same CPU-only,
+device-independent instrument (`scripts/evaluate.py`, matched 512-token window, prompt set
+B):**
+
+| signal | run 1 (no base-blend) | run 2 (broken, unshifted labels) | run 3 (fixed) |
+|---|---:|---:|---:|
+| matched-window loss delta | -0.0634 | **+12.2570** | -0.0730 |
+| termination rate | worse, 2.14x floor | worse, 3.19x floor | **NOT INTERPRETABLE, 0.10x** |
+| 4-gram repeat rate | worse, 21.76x floor | worse, 420.29x floor | **better, 3.00x floor** |
+| longest repeated span | worse, 30.17x floor | worse, 849.98x floor | below paired detection, 4.13x |
+| prompt engagement | below paired detection, 1.88x | worse, 26.31x floor | **worse, 3.87x floor** |
+
+**Read plainly: the base-blend slice, correctly implemented, fixed the two most severe
+regressions from the first run outright.** Termination rate is no longer distinguishable
+from the dialogue checkpoint at all (was a confirmed regression at 2.14x the floor);
+4-gram repeat rate is now measurably *better* than the dialogue checkpoint (a real,
+floor-clearing finding in the right direction, not just "no longer worse"); longest
+repeated span no longer clears its own paired-detection threshold. This is the design
+spec's anti-forgetting hypothesis holding up under a real, corrected test -- the first
+run's regression really was substantially the missing base-blend slice, not an inherent
+property of the editor/poetry/skits objectives themselves.
+
+**Not a clean sweep.** `prompt engagement` is a new, real, floor-clearing regression
+(3.87x) that wasn't confirmed in run 1 (only "below paired detection" there, 1.88x) --
+smaller than what it fixed, but real, and worth naming rather than glossing over. And this
+comparison does not re-verify the actual editor/self-edit capability the whole objective
+was for -- `self_edit()` and the held-out corruption-recovery check were not re-run against
+this corrected checkpoint (the earlier `--n=15` bound and the section-7 on-device decode
+defect both still apply if that's attempted). What's confirmed here is CPU-side behavioural
+non-regression-turned-improvement on the axes that broke in run 1, not that the editor
+objective itself now measurably works.
+
+**Registered as a candidate (`tt-tnt-1024-editor-blend-v2`), not promoted to `current`.**
+Promotion is a deliberate, evidence-cited decision in this project's convention, and the
+evidence here is incomplete in one specific way: the editor capability itself (the thing
+the whole `feat/editor-training` line exists for) has not been re-verified on this
+checkpoint. The right next step, if this line continues, is the on-device editor-specific
+checks -- not a promotion decision made on the CPU-only regression numbers alone.

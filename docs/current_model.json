@@ -95,6 +95,18 @@
       "hf_model": "artifacts/hf-tt-tnt-1024-editor",
       "training_window": 512,
       "note": "Continued from tt-tnt-1024-dialogue on an editor+poetry-instructions+skits blend, 3000 steps. IMPORTANT CAVEAT found in the final whole-branch review: this run never implements the design spec's sec.4-mandated majority base-blend anti-forgetting slice -- realized mix is 22.8% editor / 21.6% skits / 56.0% poetry / 0% base-blend, i.e. 100% task data with no anti-forgetting refresh, the exact failure mode the spec's own risk section predicted. A DOCUMENTED NEGATIVE RESULT, not a candidate for promotion: story_tools.py::self_edit() still fails on the exact 2026-08-27 negative-result draft (all 3 candidates flagged internal_repeat); held-out corruption recovery (n=15, bounded by a real on-device serving crash -- see docs/serving-with-tt-kernel.md sec.7) scored mean_word_overlap=0.463 against a draft baseline of 0.859 -- edited output is closer to target than the uncorrected draft on 0/15 pairs, worse on 12/15; fake_word_rate=0.400. The CPU-only comparison against tt-tnt-1024-dialogue (device-independent, so not confounded by that crash) shows matched-window loss improving slightly (2.7726 -> 2.7092) alongside three CONFIRMED regressions clearing the seed floor: termination rate worse (2.14x), 4-gram repeat rate much worse (21.76x), longest repeated span much worse (30.17x). See docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-editor.md."
+    },
+    {
+      "label": "tt-tnt-1024-editor-blend",
+      "hf_model": "artifacts/hf-tt-tnt-1024-editor-blend",
+      "training_window": 512,
+      "note": "CATASTROPHICALLY BROKEN, kept only as evidence -- NOT a candidate. The first attempt at implementing tt-tnt-1024-editor's missing base-blend slice: build_base_blend_example shipped with labels == input_ids (unshifted, HF-style) instead of ttml's labels[t]==input_ids[t+1] convention. Matched-window held-out loss went to 15.03 nats (worse than the ln(32000)=10.37 uniform ceiling); 4-gram repeat rate 420.29x the seed floor, longest repeated span 849.98x; every 'spine'-register frozen prompt collapsed into repeating one word from token one. See CLAUDE.md and docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-editor-blend.md."
+    },
+    {
+      "label": "tt-tnt-1024-editor-blend-v2",
+      "hf_model": "artifacts/hf-tt-tnt-1024-editor-blend-v2",
+      "training_window": 512,
+      "note": "Corrected re-run of tt-tnt-1024-editor-blend with the labels-shift bug fixed -- same 3000-step run, --base-blend-ratio 0.6 (majority, per design spec sec.4). Direct generation on the exact 'spine' prompts that catastrophically collapsed before now produces normal grammatical text; the CPU-only comparison against tt-tnt-1024-dialogue confirms a REAL, PARTIAL fix of tt-tnt-1024-editor's regression: termination rate no longer distinguishable from the control (was worse at 2.14x the floor), 4-gram repeat rate is now measurably BETTER (3.00x the floor, the right direction), longest repeated span no longer clears paired detection (was worse at 30.17x). Matched-window loss -0.0730 (floor-less). Not a clean sweep: prompt engagement is a new, real, floor-clearing regression at 3.87x (smaller than what it fixed, but real). NOT promoted to current -- the actual editor/self-edit capability (the reason this whole line exists) was not re-verified on this checkpoint; only CPU-side regression/non-regression was checked. See CLAUDE.md and docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-editor-blend-v2.md."
     }
   ]
 }
