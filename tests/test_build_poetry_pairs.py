@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
-from scripts.build_poetry_pairs import build_idf, build_pairs, split_poems, top_keywords
+from scripts.build_poetry_pairs import (
+    MAX_POEM_WORDS,
+    build_idf,
+    build_pairs,
+    split_poems,
+    top_keywords,
+)
 
 
 def test_split_poems_splits_on_separator(tmp_path):
@@ -54,3 +60,56 @@ def test_build_pairs_is_deterministic():
     a = build_pairs(poems, seed=5)
     b = build_pairs(poems, seed=5)
     assert a == b
+
+
+def _make_long_poem(n_lines: int, words_per_line: int = 10) -> str:
+    """A poem with `n_lines` lines of `words_per_line` distinct words each, so word count
+    is exactly n_lines * words_per_line and truncation boundaries are easy to reason about."""
+    lines = [
+        " ".join(f"w{i}_{j}" for j in range(words_per_line)) for i in range(n_lines)
+    ]
+    return "\n".join(lines)
+
+
+def test_build_pairs_truncates_long_poem_in_keywords_template():
+    # 3 lines (< 4, so the continuation branch is never eligible -- always "keywords"),
+    # 150 words per line = 450 words total, well over MAX_POEM_WORDS.
+    long_poem = _make_long_poem(n_lines=3, words_per_line=150)
+    pairs = build_pairs([long_poem], seed=0)
+    assert len(pairs) == 1
+    pair = pairs[0]
+    assert pair["kind"] == "keywords"
+    target_words = pair["target"].split()
+    assert len(target_words) <= MAX_POEM_WORDS
+    # Truncation drops from the END: the target is a real PREFIX of the original poem.
+    assert long_poem.startswith(pair["target"])
+    assert pair["target"] != long_poem
+
+
+def test_build_pairs_truncates_long_poem_in_continuation_template():
+    # seed=1 makes a single >=4-line poem draw < 0.5, i.e. the "continuation" branch.
+    long_poem = _make_long_poem(n_lines=40, words_per_line=10)  # 400 words
+    pairs = build_pairs([long_poem], seed=1)
+    assert len(pairs) == 1
+    pair = pairs[0]
+    assert pair["kind"] == "continuation"
+    combined = pair["input"] + "\n" + pair["target"]
+    combined_words = combined.split()
+    assert len(combined_words) <= MAX_POEM_WORDS
+    # Truncation drops from the END: the combined input+target is a real PREFIX of the
+    # original poem (the cut was computed on the already-capped poem, not the full one).
+    assert long_poem.startswith(combined)
+    assert combined != long_poem
+
+
+def test_build_pairs_leaves_short_poem_unchanged_in_both_templates():
+    short_poem_keywords = _make_long_poem(n_lines=3, words_per_line=5)  # 15 words
+    pairs = build_pairs([short_poem_keywords], seed=0)
+    assert pairs[0]["kind"] == "keywords"
+    assert pairs[0]["target"] == short_poem_keywords
+
+    short_poem_continuation = _make_long_poem(n_lines=10, words_per_line=5)  # 50 words
+    pairs = build_pairs([short_poem_continuation], seed=1)
+    assert pairs[0]["kind"] == "continuation"
+    combined = pairs[0]["input"] + "\n" + pairs[0]["target"]
+    assert combined == short_poem_continuation

@@ -43,6 +43,32 @@ _STOPWORDS = frozenset(
 #: checked for collisions the same way Task 2 checks its own delimiters.
 DELIMITER_STRINGS = ["Continue this poem:", "Continuation:", "Write a poem about:", "Poem:"]
 
+#: Task 4's dry-run against the real corpus found 99.86% of poetry-instructions examples
+#: exceeding MAX_SEQ_LEN=512 tokens -- Gutenberg poems in this corpus run long (median
+#: combined example length 655 tokens, max 1796), and build_pairs never bounded poem length
+#: against the training window. This module has no tokenizer available, so word count is a
+#: heuristic proxy for token count, not exact: 300 words at ~1.6 tokens/word (the most
+#: token-hungry source measured elsewhere in this project's corpus, wikipedia_simple) is
+#: ~480 tokens, leaving headroom under 512 for the short prompt template's own ~15-20 tokens.
+MAX_POEM_WORDS = 300
+
+
+def _cap_lines_to_word_budget(lines: List[str], max_words: int = MAX_POEM_WORDS) -> List[str]:
+    """Keep as many whole lines from the START as fit within `max_words` (plain whitespace
+    word count), dropping the rest from the END. Never mid-line. A poem already under
+    budget is returned unchanged (same list contents, no truncation applied). The first
+    line is always kept even if it alone exceeds the budget, so a single very long line
+    doesn't collapse the poem to nothing."""
+    kept: List[str] = []
+    total = 0
+    for line in lines:
+        n = len(line.split())
+        if kept and total + n > max_words:
+            break
+        kept.append(line)
+        total += n
+    return kept
+
 
 def check_delimiter_collisions(poetry_txt: Path) -> List[str]:
     text = poetry_txt.read_text(encoding="utf-8", errors="replace")
@@ -91,16 +117,20 @@ def build_pairs(poems: List[str], *, seed: int) -> List[dict]:
     for poem in poems:
         lines = poem.split("\n")
         if rng.random() < 0.5 and len(lines) >= 4:
-            cut = max(1, len(lines) * 2 // 3)
+            # Cap the poem's line budget BEFORE computing the 2/3 cut point, so the
+            # input+target combined (not just the target) fits under MAX_POEM_WORDS.
+            capped = _cap_lines_to_word_budget(lines)
+            cut = max(1, len(capped) * 2 // 3)
             pairs.append({
                 "kind": "continuation",
-                "input": "\n".join(lines[:cut]),
+                "input": "\n".join(capped[:cut]),
                 "arg": None,
-                "target": "\n".join(lines[cut:]),
+                "target": "\n".join(capped[cut:]),
             })
         else:
             kw = top_keywords(poem, idf, n=4)
-            pairs.append({"kind": "keywords", "input": None, "arg": kw, "target": poem})
+            capped = _cap_lines_to_word_budget(lines)
+            pairs.append({"kind": "keywords", "input": None, "arg": kw, "target": "\n".join(capped)})
     return pairs
 
 
