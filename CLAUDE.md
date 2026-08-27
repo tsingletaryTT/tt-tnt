@@ -2604,3 +2604,34 @@ evidence here is incomplete in one specific way: the editor capability itself (t
 the whole `feat/editor-training` line exists for) has not been re-verified on this
 checkpoint. The right next step, if this line continues, is the on-device editor-specific
 checks -- not a promotion decision made on the CPU-only regression numbers alone.
+
+## The on-device editor checks, run against the corrected checkpoint: still a negative result
+
+Served `artifacts/hf-tt-tnt-1024-editor-blend-v2` (2-chip, `TT_VISIBLE_DEVICES` unset,
+`--max-num-batched-tokens 512 --no-enable-prefix-caching` -- the same recipe already
+worked out for `tt-tnt-1024-editor`) and ran the same two on-device checks.
+
+**Held-out corruption recovery** (`docs/measurements/editor-eval-blend-v2.json`, n=15,
+same bound as before): mean word-overlap **0.318** against the same 0.859 draft baseline
+-- **0/15 improved, 13/15 worse** (was 0/15 improved, 12/15 worse on `tt-tnt-1024-editor`).
+Fake-word rate 0.467 (was 0.400). Flat-to-slightly-worse, not better.
+
+**`story_tools.py::self_edit()`** on the identical 2026-08-27 negative-result draft: all 3
+candidates still flagged `internal_repeat`, and the actual text reads if anything more
+broken than before -- e.g. `"The girl had a girl thought she wished she wished she wished
+she wished she had a friend: The girl had a friendles: The girl had to."` -- word-salad
+repetition rather than the earlier run's more legible (still looping) sentences.
+
+**Read plainly: the base-blend fix repaired the general-fluency regression it was meant to
+fix, but it did not improve -- and if anything slightly worsened -- the actual editor
+capability.** This separates two things that were previously confounded in one number: the
+CPU-only comparison in the section above shows the checkpoint stopped actively damaging
+base behaviour (termination, repetition), which is a real and useful result on its own. But
+the editor objective itself -- teaching the model to take a garbled draft and produce a
+better version -- has not worked in either the original run or this corrected one. Adding a
+majority anti-forgetting slice was necessary to stop the regression; it was never going to
+be sufficient to create a capability the training signal itself hasn't demonstrated it can
+teach at this scale (19,593 editor pairs, now a smaller relative share of a 215K-example
+mix). `tt-tnt-1024-editor-blend-v2`'s `docs/current_model.json` note is unchanged by this
+(still correctly "not promoted") -- this closes the open question it left, rather than
+reversing its verdict.

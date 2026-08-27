@@ -1,0 +1,135 @@
+{
+  "model": "/home/ttuser/code/tt-tnt/artifacts/hf-tt-tnt-1024-editor-blend-v2",
+  "endpoint": "http://localhost:8000/v1/completions",
+  "seed": 999999,
+  "generated_at": "2026-08-27T23:32:12.452991+00:00",
+  "n": 15,
+  "skipped_too_long": 0,
+  "mean_word_overlap": 0.31773773668296995,
+  "mean_draft_overlap": 0.8592830390254326,
+  "improved_over_draft": 0,
+  "worsened_vs_draft": 13,
+  "fake_word_rate": 0.4666666666666667,
+  "results": [
+    {
+      "draft": "Loton lies a-bleeding.",
+      "better": "Love lies a-bleeding.",
+      "edited": "Loton is a-de a-le-led.",
+      "draft_overlap": 0.75,
+      "word_overlap": 0.25,
+      "has_fake_word": true
+    },
+    {
+      "draft": "of intoxication of organism in its of organism in its of organism in its of organism in its most varied",
+      "better": "of intoxication of the organism in its most varied",
+      "edited": "of condication of organism in its in its in its in its in its in its in its in its in its in its in its in its in its in its in its of its of its in",
+      "draft_overlap": 0.875,
+      "word_overlap": 0.5,
+      "has_fake_word": true
+    },
+    {
+      "draft": "Sparume (67475)",
+      "better": "Sparsbach (67475)",
+      "edited": "Sparume (67487407337705 (705675707805,7705,7,7,7,7,7,7,7",
+      "draft_overlap": 0.0,
+      "word_overlap": 0.0,
+      "has_fake_word": true
+    },
+    {
+      "draft": "Bayern Munich All-time Bayern Munich All-time Bayern Munich All-time XI",
+      "better": "Bayern Munich All-time XI",
+      "edited": "Bayern Munich All-time Bayern Munich All-time Bayern Munich All-Time: Bayern Munich All-Time: Bayern Munich All-1: Bayern Munich All-Time:",
+      "draft_overlap": 1.0,
+      "word_overlap": 0.8,
+      "has_fake_word": false
+    },
+    {
+      "draft": "She grabbed the candle and the maesh and threw them in the sink. She turned on the waton and put out the fire. She opened the window and let the smoke out. She hugged Anna and Ben and made sure they were not hurt.",
+      "better": "She grabbed the candle and the match and threw them in the sink. She turned on the water and put out the fire. She opened the window and let the smoke out. She hugged Anna and Ben and made sure they were not hurt.",
+      "edited": "She pulled the kitchen and the maesh and the kitchen and the kitchen and the kitchen and the kitchen and the kitchen and the kitchen and the kitchen. She pulled the kitchen. She pulled the kitchen and",
+      "draft_overlap": 0.9310344827586207,
+      "word_overlap": 0.10344827586206896,
+      "has_fake_word": true
+    },
+    {
+      "draft": "case?\" asked Dr. John Silence, looking across somewick sceptically at",
+      "better": "case?\" asked Dr. John Silence, looking across somewhat sceptically at",
+      "edited": "case. \" case. \" case. \" case. \"com. \"What's: case. \" case. \" case. \" case. \" case. \" case. \" case. \" case",
+      "draft_overlap": 0.9,
+      "word_overlap": 0.1,
+      "has_fake_word": false
+    },
+    {
+      "draft": "United, then, United, then, they sail'd Champlain,",
+      "better": "United, then, they sail'd Champlain,",
+      "edited": "United, then, then, then, then, and the next, and then, and then, and then, and then, and the next, and the next,",
+      "draft_overlap": 1.0,
+      "word_overlap": 0.4,
+      "has_fake_word": false
+    },
+    {
+      "draft": "Unfortunately, the creature was hungry. It picked up the delicate child in itton big claws itton big claws itton big claws and flew away. No-one ever saw the mum or baby again.",
+      "better": "Unfortunately, the creature was hungry. It picked up the delicate child in its big claws and flew away. No-one ever saw the mum or baby again.",
+      "edited": "Unfortunately, But, the creature, the creature, the creature, itton big claws itton big claws itton big claws itton big claws itton big claws itton big claws itton big",
+      "draft_overlap": 0.96,
+      "word_overlap": 0.2,
+      "has_fake_word": true
+    },
+    {
+      "draft": "| 173919 || || 173919 || || 173919 || || \u2014 || November 10, 2001 || Socorro || LINEAR || \u2014 || align=right | 5.1 km ||",
+      "better": "| 173919 ||  || \u2014 || November 10, 2001 || Socorro || LINEAR || \u2014 || align=right | 5.1 km ||",
+      "edited": "| 1740, 2002 || 1740, 2002 || align=right | 5.0.0, 2002 || align=right | 5.0,  | 5.0 || align=right",
+      "draft_overlap": 1.0,
+      "word_overlap": 0.3333333333333333,
+      "has_fake_word": false
+    },
+    {
+      "draft": "Lily and Sam were friends who liked to play in the park. They a favorite bench where they would sit and talk. One day, they saw a big dog with a fierce face. It was barking running towards them.",
+      "better": "Lily and Sam were friends who liked to play in the park. They had a favorite bench where they would sit and talk. One day, they saw a big dog with a fierce face. It was barking and running towards them.",
+      "edited": "Lily and Lily and Lily and Lily and Lily and Sam was not to run away from the dog. Lily and Sam was Lily and a long and a little dog. Lily and Sam was the dog.",
+      "draft_overlap": 0.9714285714285714,
+      "word_overlap": 0.22857142857142856,
+      "has_fake_word": false
+    },
+    {
+      "draft": "Jimmy watched them march and noticed they were holding signs with words on them. He asked his dad what the words meant and his dad told him the words meant \"Don't be rude.\" Jimmy thought about it for a minute and said, \"That's a goume idea. Nobody should be rude to anyone.\" The march continued Jimmy watched with a gaze as they walked away.",
+      "better": "Jimmy watched them march and noticed they were holding signs with words on them. He asked his dad what the words meant and his dad told him the words meant \"Don't be rude.\" Jimmy thought about it for a minute and said, \"That's a good idea. Nobody should be rude to anyone.\" The march continued and Jimmy watched with a gaze as they walked away.",
+      "edited": "Jimmy watched them was a goume.",
+      "draft_overlap": 0.9772727272727273,
+      "word_overlap": 0.09090909090909091,
+      "has_fake_word": true
+    },
+    {
+      "draft": "Lily smiled said, \"Yes, Tom. We can still We can still We can still be friends. Come on, let's play some more.\"",
+      "better": "Lily smiled and said, \"Yes, Tom. We can still be friends. Come on, let's play some more.\"",
+      "edited": "Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily smiled, Lily. Tom,",
+      "draft_overlap": 0.9411764705882353,
+      "word_overlap": 0.17647058823529413,
+      "has_fake_word": false
+    },
+    {
+      "draft": "Costa had had praised Costa had praised Costa had praised his bird pictures and had predicted great",
+      "better": "Costa had praised his bird pictures and had predicted great",
+      "edited": "Costa had praised him:  Costa had praised him:  Costa had praised him praised him:  Costa had praised him:  Costa had praised Costa had praised him:  Costa had praised him:",
+      "draft_overlap": 1.0,
+      "word_overlap": 0.3333333333333333,
+      "has_fake_word": false
+    },
+    {
+      "draft": "\u201cSee if I dobur!\u201d",
+      "better": "\u201cSee if I don't!\u201d",
+      "edited": "\u201cSee if I dobur, see if I dobur, dobur, dobur, dobur, dobur,",
+      "draft_overlap": 0.75,
+      "word_overlap": 0.75,
+      "has_fake_word": true
+    },
+    {
+      "draft": "So far thary is not so baton. But things now begin to become",
+      "better": "So far this is not so bad. But things now begin to become",
+      "edited": "So far thary is not. So far. So far. But what it is not. So far. So far. But it. So far. But things go. So far. So.",
+      "draft_overlap": 0.8333333333333334,
+      "word_overlap": 0.5,
+      "has_fake_word": false
+    }
+  ]
+}
