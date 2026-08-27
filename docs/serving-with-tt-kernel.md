@@ -611,7 +611,68 @@ long decode. **A green PCC is not evidence of correct generation.**
 
 ---
 
-## 8. Where the rest of it is written down
+## 8. Serving `tt-tnt-1024` across all 4 chips
+
+Verified working, 2026-08-27. This is `manifest.mesh.fabric` and `mesh.topology`'s decorative
+status ([finding 1](tt-kernel-conformance.md#findings)) made concrete: **neither field is
+consumed by the launch composition**, so getting this right is a manual recipe, not something
+`tt-model serve` renders for you from the manifest alone. Two extra pieces beyond the normal
+2-chip launch, on top of everything in §2–§3:
+
+```bash
+TT_VISIBLE_DEVICES=<all 4 chip BDFs> \
+TT_MESH_GRAPH_DESC_PATH=train/configs/mesh/mesh-1x4-ring.textproto \
+tt-model serve episod/tt-tnt-1024 --force --instance metal-src-vllm -- \
+  --additional-config '{"tt":{"fabric_config":"FABRIC_2D_TORUS_XY"}}'
+```
+
+**Why a custom mesh graph descriptor at all.** tt-metal ships
+`p300_x2_mesh_graph_descriptor.textproto` declaring the true physical wiring
+(`device_topology { dims: [2, 2] }`), but vLLM's `MESH_DEVICE=P300x2` opens a `(1, 4)`
+`MeshShape` — a mismatch this project already hit once during DDP training bring-up
+(`.superpowers/ddp-bringup.md`): `device_topology.dims` must equal the `MeshShape` actually
+opened, or the mismatch surfaces as either a hang (ttml) or a `Fabric Router Sync` timeout
+(vLLM). `train/configs/mesh/mesh-1x4-ring.textproto` declares `dims: [1, 4] dim_types: [LINE,
+RING]` — verified against the real Ethernet cabling via
+`tt-metal/build_Release/tools/umd/topology` (chip0↔1↔2↔3↔0, a genuine 4-cycle, in exactly the
+BDF order used for `TT_VISIBLE_DEVICES`) — so it's a faithful model, not a guess.
+
+**Why `FABRIC_2D_TORUS_XY` and not `FABRIC_1D_RING`.** Read directly from tt-metal source
+(`tt_metal/fabric/fabric_context.cpp:162-176`): `FABRIC_1D_RING` maps to `Topology::Ring`, and
+`is_2D_topology()` (`fabric_edm_types.hpp:15`) only returns true for `Mesh`/`Torus` — so
+`FABRIC_1D_RING` takes the *same* single-hop-only routing branch as plain `FABRIC_1D`
+(`fabric.cpp:148-169`, the tracked `#22524` workaround loop, which does not model a ring's
+wraparound edge at all). `FABRIC_2D_TORUS_XY` maps to `Topology::Torus`, which *is* 2D and
+takes a structurally different, working routing path. Confirmed empirically, not just from
+source: a properly-applied `FABRIC_1D_RING` (`--additional-config '{"tt":{"fabric_config":
+"FABRIC_1D_RING"}}'` — note the required `"tt"` nesting, see below) still fails identically;
+`FABRIC_2D_TORUS_XY` opens `multidevice with 4 devices and grid (1, 4)` cleanly.
+
+**The `"tt"` nesting is not optional and fails silently without it.**
+`vllm_tt_plugin/config.py:get_tt_config()` requires the JSON under a `"tt"` key —
+`{"tt": {"fabric_config": "..."}}`, not `{"fabric_config": "..."}`. A flat object is treated as
+absent and the fabric config silently falls back to the default (`FABRIC_1D` on this board),
+with no warning. This cost a full round of (wrong) debugging before being caught.
+
+**This is not baked into the manifest on purpose.** `select_launch` picks a launch entry by
+detected machine SKU, not by how many chips happen to be visible at runtime — so anything added
+to `resources.extra_args` would apply unconditionally to *every* serve on this machine,
+including the already-deployed 2-chip config, at an untested fabric setting. Until 2-chip is
+also verified under `FABRIC_2D_TORUS_XY` (it hasn't been), keep this as an explicit opt-in
+command rather than the manifest default.
+
+**Open correctness question, not yet resolved.** Across a handful of prompts at both greedy and
+sampled decoding, roughly half terminated abnormally early (6–14 tokens, garbled — e.g. `"Hept
+in the forest."`) while the rest ran to the requested length (repetitive, but consistent with
+this checkpoint's already-documented weakness). Whether this early-termination rate is elevated
+relative to the 2-chip config, or just this checkpoint's ordinary behavior surfacing on a
+different prompt sample, has not been established — it would need a controlled same-prompt A/B
+against 2-chip, not yet run. Do not read "the server comes up cleanly" as "generation is
+verified correct" for this configuration.
+
+---
+
+## 9. Where the rest of it is written down
 
 - [`docs/tt-kernel-conformance.md`](tt-kernel-conformance.md) — what a v4 manifest can express,
   which fields are read, and what our bundle found. The analysis behind §1.
@@ -624,3 +685,6 @@ long decode. **A green PCC is not evidence of correct generation.**
   model's own limitations.
 - `tests/test_manifests.py` — the gates on the manifest: context length against the published
   weights, the power-of-two requirement, and the `HF_MODEL` rule.
+- [`AUTOFIX.md`](../AUTOFIX.md) and [`AUTODEBUG.md`](../AUTODEBUG.md) — the full investigation
+  behind §8: every fabric/descriptor combination tried, which conclusions were wrong and why,
+  and the exact source citations for the working config.

@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
+#
+# Mesh graph descriptor for a [1, 4] vLLM tensor-parallel serve on a TT-QuietBox 2 (two
+# dual-chip p300 cards, four Blackhole chips wired as a 2x2 RING, not a line).
+#
+# mesh-1x4.textproto (the DDP training fix) declares dims: [1, 4] with no dim_types, which
+# defaults every axis to LINE -- adjacent hops only, no wraparound between the first and last
+# device. That was sufficient for DDP's gradient all-reduce (only ever talks to a neighbour),
+# but vLLM's tensor-parallel serving path needs a route between arbitrary chip pairs and fails
+# at mesh-open with:
+#
+#   TT_FATAL: Could not find any forwarding direction from src (M0, D0) to dst (M0, D3)
+#
+# because a LINE topology has no D3->D0 edge, and the real cabling is a ring (D3 IS physically
+# adjacent to D0). tt-metal's mesh_graph_descriptor.proto supports declaring this directly via
+# `dim_types: [ LINE, RING ]` per-axis (see tt_metal/fabric/protobuf/mesh_graph_descriptor.proto
+# lines ~408-420) -- RING wraps the axis, connecting index 0 back to the last index. The size-1
+# first axis's type is irrelevant; only the size-4 axis needs RING.
+#
+# Serving tt-metal's own stock `p300_x2_mesh_graph_descriptor.textproto` (dims: [2, 2], the
+# correct PHYSICAL description) against a [1, 4] open request fails differently and earlier --
+# vLLM's mesh-open eagerly starts fabric routers and verifies the handshake, so the same
+# shape/descriptor mismatch this project's DDP work found (device_topology.dims must equal the
+# MeshShape opened) surfaces as an immediate `Fabric Router Sync: Timeout ... Ethernet handshake
+# likely failed` instead of ttml's later silent hang at the first cross-axis collective. Read
+# literally that message says a bad link; it is the same descriptor-shape defect wearing a
+# different failure mode, not evidence the cabling itself is unhealthy.
+
+mesh_descriptors {
+  name: "M0"
+  arch: BLACKHOLE
+  device_topology { dims: [ 1, 4 ] dim_types: [ LINE, RING ] }
+  host_topology   { dims: [ 1, 1 ] }
+  channels { count: 2 policy: RELAXED }
+}
+
+top_level_instance { mesh { mesh_descriptor: "M0" mesh_id: 0 } }

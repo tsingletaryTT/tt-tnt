@@ -11,7 +11,7 @@
   "mesh": {
     "devices": 4,
     "topology": "1x4",
-    "fabric": "FABRIC_1D_RING"
+    "fabric": "FABRIC_2D_TORUS_XY"
   },
   "entrypoint": {
     "class": "tt_tnt_adapter:LlamaForCausalLM",
@@ -19,7 +19,7 @@
   },
   "weights": {
     "repo": "episod/tt-tnt-1024",
-    "revision": "780bf109b4e7"
+    "revision": "b1b9a1b54a26"
   },
   "resources": {
     "max_model_len": 512,
