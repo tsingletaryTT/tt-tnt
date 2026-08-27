@@ -1,0 +1,5216 @@
+{
+  "hf_model": "artifacts/hf-tt-tnt-1024-editor",
+  "label": "tt-tnt-1024-editor",
+  "prompt_set": "b",
+  "num_samples": 32,
+  "max_new_tokens": 60,
+  "temperature": 0.8,
+  "top_p": 0.95,
+  "seed": 0,
+  "eos_id": 2,
+  "n_prompts": 45,
+  "signals": [
+    {
+      "key": "collapse_rate",
+      "title": "genre collapse rate (any marker)",
+      "better": "lower"
+    },
+    {
+      "key": "frame_collapse_rate",
+      "title": "\u2014 story-frame collapse",
+      "better": "lower"
+    },
+    {
+      "key": "lexical_collapse_rate",
+      "title": "\u2014 lexical-habit collapse",
+      "better": "lower"
+    },
+    {
+      "key": "termination_rate",
+      "title": "termination rate (</s>)",
+      "better": "higher"
+    },
+    {
+      "key": "repeat_rate",
+      "title": "4-gram repeat rate",
+      "better": "lower"
+    },
+    {
+      "key": "longest_repeat",
+      "title": "longest repeated span (words)",
+      "better": "lower"
+    },
+    {
+      "key": "tinystories_margin",
+      "title": "tinystories margin (nats/word)",
+      "better": "lower"
+    },
+    {
+      "key": "register_tinystories_share",
+      "title": "nearest source == tinystories",
+      "better": "lower"
+    },
+    {
+      "key": "engagement",
+      "title": "prompt engagement",
+      "better": "higher"
+    },
+    {
+      "key": "n_tokens",
+      "title": "generated tokens before </s>",
+      "better": null
+    }
+  ],
+  "aggregate": {
+    "collapse_rate": {
+      "mean": 0.0625,
+      "sem": 0.020619164310628272,
+      "n": 45,
+      "ci95": [
+        0.02208643795116859,
+        0.10291356204883141
+      ]
+    },
+    "frame_collapse_rate": {
+      "mean": 0.009722222222222222,
+      "sem": 0.00504695266481645,
+      "n": 45,
+      "ci95": [
+        -0.00016980500081801957,
+        0.019614249445262466
+      ]
+    },
+    "lexical_collapse_rate": {
+      "mean": 0.05694444444444444,
+      "sem": 0.01941906261860777,
+      "n": 45,
+      "ci95": [
+        0.018883081711973213,
+        0.09500580717691567
+      ]
+    },
+    "termination_rate": {
+      "mean": 0.015277777777777777,
+      "sem": 0.006925479153381963,
+      "n": 45,
+      "ci95": [
+        0.0017038386371491295,
+        0.028851716918406427
+      ]
+    },
+    "repeat_rate": {
+      "mean": 0.08486570525072985,
+      "sem": 0.013251408474777888,
+      "n": 45,
+      "ci95": [
+        0.058892944640165194,
+        0.1108384658612945
+      ]
+    },
+    "longest_repeat": {
+      "mean": 5.486111111111111,
+      "sem": 0.4511047085242512,
+      "n": 45,
+      "ci95": [
+        4.601945882403578,
+        6.370276339818643
+      ]
+    },
+    "tinystories_margin": {
+      "mean": -0.5064537245007481,
+      "sem": 0.10108503343225002,
+      "n": 45,
+      "ci95": [
+        -0.7045803900279581,
+        -0.30832705897353807
+      ]
+    },
+    "register_tinystories_share": {
+      "mean": 0.19722222222222222,
+      "sem": 0.043141765678369755,
+      "n": 45,
+      "ci95": [
+        0.11266436149261749,
+        0.28178008295182694
+      ]
+    },
+    "engagement": {
+      "mean": 0.229754188712522,
+      "sem": 0.022787860188434712,
+      "n": 45,
+      "ci95": [
+        0.18508998274318997,
+        0.274418394681854
+      ]
+    },
+    "n_tokens": {
+      "mean": 59.62083333333333,
+      "sem": 0.16349551800145976,
+      "n": 45,
+      "ci95": [
+        59.30038211805047,
+        59.94128454861619
+      ]
+    }
+  },
+  "aggregate_excluding_stutter": {
+    "repeat_rate": {
+      "mean": 0.08419198400445828,
+      "sem": 0.01417786589304024,
+      "n": 42,
+      "ci95": [
+        0.05640336685409941,
+        0.11198060115481714
+      ]
+    },
+    "longest_repeat": {
+      "mean": 5.4680059523809526,
+      "sem": 0.48240078795069774,
+      "n": 42,
+      "ci95": [
+        4.522500407997585,
+        6.41351149676432
+      ]
+    }
+  },
+  "per_prompt": {
+    "b-spine-01": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.01167840193217608,
+          "sem": 0.0048337630107950355,
+          "n": 32,
+          "ci95": [
+            0.002204226431017812,
+            0.02115257743333435
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.09375,
+          "sem": 0.28876605876305544,
+          "n": 32,
+          "ci95": [
+            2.5277685248244115,
+            3.6597314751755885
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.19317384657997974,
+          "sem": 0.06077333616890422,
+          "n": 32,
+          "ci95": [
+            -0.312289585471032,
+            -0.07405810768892747
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.3125,
+          "sem": 0.08324928557283298,
+          "n": 32,
+          "ci95": [
+            0.14933140027724737,
+            0.47566859972275266
+          ]
+        },
+        "engagement": {
+          "mean": 0.20089285714285712,
+          "sem": 0.024726428618354182,
+          "n": 32,
+          "ci95": [
+            0.15242905705088294,
+            0.2493566572348313
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 2
+      },
+      "register_nearest": {
+        "tinystories": 10,
+        "gutenberg_children": 15,
+        "folklore": 3,
+        "weird": 2,
+        "spine": 1,
+        "procedural": 1
+      }
+    },
+    "b-spine-02": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.03032592938696195,
+          "sem": 0.008019309414948475,
+          "n": 32,
+          "ci95": [
+            0.01460808293366294,
+            0.04604377584026096
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.75,
+          "sem": 0.3110855084191275,
+          "n": 32,
+          "ci95": [
+            3.14027240349851,
+            4.359727596501489
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.4651897729899193,
+          "sem": 0.05912877292351355,
+          "n": 32,
+          "ci95": [
+            -0.5810821679200059,
+            -0.34929737805983274
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "engagement": {
+          "mean": 0.13839285714285712,
+          "sem": 0.01633409898538186,
+          "n": 32,
+          "ci95": [
+            0.10637802313150868,
+            0.17040769115420557
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 1
+      },
+      "register_nearest": {
+        "spine": 13,
+        "folklore": 12,
+        "procedural": 1,
+        "gutenberg_children": 4,
+        "tinystories": 2
+      }
+    },
+    "b-spine-03": {
+      "probe": "perpendicular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.09667273124062566,
+          "sem": 0.025933956709759655,
+          "n": 32,
+          "ci95": [
+            0.045842176089496735,
+            0.14750328639175458
+          ]
+        },
+        "longest_repeat": {
+          "mean": 5.53125,
+          "sem": 0.6040594778849021,
+          "n": 32,
+          "ci95": [
+            4.347293423345592,
+            6.715206576654408
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.2725226280341356,
+          "sem": 0.05492968173994669,
+          "n": 32,
+          "ci95": [
+            -0.38018480424443113,
+            -0.16486045182384013
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.15625,
+          "sem": 0.06521328221627366,
+          "n": 32,
+          "ci95": [
+            0.028431966856103635,
+            0.2840680331438964
+          ]
+        },
+        "engagement": {
+          "mean": 0.234375,
+          "sem": 0.05012270729210786,
+          "n": 32,
+          "ci95": [
+            0.1361344937074686,
+            0.3326155062925314
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 1
+      },
+      "register_nearest": {
+        "spine": 11,
+        "gutenberg_children": 7,
+        "folklore": 7,
+        "tinystories": 5,
+        "weird": 1,
+        "procedural": 1
+      }
+    },
+    "b-spine-04": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.03807807542660017,
+          "sem": 0.006306214275548084,
+          "n": 32,
+          "ci95": [
+            0.025717895446525925,
+            0.05043825540667441
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.34375,
+          "sem": 0.31305394451662694,
+          "n": 32,
+          "ci95": [
+            3.7301642687474112,
+            4.957335731252589
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.9306860508302794,
+          "sem": 0.07124434610871472,
+          "n": 32,
+          "ci95": [
+            -1.0703249692033603,
+            -0.7910471324571986
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "engagement": {
+          "mean": 0.1423611111111111,
+          "sem": 0.01596053023830516,
+          "n": 32,
+          "ci95": [
+            0.111078471844033,
+            0.17364375037818922
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "spine": 17,
+        "weird": 1,
+        "tinystories": 1,
+        "folklore": 4,
+        "procedural": 8,
+        "wikipedia_simple": 1
+      }
+    },
+    "b-spine-05": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.024708184048122275,
+          "sem": 0.007820442588956844,
+          "n": 32,
+          "ci95": [
+            0.009380116573766861,
+            0.04003625152247769
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.5,
+          "sem": 0.32378806290136664,
+          "n": 32,
+          "ci95": [
+            2.8653753967133215,
+            4.134624603286679
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.31593806485031684,
+          "sem": 0.04511233160400311,
+          "n": 32,
+          "ci95": [
+            -0.40435823479416294,
+            -0.22751789490647073
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "engagement": {
+          "mean": 0.21484375,
+          "sem": 0.021906928743338848,
+          "n": 32,
+          "ci95": [
+            0.17190616966305586,
+            0.25778133033694417
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "gutenberg_children": 6,
+        "weird": 3,
+        "tinystories": 3,
+        "spine": 10,
+        "folklore": 6,
+        "procedural": 4
+      }
+    },
+    "b-spine-06": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.07308992524835421,
+          "sem": 0.02371062878585891,
+          "n": 32,
+          "ci95": [
+            0.026617092828070746,
+            0.11956275766863768
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.78125,
+          "sem": 0.6518187566588262,
+          "n": 32,
+          "ci95": [
+            3.5036852369487006,
+            6.058814763051299
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.08952866109730251,
+          "sem": 0.0645263877060624,
+          "n": 32,
+          "ci95": [
+            -0.2160003810011848,
+            0.036943058806579776
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.375,
+          "sem": 0.08695104295503155,
+          "n": 32,
+          "ci95": [
+            0.20457595580813817,
+            0.5454240441918619
+          ]
+        },
+        "engagement": {
+          "mean": 0.04910714285714285,
+          "sem": 0.016490784577182296,
+          "n": 32,
+          "ci95": [
+            0.01678520508586555,
+            0.08142908062842015
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 1,
+        "named_proper": 1
+      },
+      "register_nearest": {
+        "gutenberg_children": 11,
+        "dialogue": 2,
+        "tinystories": 12,
+        "folklore": 4,
+        "spine": 2,
+        "wikipedia_simple": 1
+      }
+    },
+    "b-proc-01": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.01670380093323551,
+          "sem": 0.006359163952767915,
+          "n": 32,
+          "ci95": [
+            0.004239839585810397,
+            0.029167762280660627
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.1875,
+          "sem": 0.35194591547474285,
+          "n": 32,
+          "ci95": [
+            2.497686005669504,
+            3.877313994330496
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.9649459364890325,
+          "sem": 0.06496506236858077,
+          "n": 32,
+          "ci95": [
+            -2.0922774587314508,
+            -1.8376144142466142
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.26041666666666663,
+          "sem": 0.028923235286297474,
+          "n": 32,
+          "ci95": [
+            0.20372712550552358,
+            0.3171062078278097
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 32
+      }
+    },
+    "b-proc-02": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.05226289685454602,
+          "sem": 0.018416168516754983,
+          "n": 32,
+          "ci95": [
+            0.016167206561706254,
+            0.08835858714738579
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.15625,
+          "sem": 0.426230133866822,
+          "n": 32,
+          "ci95": [
+            3.320838937621029,
+            4.991661062378971
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.645334916027612,
+          "sem": 0.08086699693048824,
+          "n": 32,
+          "ci95": [
+            -0.8038342300113689,
+            -0.486835602043855
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "engagement": {
+          "mean": 0.15624999999999997,
+          "sem": 0.022550666200424084,
+          "n": 32,
+          "ci95": [
+            0.11205069424716876,
+            0.20044930575283118
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 27,
+        "dialogue": 1,
+        "tinystories": 1,
+        "folklore": 2,
+        "gutenberg_children": 1
+      }
+    },
+    "b-proc-03": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.012444583602671849,
+          "sem": 0.003180597815064312,
+          "n": 32,
+          "ci95": [
+            0.006210611885145797,
+            0.0186785553201979
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.21875,
+          "sem": 0.21409211444549267,
+          "n": 32,
+          "ci95": [
+            2.7991294556868342,
+            3.6383705443131658
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.808937592906116,
+          "sem": 0.06308948321067546,
+          "n": 32,
+          "ci95": [
+            -1.93259297999904,
+            -1.685282205813192
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.15625,
+          "sem": 0.03320497800806573,
+          "n": 32,
+          "ci95": [
+            0.09116824310419117,
+            0.22133175689580883
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 32
+      }
+    },
+    "b-proc-04": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.03202022838120756,
+          "sem": 0.009017653957889754,
+          "n": 32,
+          "ci95": [
+            0.014345626623743647,
+            0.04969483013867148
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.9375,
+          "sem": 0.3076232378277247,
+          "n": 32,
+          "ci95": [
+            3.3345584538576594,
+            4.540441546142341
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.0273189056726122,
+          "sem": 0.039819207138648956,
+          "n": 32,
+          "ci95": [
+            -1.1053645516643642,
+            -0.9492732596808602
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.15178571428571427,
+          "sem": 0.018071865716648608,
+          "n": 32,
+          "ci95": [
+            0.116364857481083,
+            0.18720657109034555
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 29,
+        "wikipedia_simple": 1,
+        "spine": 2
+      }
+    },
+    "b-proc-05": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.012279063072186177,
+          "sem": 0.005628956223597082,
+          "n": 32,
+          "ci95": [
+            0.0012463088739358974,
+            0.023311817270436457
+          ]
+        },
+        "longest_repeat": {
+          "mean": 2.90625,
+          "sem": 0.22161146889355993,
+          "n": 32,
+          "ci95": [
+            2.4718915209686227,
+            3.3406084790313773
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -2.1094798010999303,
+          "sem": 0.0731609332259617,
+          "n": 32,
+          "ci95": [
+            -2.2528752302228154,
+            -1.9660843719770453
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.0669642857142857,
+          "sem": 0.021259292008633794,
+          "n": 32,
+          "ci95": [
+            0.025296073377363462,
+            0.10863249805120793
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 32
+      }
+    },
+    "b-proc-06": {
+      "probe": "agentic",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.3242823168938195,
+          "sem": 0.03219472846275546,
+          "n": 32,
+          "ci95": [
+            0.26118064910681876,
+            0.3873839846808202
+          ]
+        },
+        "longest_repeat": {
+          "mean": 11.25,
+          "sem": 1.273172314313928,
+          "n": 32,
+          "ci95": [
+            8.754582263944702,
+            13.745417736055298
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.2560790575069782,
+          "sem": 0.08533173330425677,
+          "n": 32,
+          "ci95": [
+            -1.4233292547833214,
+            -1.088828860230635
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.40625,
+          "sem": 0.0358410688074679,
+          "n": 32,
+          "ci95": [
+            0.33600150513736293,
+            0.47649849486263707
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "dialogue": 13,
+        "procedural": 17,
+        "spine": 1,
+        "flavour": 1
+      }
+    },
+    "b-proc-07": {
+      "probe": "grounding",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.2845128674625968,
+          "sem": 0.037367954759461953,
+          "n": 32,
+          "ci95": [
+            0.21127167613405137,
+            0.3577540587911422
+          ]
+        },
+        "longest_repeat": {
+          "mean": 11.75,
+          "sem": 1.5862310778250641,
+          "n": 32,
+          "ci95": [
+            8.640987087462875,
+            14.859012912537125
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.7547130053852376,
+          "sem": 0.05091602832831733,
+          "n": 32,
+          "ci95": [
+            -0.8545084209087395,
+            -0.6549175898617356
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.30000000000000004,
+          "sem": 0.021997067253202992,
+          "n": 32,
+          "ci95": [
+            0.2568857481837222,
+            0.3431142518162779
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "wikipedia_simple": 5,
+        "procedural": 26,
+        "folklore": 1
+      }
+    },
+    "b-weird-01": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.09123246356294704,
+          "sem": 0.024520007920988504,
+          "n": 32,
+          "ci95": [
+            0.043173248037809565,
+            0.1392916790880845
+          ]
+        },
+        "longest_repeat": {
+          "mean": 5.6875,
+          "sem": 0.7411269481173967,
+          "n": 32,
+          "ci95": [
+            4.234891181689902,
+            7.140108818310098
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.38020858695674953,
+          "sem": 0.05469400318188715,
+          "n": 32,
+          "ci95": [
+            -0.48740883319324835,
+            -0.2730083407202507
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "engagement": {
+          "mean": 0.19791666666666666,
+          "sem": 0.022989863552550165,
+          "n": 32,
+          "ci95": [
+            0.15285653410366834,
+            0.24297679922966497
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "gutenberg_children": 15,
+        "folklore": 12,
+        "spine": 1,
+        "tinystories": 2,
+        "procedural": 1,
+        "flavour": 1
+      }
+    },
+    "b-weird-02": {
+      "probe": "perpendicular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.08574816868873819,
+          "sem": 0.017030271058280637,
+          "n": 32,
+          "ci95": [
+            0.052368837414508145,
+            0.11912749996296823
+          ]
+        },
+        "longest_repeat": {
+          "mean": 5.6875,
+          "sem": 0.6277158734188067,
+          "n": 32,
+          "ci95": [
+            4.457176888099139,
+            6.917823111900861
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.2250035495293132,
+          "sem": 0.0641883429742179,
+          "n": 32,
+          "ci95": [
+            -1.3508127017587803,
+            -1.0991943972998461
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.24479166666666663,
+          "sem": 0.016707569097369285,
+          "n": 32,
+          "ci95": [
+            0.21204483123582282,
+            0.2775385020975104
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "wikipedia_simple": 6,
+        "spine": 23,
+        "folklore": 2,
+        "poetry": 1
+      }
+    },
+    "b-weird-03": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.04835072991429866,
+          "sem": 0.01794589546388425,
+          "n": 32,
+          "ci95": [
+            0.013176774805085528,
+            0.08352468502351179
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.21875,
+          "sem": 0.4205755824635045,
+          "n": 32,
+          "ci95": [
+            3.394421858371531,
+            5.0430781416284685
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.22871934883766162,
+          "sem": 0.0525352622153571,
+          "n": 32,
+          "ci95": [
+            -0.33168846277976155,
+            -0.1257502348955617
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.15625,
+          "sem": 0.06521328221627366,
+          "n": 32,
+          "ci95": [
+            0.028431966856103635,
+            0.2840680331438964
+          ]
+        },
+        "engagement": {
+          "mean": 0.25625,
+          "sem": 0.02576941016011038,
+          "n": 32,
+          "ci95": [
+            0.20574195608618362,
+            0.30675804391381634
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "gutenberg_children": 22,
+        "flavour": 2,
+        "tinystories": 5,
+        "folklore": 3
+      }
+    },
+    "b-weird-04": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.139899779710766,
+          "sem": 0.031126135976297407,
+          "n": 32,
+          "ci95": [
+            0.07889255319722309,
+            0.2009070062243089
+          ]
+        },
+        "longest_repeat": {
+          "mean": 6.8125,
+          "sem": 1.1626213949796882,
+          "n": 32,
+          "ci95": [
+            4.533762065839811,
+            9.091237934160189
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.350365778987301,
+          "sem": 0.06589505400026106,
+          "n": 32,
+          "ci95": [
+            -1.4795200848278127,
+            -1.2212114731467891
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.040178571428571425,
+          "sem": 0.011536028159117528,
+          "n": 32,
+          "ci95": [
+            0.017567956236701068,
+            0.06278918662044178
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "dialogue": 8,
+        "spine": 3,
+        "wikipedia_simple": 8,
+        "folklore": 3,
+        "weird": 9,
+        "flavour": 1
+      }
+    },
+    "b-folk-01": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.03292568951093838,
+          "sem": 0.016108547931195837,
+          "n": 32,
+          "ci95": [
+            0.0013529355657945427,
+            0.06449844345608222
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.75,
+          "sem": 0.5553987233830159,
+          "n": 32,
+          "ci95": [
+            2.6614185021692887,
+            4.838581497830711
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.41583146217899136,
+          "sem": 0.05977824468661312,
+          "n": 32,
+          "ci95": [
+            -0.532996821764753,
+            -0.2986661025932297
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "engagement": {
+          "mean": 0.11160714285714285,
+          "sem": 0.02101597307037671,
+          "n": 32,
+          "ci95": [
+            0.0704158356392045,
+            0.1527984500750812
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 1,
+        "named_proper": 2
+      },
+      "register_nearest": {
+        "folklore": 24,
+        "gutenberg_children": 4,
+        "tinystories": 3,
+        "weird": 1
+      }
+    },
+    "b-folk-02": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.1398553993251595,
+          "sem": 0.035285545429449436,
+          "n": 32,
+          "ci95": [
+            0.0706957302834386,
+            0.20901506836688039
+          ]
+        },
+        "longest_repeat": {
+          "mean": 6.96875,
+          "sem": 1.3857602250063599,
+          "n": 32,
+          "ci95": [
+            4.252659958987534,
+            9.684840041012466
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.8520418213669793,
+          "sem": 0.09120417052585855,
+          "n": 32,
+          "ci95": [
+            -1.030801995597662,
+            -0.6732816471362965
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.078125,
+          "sem": 0.02364658085834657,
+          "n": 32,
+          "ci95": [
+            0.03177770151764072,
+            0.12447229848235927
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "the_end_terminal": 1
+      },
+      "register_nearest": {
+        "folklore": 24,
+        "weird": 8
+      }
+    },
+    "b-folk-03": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.019138807817988473,
+          "sem": 0.007191905047253816,
+          "n": 32,
+          "ci95": [
+            0.005042673925370994,
+            0.03323494171060595
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.125,
+          "sem": 0.2530061200330805,
+          "n": 32,
+          "ci95": [
+            2.629108004735162,
+            3.620891995264838
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.49209991267160785,
+          "sem": 0.05165620533825924,
+          "n": 32,
+          "ci95": [
+            -0.5933460751345959,
+            -0.39085375020861973
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.16875,
+          "sem": 0.03373207409248125,
+          "n": 32,
+          "ci95": [
+            0.10263513477873676,
+            0.23486486522126326
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 3
+      },
+      "register_nearest": {
+        "folklore": 29,
+        "weird": 3
+      }
+    },
+    "b-folk-04": {
+      "probe": "perpendicular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.10911033944432508,
+          "sem": 0.03381550777029615,
+          "n": 32,
+          "ci95": [
+            0.04283194421454463,
+            0.17538873467410554
+          ]
+        },
+        "longest_repeat": {
+          "mean": 7.03125,
+          "sem": 1.7497029557807067,
+          "n": 32,
+          "ci95": [
+            3.601832206669815,
+            10.460667793330185
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.354911022906974,
+          "sem": 0.12751034557382543,
+          "n": 32,
+          "ci95": [
+            -1.6048313002316719,
+            -1.1049907455822763
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.1875,
+          "sem": 0.029699435206968213,
+          "n": 32,
+          "ci95": [
+            0.12928910699434232,
+            0.24571089300565768
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "wikipedia_simple": 10,
+        "flavour": 2,
+        "spine": 8,
+        "gutenberg_children": 1,
+        "folklore": 7,
+        "weird": 4
+      }
+    },
+    "b-child-01": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.038301039252552155,
+          "sem": 0.01049847286763252,
+          "n": 32,
+          "ci95": [
+            0.017724032431992418,
+            0.058878046073111895
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.28125,
+          "sem": 0.41454010419243026,
+          "n": 32,
+          "ci95": [
+            3.468751395782837,
+            5.093748604217163
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.17173720202486548,
+          "sem": 0.056612745590322075,
+          "n": 32,
+          "ci95": [
+            -0.28269818338189673,
+            -0.06077622066783421
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.28125,
+          "sem": 0.08075219711382271,
+          "n": 32,
+          "ci95": [
+            0.1229756936569075,
+            0.4395243063430925
+          ]
+        },
+        "engagement": {
+          "mean": 0.19375,
+          "sem": 0.031730181775147,
+          "n": 32,
+          "ci95": [
+            0.1315588437207119,
+            0.25594115627928815
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 1
+      },
+      "register_nearest": {
+        "gutenberg_children": 11,
+        "folklore": 9,
+        "tinystories": 9,
+        "wikipedia_simple": 1,
+        "weird": 2
+      }
+    },
+    "b-child-02": {
+      "probe": "target-voice",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.03422987142590522,
+          "sem": 0.00904421261319949,
+          "n": 32,
+          "ci95": [
+            0.016503214704034222,
+            0.051956528147776224
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.03125,
+          "sem": 0.42236940862083,
+          "n": 32,
+          "ci95": [
+            3.203405959103173,
+            4.859094040896827
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.22646727982640386,
+          "sem": 0.04131225834156852,
+          "n": 32,
+          "ci95": [
+            -0.30743930617587817,
+            -0.14549525347692954
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.125,
+          "sem": 0.059398870413936426,
+          "n": 32,
+          "ci95": [
+            0.008578213988684608,
+            0.2414217860113154
+          ]
+        },
+        "engagement": {
+          "mean": 0.17578125,
+          "sem": 0.020127002724183104,
+          "n": 32,
+          "ci95": [
+            0.13633232466060113,
+            0.21523017533939887
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "gutenberg_children": 24,
+        "folklore": 2,
+        "weird": 2,
+        "tinystories": 4
+      }
+    },
+    "b-child-03": {
+      "probe": "perpendicular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.047701180768032814,
+          "sem": 0.01581066017977852,
+          "n": 32,
+          "ci95": [
+            0.016712286815666916,
+            0.07869007472039871
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.53125,
+          "sem": 0.7295385956205469,
+          "n": 32,
+          "ci95": [
+            3.101354352583728,
+            5.961145647416272
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.14326818731289642,
+          "sem": 0.05471374203857365,
+          "n": 32,
+          "ci95": [
+            -0.25050712170850076,
+            -0.03602925291729207
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.28125,
+          "sem": 0.08075219711382271,
+          "n": 32,
+          "ci95": [
+            0.1229756936569075,
+            0.4395243063430925
+          ]
+        },
+        "engagement": {
+          "mean": 0.18303571428571425,
+          "sem": 0.02333527051976074,
+          "n": 32,
+          "ci95": [
+            0.1372985840669832,
+            0.2287728445044453
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "gutenberg_children": 19,
+        "tinystories": 9,
+        "folklore": 4
+      }
+    },
+    "b-wiki-01": {
+      "probe": "grounding",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.21959499036609886,
+          "sem": 0.039930662184480506,
+          "n": 32,
+          "ci95": [
+            0.14133089248451708,
+            0.29785908824768065
+          ]
+        },
+        "longest_repeat": {
+          "mean": 9.875,
+          "sem": 1.634895429229689,
+          "n": 32,
+          "ci95": [
+            6.670604958709809,
+            13.07939504129019
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -1.1996985465420655,
+          "sem": 0.09306859294930396,
+          "n": 32,
+          "ci95": [
+            -1.3821129887227013,
+            -1.0172841043614298
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.40625,
+          "sem": 0.04423375661205293,
+          "n": 32,
+          "ci95": [
+            0.31955183704037626,
+            0.49294816295962374
+          ]
+        },
+        "n_tokens": {
+          "mean": 58.25,
+          "sem": 1.3700423822029222,
+          "n": 32,
+          "ci95": [
+            55.56471693088227,
+            60.93528306911773
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 1
+      },
+      "register_nearest": {
+        "wikipedia_simple": 23,
+        "dialogue": 4,
+        "spine": 3,
+        "procedural": 2
+      }
+    },
+    "b-wiki-02": {
+      "probe": "grounding",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.022936666657009414,
+          "sem": 0.007665385012244429,
+          "n": 32,
+          "ci95": [
+            0.007912512033010334,
+            0.03796082128100849
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.59375,
+          "sem": 0.3007362437526471,
+          "n": 32,
+          "ci95": [
+            3.0043069622448115,
+            4.1831930377551885
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.39047037824785014,
+          "sem": 0.07315631276356181,
+          "n": 32,
+          "ci95": [
+            -0.5338567512644312,
+            -0.247084005231269
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "engagement": {
+          "mean": 0.4140625,
+          "sem": 0.03824754729380612,
+          "n": 32,
+          "ci95": [
+            0.33909730730414,
+            0.48902769269586
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 2,
+        "so_very_happy": 1
+      },
+      "register_nearest": {
+        "spine": 18,
+        "tinystories": 3,
+        "gutenberg_children": 3,
+        "procedural": 2,
+        "folklore": 4,
+        "weird": 2
+      }
+    },
+    "b-wiki-03": {
+      "probe": "grounding",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.13984954319640097,
+          "sem": 0.027982179325950526,
+          "n": 32,
+          "ci95": [
+            0.08500447171753794,
+            0.194694614675264
+          ]
+        },
+        "longest_repeat": {
+          "mean": 7.6875,
+          "sem": 1.1084695021049402,
+          "n": 32,
+          "ci95": [
+            5.5148997758743175,
+            9.860100224125683
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.33584355435765717,
+          "sem": 0.1095011361010595,
+          "n": 32,
+          "ci95": [
+            -0.5504657811157339,
+            -0.12122132759958054
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.21875,
+          "sem": 0.07424858801742054,
+          "n": 32,
+          "ci95": [
+            0.07322276748585574,
+            0.36427723251414423
+          ]
+        },
+        "engagement": {
+          "mean": 0.36607142857142855,
+          "sem": 0.03736810247110469,
+          "n": 32,
+          "ci95": [
+            0.29282994772806337,
+            0.43931290941479373
+          ]
+        },
+        "n_tokens": {
+          "mean": 58.9375,
+          "sem": 1.0624999999999998,
+          "n": 32,
+          "ci95": [
+            56.855000000000004,
+            61.019999999999996
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 1,
+        "his_her_mom": 1
+      },
+      "register_nearest": {
+        "wikipedia_simple": 17,
+        "tinystories": 7,
+        "gutenberg_children": 5,
+        "folklore": 2,
+        "dialogue": 1
+      }
+    },
+    "b-wiki-04": {
+      "probe": "grounding",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.12886026357562486,
+          "sem": 0.027094370360425293,
+          "n": 32,
+          "ci95": [
+            0.07575529766919128,
+            0.18196522948205843
+          ]
+        },
+        "longest_repeat": {
+          "mean": 6.875,
+          "sem": 0.9926646284199557,
+          "n": 32,
+          "ci95": [
+            4.929377328296887,
+            8.820622671703113
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.7164957015610558,
+          "sem": 0.10604964182563949,
+          "n": 32,
+          "ci95": [
+            -0.9243529995393092,
+            -0.5086384035828024
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "engagement": {
+          "mean": 0.1640625,
+          "sem": 0.0347973956634642,
+          "n": 32,
+          "ci95": [
+            0.09585960449961016,
+            0.23226539550038983
+          ]
+        },
+        "n_tokens": {
+          "mean": 57.65625,
+          "sem": 1.3770947203992951,
+          "n": 32,
+          "ci95": [
+            54.95714434801738,
+            60.35535565198262
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "wikipedia_simple": 14,
+        "procedural": 12,
+        "spine": 3,
+        "tinystories": 2,
+        "dialogue": 1
+      }
+    },
+    "b-poem-01": {
+      "probe": "perpendicular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.32787668773295797,
+          "sem": 0.04796086288560013,
+          "n": 32,
+          "ci95": [
+            0.23387339647718172,
+            0.4218799789887342
+          ]
+        },
+        "longest_repeat": {
+          "mean": 14.1875,
+          "sem": 2.232656046997286,
+          "n": 32,
+          "ci95": [
+            9.81149414788532,
+            18.56350585211468
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.7441336375552967,
+          "sem": 0.05947432036987449,
+          "n": 32,
+          "ci95": [
+            -0.8607033054802506,
+            -0.6275639696303428
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.43749999999999994,
+          "sem": 0.034900973582254795,
+          "n": 32,
+          "ci95": [
+            0.36909409177878055,
+            0.5059059082212194
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 22,
+        "flavour": 3,
+        "wikipedia_simple": 1,
+        "spine": 6
+      }
+    },
+    "b-poem-02": {
+      "probe": "stutter",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.06557129731590336,
+          "sem": 0.0188408675643818,
+          "n": 32,
+          "ci95": [
+            0.028643196889715034,
+            0.10249939774209169
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.59375,
+          "sem": 0.5233641468823934,
+          "n": 32,
+          "ci95": [
+            3.567956272110509,
+            5.619543727889491
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.2756304385217373,
+          "sem": 0.08891193565631142,
+          "n": 32,
+          "ci95": [
+            -0.44989783240810766,
+            -0.10136304463536691
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.21875,
+          "sem": 0.07424858801742054,
+          "n": 32,
+          "ci95": [
+            0.07322276748585574,
+            0.36427723251414423
+          ]
+        },
+        "engagement": {
+          "mean": 0.28125,
+          "sem": 0.049886463837333146,
+          "n": 32,
+          "ci95": [
+            0.18347253087882703,
+            0.37902746912117297
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 1
+      },
+      "register_nearest": {
+        "gutenberg_children": 5,
+        "weird": 3,
+        "folklore": 16,
+        "tinystories": 7,
+        "spine": 1
+      }
+    },
+    "b-flav-01": {
+      "probe": "stutter",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.10538831447449758,
+          "sem": 0.02273000014750129,
+          "n": 32,
+          "ci95": [
+            0.06083751418539505,
+            0.1499391147636001
+          ]
+        },
+        "longest_repeat": {
+          "mean": 6.40625,
+          "sem": 0.5077213783010037,
+          "n": 32,
+          "ci95": [
+            5.411116098530033,
+            7.401383901469967
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.6905493423834774,
+          "sem": 0.05847456504873015,
+          "n": 32,
+          "ci95": [
+            -0.8051594898789886,
+            -0.5759391948879663
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.125,
+          "sem": 0.059398870413936426,
+          "n": 32,
+          "ci95": [
+            0.008578213988684608,
+            0.2414217860113154
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "flavour": 10,
+        "spine": 2,
+        "weird": 6,
+        "folklore": 4,
+        "gutenberg_children": 6,
+        "procedural": 4
+      }
+    },
+    "b-flav-02": {
+      "probe": "oracular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.06187006710931991,
+          "sem": 0.018251316159934538,
+          "n": 32,
+          "ci95": [
+            0.026097487435848214,
+            0.09764264678279161
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.625,
+          "sem": 0.47466031997085945,
+          "n": 32,
+          "ci95": [
+            3.6946657728571157,
+            5.555334227142884
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.543759084327111,
+          "sem": 0.08753219072359537,
+          "n": 32,
+          "ci95": [
+            -0.7153221781453579,
+            -0.372195990508864
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "engagement": {
+          "mean": 0.1328125,
+          "sem": 0.029666269998178715,
+          "n": 32,
+          "ci95": [
+            0.07466661080356972,
+            0.19095838919643027
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "named_proper": 2
+      },
+      "register_nearest": {
+        "procedural": 2,
+        "folklore": 18,
+        "gutenberg_children": 4,
+        "spine": 6,
+        "tinystories": 2
+      }
+    },
+    "b-flav-03": {
+      "probe": "oracular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.029754287927973178,
+          "sem": 0.006940943358139651,
+          "n": 32,
+          "ci95": [
+            0.016150038946019463,
+            0.043358536909926894
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.875,
+          "sem": 0.2569595801024971,
+          "n": 32,
+          "ci95": [
+            3.371359222999106,
+            4.378640777000895
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.9044472339072713,
+          "sem": 0.0566897133188846,
+          "n": 32,
+          "ci95": [
+            -1.0155590720122851,
+            -0.7933353958022575
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.15104166666666666,
+          "sem": 0.020301511709431196,
+          "n": 32,
+          "ci95": [
+            0.11125070371618151,
+            0.1908326296171518
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "spine": 19,
+        "procedural": 5,
+        "folklore": 5,
+        "weird": 2,
+        "flavour": 1
+      }
+    },
+    "b-flav-04": {
+      "probe": "stutter",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.11193379630519457,
+          "sem": 0.031375463728588876,
+          "n": 32,
+          "ci95": [
+            0.05043788739716037,
+            0.17342970521322876
+          ]
+        },
+        "longest_repeat": {
+          "mean": 6.21875,
+          "sem": 0.9297224427561787,
+          "n": 32,
+          "ci95": [
+            4.3964940121978895,
+            8.04100598780211
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.630837938810542,
+          "sem": 0.09308796588391498,
+          "n": 32,
+          "ci95": [
+            -0.8132903519430152,
+            -0.4483855256780686
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "engagement": {
+          "mean": 0.84375,
+          "sem": 0.06521328221627366,
+          "n": 32,
+          "ci95": [
+            0.7159319668561036,
+            0.9715680331438964
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "named_proper": 1,
+        "one_day_comma": 1,
+        "his_her_mom": 1
+      },
+      "register_nearest": {
+        "procedural": 24,
+        "wikipedia_simple": 2,
+        "folklore": 1,
+        "tinystories": 3,
+        "spine": 2
+      }
+    },
+    "b-flav-05": {
+      "probe": "oracular",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.36544629338822043,
+          "sem": 0.05110929871363672,
+          "n": 32,
+          "ci95": [
+            0.2652720679094925,
+            0.4656205188669484
+          ]
+        },
+        "longest_repeat": {
+          "mean": 17.0625,
+          "sem": 2.447817288076553,
+          "n": 32,
+          "ci95": [
+            12.264778115369957,
+            21.860221884630043
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.16023048108514715,
+          "sem": 0.1437815216925335,
+          "n": 32,
+          "ci95": [
+            -0.4420422636025128,
+            0.12158130143221851
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.375,
+          "sem": 0.08695104295503155,
+          "n": 32,
+          "ci95": [
+            0.20457595580813817,
+            0.5454240441918619
+          ]
+        },
+        "engagement": {
+          "mean": 0.25,
+          "sem": 0.037230212323829406,
+          "n": 32,
+          "ci95": [
+            0.17702878384529436,
+            0.32297121615470564
+          ]
+        },
+        "n_tokens": {
+          "mean": 58.375,
+          "sem": 1.6249999999999998,
+          "n": 32,
+          "ci95": [
+            55.19,
+            61.56
+          ]
+        }
+      },
+      "collapse_markers": {
+        "his_her_mom": 1
+      },
+      "register_nearest": {
+        "procedural": 9,
+        "tinystories": 12,
+        "wikipedia_simple": 8,
+        "flavour": 1,
+        "weird": 1,
+        "gutenberg_children": 1
+      }
+    },
+    "b-tiny-01": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.125,
+          "sem": 0.059398870413936426,
+          "n": 32,
+          "ci95": [
+            0.008578213988684608,
+            0.2414217860113154
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.125,
+          "sem": 0.059398870413936426,
+          "n": 32,
+          "ci95": [
+            0.008578213988684608,
+            0.2414217860113154
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.029636126201336058,
+          "sem": 0.011901096828920014,
+          "n": 32,
+          "ci95": [
+            0.006309976416652832,
+            0.05296227598601928
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.78125,
+          "sem": 0.5512712123780582,
+          "n": 32,
+          "ci95": [
+            2.700758423739006,
+            4.861741576260994
+          ]
+        },
+        "tinystories_margin": {
+          "mean": 1.011521920865121,
+          "sem": 0.061165128108814325,
+          "n": 32,
+          "ci95": [
+            0.8916382697718449,
+            1.131405571958397
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 1.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.33854166666666663,
+          "sem": 0.024231437811343712,
+          "n": 32,
+          "ci95": [
+            0.29104804855643296,
+            0.3860352847769003
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 4
+      },
+      "register_nearest": {
+        "tinystories": 32
+      }
+    },
+    "b-tiny-02": {
+      "probe": "coherence",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.8125,
+          "sem": 0.0701021719786843,
+          "n": 32,
+          "ci95": [
+            0.6750997429217788,
+            0.9499002570782212
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.125,
+          "sem": 0.059398870413936426,
+          "n": 32,
+          "ci95": [
+            0.008578213988684608,
+            0.2414217860113154
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.78125,
+          "sem": 0.07424858801742054,
+          "n": 32,
+          "ci95": [
+            0.6357227674858558,
+            0.9267772325141442
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.02257836168178843,
+          "sem": 0.005816303063849185,
+          "n": 32,
+          "ci95": [
+            0.011178407676644027,
+            0.03397831568693283
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.5,
+          "sem": 0.32065960245275876,
+          "n": 32,
+          "ci95": [
+            2.8715071791925926,
+            4.128492820807407
+          ]
+        },
+        "tinystories_margin": {
+          "mean": 0.968384734240559,
+          "sem": 0.03911726164820854,
+          "n": 32,
+          "ci95": [
+            0.8917149014100703,
+            1.0450545670710478
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 1.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "engagement": {
+          "mean": 0.6000000000000001,
+          "sem": 0.0508000508000762,
+          "n": 32,
+          "ci95": [
+            0.5004319004318507,
+            0.6995680995681495
+          ]
+        },
+        "n_tokens": {
+          "mean": 59.125,
+          "sem": 0.8749999999999999,
+          "n": 32,
+          "ci95": [
+            57.41,
+            60.84
+          ]
+        }
+      },
+      "collapse_markers": {
+        "from_that_day_on": 3,
+        "so_very_happy": 24,
+        "happily_ever_after": 1,
+        "his_her_mom": 1
+      },
+      "register_nearest": {
+        "tinystories": 32
+      }
+    },
+    "b-null-01": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.06666005931150419,
+          "sem": 0.02137428092025623,
+          "n": 32,
+          "ci95": [
+            0.024766468707801977,
+            0.10855364991520641
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.34375,
+          "sem": 0.5708111358606983,
+          "n": 32,
+          "ci95": [
+            3.2249601737130313,
+            5.462539826286969
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.5006002098921555,
+          "sem": 0.10160468564522114,
+          "n": 32,
+          "ci95": [
+            -0.6997453937567889,
+            -0.30145502602752206
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.1875,
+          "sem": 0.0701021719786843,
+          "n": 32,
+          "ci95": [
+            0.05009974292177877,
+            0.32490025707822123
+          ]
+        },
+        "engagement": {
+          "mean": 0.15625,
+          "sem": 0.04729316171669314,
+          "n": 32,
+          "ci95": [
+            0.06355540303528144,
+            0.24894459696471855
+          ]
+        },
+        "n_tokens": {
+          "mean": 59.46875,
+          "sem": 0.5312499999999999,
+          "n": 32,
+          "ci95": [
+            58.4275,
+            60.51
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "procedural": 3,
+        "gutenberg_children": 8,
+        "folklore": 5,
+        "spine": 4,
+        "dialogue": 2,
+        "wikipedia_simple": 4,
+        "tinystories": 6
+      }
+    },
+    "b-null-02": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.05395519675412057,
+          "sem": 0.017967807131050315,
+          "n": 32,
+          "ci95": [
+            0.018738294777261952,
+            0.08917209873097919
+          ]
+        },
+        "longest_repeat": {
+          "mean": 4.4375,
+          "sem": 0.5292597919919431,
+          "n": 32,
+          "ci95": [
+            3.4001508076957916,
+            5.474849192304209
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.2062729414794763,
+          "sem": 0.0764950404691912,
+          "n": 32,
+          "ci95": [
+            -0.35620322079909106,
+            -0.056342662159861556
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.15625,
+          "sem": 0.06521328221627366,
+          "n": 32,
+          "ci95": [
+            0.028431966856103635,
+            0.2840680331438964
+          ]
+        },
+        "engagement": {
+          "mean": 0.0625,
+          "sem": 0.023367390659561435,
+          "n": 32,
+          "ci95": [
+            0.01669991430725959,
+            0.10830008569274041
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "folklore": 11,
+        "gutenberg_children": 13,
+        "procedural": 1,
+        "tinystories": 5,
+        "weird": 1,
+        "flavour": 1
+      }
+    },
+    "b-null-03": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.34375,
+          "sem": 0.08530513305661301,
+          "n": 32,
+          "ci95": [
+            0.1765519392090385,
+            0.5109480607909616
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.34375,
+          "sem": 0.08530513305661301,
+          "n": 32,
+          "ci95": [
+            0.1765519392090385,
+            0.5109480607909616
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.023449704631614186,
+          "sem": 0.00767909108194042,
+          "n": 32,
+          "ci95": [
+            0.008398686111010965,
+            0.038500723152217406
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.53125,
+          "sem": 0.24587063458577743,
+          "n": 32,
+          "ci95": [
+            3.049343556211876,
+            4.013156443788124
+          ]
+        },
+        "tinystories_margin": {
+          "mean": 0.6205551529217798,
+          "sem": 0.06418133781835264,
+          "n": 32,
+          "ci95": [
+            0.49475973079780855,
+            0.746350575045751
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.96875,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            0.9075,
+            1.03
+          ]
+        },
+        "engagement": {
+          "mean": 0.20833333333333331,
+          "sem": 0.023665076426961033,
+          "n": 32,
+          "ci95": [
+            0.1619497835364897,
+            0.25471688313017693
+          ]
+        },
+        "n_tokens": {
+          "mean": 59.8125,
+          "sem": 0.18749999999999997,
+          "n": 32,
+          "ci95": [
+            59.445,
+            60.18
+          ]
+        }
+      },
+      "collapse_markers": {
+        "one_day_comma": 4,
+        "so_very_happy": 6,
+        "his_her_mom": 2,
+        "the_end_terminal": 1
+      },
+      "register_nearest": {
+        "tinystories": 31,
+        "gutenberg_children": 1
+      }
+    },
+    "b-null-04": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.008548127883650426,
+          "sem": 0.002146657684089703,
+          "n": 32,
+          "ci95": [
+            0.004340678822834608,
+            0.012755576944466244
+          ]
+        },
+        "longest_repeat": {
+          "mean": 2.84375,
+          "sem": 0.2013531592949674,
+          "n": 32,
+          "ci95": [
+            2.4490978077818637,
+            3.2384021922181363
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.47619058397257685,
+          "sem": 0.07548717157044799,
+          "n": 32,
+          "ci95": [
+            -0.6241454402506549,
+            -0.3282357276944988
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "engagement": {
+          "mean": 0.0625,
+          "sem": 0.02245066275334686,
+          "n": 32,
+          "ci95": [
+            0.018496701003440155,
+            0.10650329899655984
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {},
+      "register_nearest": {
+        "gutenberg_children": 10,
+        "tinystories": 3,
+        "weird": 10,
+        "folklore": 7,
+        "spine": 2
+      }
+    },
+    "b-null-05": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.21875,
+          "sem": 0.07424858801742054,
+          "n": 32,
+          "ci95": [
+            0.07322276748585574,
+            0.36427723251414423
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.21875,
+          "sem": 0.07424858801742054,
+          "n": 32,
+          "ci95": [
+            0.07322276748585574,
+            0.36427723251414423
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.06876475696247047,
+          "sem": 0.022033942611926195,
+          "n": 32,
+          "ci95": [
+            0.02557822944309513,
+            0.11195128448184583
+          ]
+        },
+        "longest_repeat": {
+          "mean": 5.09375,
+          "sem": 0.840458034443892,
+          "n": 32,
+          "ci95": [
+            3.446452252489972,
+            6.741047747510028
+          ]
+        },
+        "tinystories_margin": {
+          "mean": 0.7218673632079303,
+          "sem": 0.08232373864522026,
+          "n": 32,
+          "ci95": [
+            0.5605128354632987,
+            0.883221890952562
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.9375,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            0.8522879779040691,
+            1.022712022095931
+          ]
+        },
+        "engagement": {
+          "mean": 0.3359375,
+          "sem": 0.03293707152197275,
+          "n": 32,
+          "ci95": [
+            0.2713808398169334,
+            0.4004941601830666
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 4,
+        "his_her_mom": 5
+      },
+      "register_nearest": {
+        "tinystories": 30,
+        "weird": 1,
+        "folklore": 1
+      }
+    },
+    "b-null-06": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.3125,
+          "sem": 0.08324928557283298,
+          "n": 32,
+          "ci95": [
+            0.14933140027724737,
+            0.47566859972275266
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.1875,
+          "sem": 0.0701021719786843,
+          "n": 32,
+          "ci95": [
+            0.05009974292177877,
+            0.32490025707822123
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.1875,
+          "sem": 0.0701021719786843,
+          "n": 32,
+          "ci95": [
+            0.05009974292177877,
+            0.32490025707822123
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.28125,
+          "sem": 0.08075219711382271,
+          "n": 32,
+          "ci95": [
+            0.1229756936569075,
+            0.4395243063430925
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.035547426623320194,
+          "sem": 0.009970800882756979,
+          "n": 32,
+          "ci95": [
+            0.016004656893116517,
+            0.05509019635352387
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.9375,
+          "sem": 0.34177401277225805,
+          "n": 32,
+          "ci95": [
+            3.2676229349663743,
+            4.607377065033626
+          ]
+        },
+        "tinystories_margin": {
+          "mean": 0.5907411665786717,
+          "sem": 0.09724607198321196,
+          "n": 32,
+          "ci95": [
+            0.4001388654915763,
+            0.7813434676657671
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.78125,
+          "sem": 0.07424858801742054,
+          "n": 32,
+          "ci95": [
+            0.6357227674858558,
+            0.9267772325141442
+          ]
+        },
+        "engagement": {
+          "mean": 0.2421875,
+          "sem": 0.04417189291836988,
+          "n": 32,
+          "ci95": [
+            0.15561058987999504,
+            0.32876441012000496
+          ]
+        },
+        "n_tokens": {
+          "mean": 53.625,
+          "sem": 2.0745918759150923,
+          "n": 32,
+          "ci95": [
+            49.55879992320642,
+            57.69120007679358
+          ]
+        }
+      },
+      "collapse_markers": {
+        "moral_of_the_story": 1,
+        "so_very_happy": 5,
+        "from_that_day_on": 4,
+        "learned_a_lesson": 1,
+        "his_her_mom": 2
+      },
+      "register_nearest": {
+        "tinystories": 25,
+        "gutenberg_children": 2,
+        "folklore": 5
+      }
+    },
+    "b-null-07": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.0625,
+          "sem": 0.04347552147751577,
+          "n": 32,
+          "ci95": [
+            -0.022712022095930914,
+            0.14771202209593093
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            0.0,
+            0.0
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.017540206551796375,
+          "sem": 0.008268351091273815,
+          "n": 32,
+          "ci95": [
+            0.0013342384128996986,
+            0.03374617469069305
+          ]
+        },
+        "longest_repeat": {
+          "mean": 3.03125,
+          "sem": 0.35493177161251704,
+          "n": 32,
+          "ci95": [
+            2.3355837276394666,
+            3.7269162723605334
+          ]
+        },
+        "tinystories_margin": {
+          "mean": -0.2697531483949487,
+          "sem": 0.09518622031264243,
+          "n": 32,
+          "ci95": [
+            -0.4563181402077279,
+            -0.08318815658216952
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.15625,
+          "sem": 0.06521328221627366,
+          "n": 32,
+          "ci95": [
+            0.028431966856103635,
+            0.2840680331438964
+          ]
+        },
+        "engagement": {
+          "mean": 0.0625,
+          "sem": 0.027749761857610987,
+          "n": 32,
+          "ci95": [
+            0.008110466759082467,
+            0.11688953324091753
+          ]
+        },
+        "n_tokens": {
+          "mean": 60.0,
+          "sem": 0.0,
+          "n": 32,
+          "ci95": [
+            60.0,
+            60.0
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 1,
+        "learned_a_lesson": 1
+      },
+      "register_nearest": {
+        "folklore": 5,
+        "gutenberg_children": 18,
+        "weird": 4,
+        "tinystories": 5
+      }
+    },
+    "b-null-08": {
+      "probe": "default-register",
+      "n_samples": 32,
+      "estimates": {
+        "collapse_rate": {
+          "mean": 0.15625,
+          "sem": 0.06521328221627366,
+          "n": 32,
+          "ci95": [
+            0.028431966856103635,
+            0.2840680331438964
+          ]
+        },
+        "frame_collapse_rate": {
+          "mean": 0.03125,
+          "sem": 0.03125,
+          "n": 32,
+          "ci95": [
+            -0.03,
+            0.0925
+          ]
+        },
+        "lexical_collapse_rate": {
+          "mean": 0.125,
+          "sem": 0.059398870413936426,
+          "n": 32,
+          "ci95": [
+            0.008578213988684608,
+            0.2414217860113154
+          ]
+        },
+        "termination_rate": {
+          "mean": 0.09375,
+          "sem": 0.0523514603733822,
+          "n": 32,
+          "ci95": [
+            -0.008858862331829115,
+            0.19635886233182911
+          ]
+        },
+        "repeat_rate": {
+          "mean": 0.11764208772728574,
+          "sem": 0.02675278324269934,
+          "n": 32,
+          "ci95": [
+            0.06520663257159504,
+            0.17007754288297644
+          ]
+        },
+        "longest_repeat": {
+          "mean": 5.84375,
+          "sem": 0.7488019665309681,
+          "n": 32,
+          "ci95": [
+            4.376098145599302,
+            7.311401854400698
+          ]
+        },
+        "tinystories_margin": {
+          "mean": 0.015927672759838002,
+          "sem": 0.1340957189498794,
+          "n": 32,
+          "ci95": [
+            -0.24689993638192562,
+            0.2787552819016016
+          ]
+        },
+        "register_tinystories_share": {
+          "mean": 0.40625,
+          "sem": 0.0882099653319905,
+          "n": 32,
+          "ci95": [
+            0.2333584679492986,
+            0.5791415320507014
+          ]
+        },
+        "engagement": {
+          "mean": 0.3828125,
+          "sem": 0.06248424700668109,
+          "n": 32,
+          "ci95": [
+            0.26034337586690504,
+            0.505281624133095
+          ]
+        },
+        "n_tokens": {
+          "mean": 57.6875,
+          "sem": 1.7282271706074426,
+          "n": 32,
+          "ci95": [
+            54.30017474560941,
+            61.07482525439059
+          ]
+        }
+      },
+      "collapse_markers": {
+        "so_very_happy": 3,
+        "moral_of_the_story": 1,
+        "one_day_comma": 1,
+        "his_her_mom": 1
+      },
+      "register_nearest": {
+        "tinystories": 13,
+        "folklore": 2,
+        "flavour": 4,
+        "spine": 10,
+        "weird": 2,
+        "gutenberg_children": 1
+      }
+    }
+  },
+  "register_sources": [
+    "dialogue",
+    "flavour",
+    "folklore",
+    "gutenberg_children",
+    "poetry",
+    "procedural",
+    "spine",
+    "tinystories",
+    "weird",
+    "wikipedia_simple"
+  ],
+  "control_excerpt_words": 53,
+  "detector_controls": [
+    {
+      "source": "dialogue",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.009,
+      "frame_collapse_rate": 0.001,
+      "lexical_collapse_rate": 0.009,
+      "register_accuracy": 0.822,
+      "register_top_confusion": "wikipedia_simple 11.1%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.001,
+        "one_day_comma": 0.001,
+        "so_very_happy": 0.0,
+        "named_proper": 0.008,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.005606463017686422,
+        "sem": 0.0005873640158505989,
+        "n": 1000,
+        "ci95": [
+          0.004455229546619248,
+          0.006757696488753595
+        ]
+      }
+    },
+    {
+      "source": "flavour",
+      "n_excerpts": 768,
+      "collapse_rate": 0.016927083333333332,
+      "frame_collapse_rate": 0.0013020833333333333,
+      "lexical_collapse_rate": 0.015625,
+      "register_accuracy": 0.69921875,
+      "register_top_confusion": "folklore 11.1%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.0013020833333333333,
+        "one_day_comma": 0.0,
+        "so_very_happy": 0.0,
+        "named_proper": 0.015625,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.0031648005290877824,
+        "sem": 0.0005634562636429594,
+        "n": 768,
+        "ci95": [
+          0.002060426252347582,
+          0.004269174805827983
+        ]
+      }
+    },
+    {
+      "source": "folklore",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.006,
+      "frame_collapse_rate": 0.001,
+      "lexical_collapse_rate": 0.005,
+      "register_accuracy": 0.636,
+      "register_top_confusion": "weird 20.9%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.001,
+        "the_end_terminal": 0.0,
+        "one_day_comma": 0.001,
+        "so_very_happy": 0.0,
+        "named_proper": 0.004,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.00025087146614814315,
+        "sem": 8.738713944942563e-05,
+        "n": 1000,
+        "ci95": [
+          7.959267282726891e-05,
+          0.0004221502594690174
+        ]
+      }
+    },
+    {
+      "source": "gutenberg_children",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.005,
+      "frame_collapse_rate": 0.002,
+      "lexical_collapse_rate": 0.003,
+      "register_accuracy": 0.811,
+      "register_top_confusion": "folklore 9.5%",
+      "marker_rates": {
+        "once_upon_a_time": 0.001,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.001,
+        "one_day_comma": 0.002,
+        "so_very_happy": 0.0,
+        "named_proper": 0.001,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.0013416611435921406,
+        "sem": 0.00036112429171782686,
+        "n": 1000,
+        "ci95": [
+          0.0006338575318252,
+          0.0020494647553590812
+        ]
+      }
+    },
+    {
+      "source": "poetry",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.0,
+      "frame_collapse_rate": 0.0,
+      "lexical_collapse_rate": 0.0,
+      "register_accuracy": 0.887,
+      "register_top_confusion": "folklore 9.5%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.0,
+        "one_day_comma": 0.0,
+        "so_very_happy": 0.0,
+        "named_proper": 0.0,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.00011999999999999999,
+        "sem": 8.481033423346937e-05,
+        "n": 1000,
+        "ci95": [
+          -4.622825509759999e-05,
+          0.00028622825509759997
+        ]
+      }
+    },
+    {
+      "source": "procedural",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.001,
+      "frame_collapse_rate": 0.0,
+      "lexical_collapse_rate": 0.001,
+      "register_accuracy": 0.985,
+      "register_top_confusion": "spine 0.8%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.0,
+        "one_day_comma": 0.001,
+        "so_very_happy": 0.0,
+        "named_proper": 0.0,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.004110824301819315,
+        "sem": 0.0006249202736960394,
+        "n": 1000,
+        "ci95": [
+          0.002885980565375078,
+          0.005335668038263552
+        ]
+      }
+    },
+    {
+      "source": "spine",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.003,
+      "frame_collapse_rate": 0.0,
+      "lexical_collapse_rate": 0.003,
+      "register_accuracy": 0.896,
+      "register_top_confusion": "folklore 2.5%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.0,
+        "one_day_comma": 0.002,
+        "so_very_happy": 0.0,
+        "named_proper": 0.001,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.0007642252228879513,
+        "sem": 0.00018674963327793676,
+        "n": 1000,
+        "ci95": [
+          0.00039819594166319523,
+          0.0011302545041127073
+        ]
+      }
+    },
+    {
+      "source": "tinystories",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.481,
+      "frame_collapse_rate": 0.231,
+      "lexical_collapse_rate": 0.406,
+      "register_accuracy": 0.998,
+      "register_top_confusion": "gutenberg_children 0.1%",
+      "marker_rates": {
+        "once_upon_a_time": 0.169,
+        "little_X_named": 0.09,
+        "moral_of_the_story": 0.013,
+        "happily_ever_after": 0.01,
+        "from_that_day_on": 0.02,
+        "learned_a_lesson": 0.003,
+        "the_end_terminal": 0.011,
+        "one_day_comma": 0.191,
+        "so_very_happy": 0.085,
+        "named_proper": 0.144,
+        "his_her_mom": 0.129
+      },
+      "repeat_rate": {
+        "mean": 0.002180408163265308,
+        "sem": 0.00030554159952200945,
+        "n": 1000,
+        "ci95": [
+          0.0015815466282021694,
+          0.0027792696983284463
+        ]
+      }
+    },
+    {
+      "source": "weird",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.007,
+      "frame_collapse_rate": 0.0,
+      "lexical_collapse_rate": 0.007,
+      "register_accuracy": 0.963,
+      "register_top_confusion": "folklore 2.1%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.0,
+        "one_day_comma": 0.003,
+        "so_very_happy": 0.0,
+        "named_proper": 0.004,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.0002984757676655571,
+        "sem": 9.088255026439301e-05,
+        "n": 1000,
+        "ci95": [
+          0.00012034596914734677,
+          0.00047660556618376736
+        ]
+      }
+    },
+    {
+      "source": "wikipedia_simple",
+      "n_excerpts": 1000,
+      "collapse_rate": 0.005,
+      "frame_collapse_rate": 0.0,
+      "lexical_collapse_rate": 0.005,
+      "register_accuracy": 0.743,
+      "register_top_confusion": "dialogue 21.5%",
+      "marker_rates": {
+        "once_upon_a_time": 0.0,
+        "little_X_named": 0.0,
+        "moral_of_the_story": 0.0,
+        "happily_ever_after": 0.0,
+        "from_that_day_on": 0.0,
+        "learned_a_lesson": 0.0,
+        "the_end_terminal": 0.0,
+        "one_day_comma": 0.0,
+        "so_very_happy": 0.0,
+        "named_proper": 0.005,
+        "his_her_mom": 0.0
+      },
+      "repeat_rate": {
+        "mean": 0.0020990369661687235,
+        "sem": 0.00029241135662111796,
+        "n": 1000,
+        "ci95": [
+          0.0015259107071913323,
+          0.0026721632251461144
+        ]
+      }
+    }
+  ]
+}
