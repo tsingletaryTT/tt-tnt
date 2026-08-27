@@ -12,10 +12,24 @@ only (a four-chip open hard-froze this host once, no reproduction, not retried),
 `stochastic_rounding` asserted before and after, gamma-movement verified against the
 warm-start base at the end.
 
-Three example TYPES feed the same `InMemoryDataloader`: editor pairs (this file's
-`build_editor_example`), poetry-instructions pairs (this file's `build_poetry_example`), and
-skits (`scripts.derive_skits.build_skit_example`, unchanged). All three return
-`{"input_ids", "labels"}`, so they mix freely in one list.
+Four example TYPES feed the same `InMemoryDataloader`: editor pairs (this file's
+`build_editor_example`), poetry-instructions pairs (this file's `build_poetry_example`),
+skits (`scripts.derive_skits.build_skit_example`, unchanged), and a base-blend refresh
+(this file's `build_base_blend_example`, sampling random windows directly from
+`artifacts/tokens-v3/train_ids.npy`). All four return `{"input_ids", "labels"}`, so they mix
+freely in one list.
+
+**The base-blend slice was added in a follow-up run (2026-08-27), after the first run
+measured a real regression.** Design spec sec.4 mandates a MAJORITY base-blend
+anti-forgetting slice; the first run implemented none (0%), training on 100% task data with
+no anti-forgetting refresh -- exactly the failure mode spec sec.Risks warned about, and the
+leading candidate cause of that run's measured regression (see CLAUDE.md). Unlike the other
+three types, base-blend examples are NOT masked SFT pairs -- `labels == input_ids` with no
+`-100` anywhere, ordinary next-token language modeling, matching how the base checkpoint
+itself was trained. Sampling directly from the pre-tokenized `train_ids.npy` (rather than
+re-tokenizing `artifacts/corpus/blend.txt`) is deliberate: that array already reflects the
+corpus's settled per-source shares (it is what tt-tnt-1024-dialogue itself trained on), so no
+new tokenization or share computation is needed.
 
     gozer run --chips 1 --who "claude:editor-training" --reason "editor+skits SFT" -- \
         python3 scripts/train_editor.py --steps 3000
@@ -25,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from functools import partial
 from pathlib import Path
@@ -53,6 +68,7 @@ MODEL_YAML = ROOT / "train" / "configs" / "model" / "tt-tnt-1024.yaml"
 DEFAULT_PAIRS = ROOT / "artifacts" / "editor-pairs" / "pairs.jsonl"
 DEFAULT_POETRY_PAIRS = ROOT / "artifacts" / "poetry-pairs" / "pairs.jsonl"
 DEFAULT_SKITS = ROOT / "artifacts" / "skits-200k" / "skits.jsonl"
+DEFAULT_BASE_BLEND_TOKENS = ROOT / "artifacts" / "tokens-v3" / "train_ids.npy"
 DEFAULT_OUT_ROOT = ROOT / "artifacts" / "checkpoints-1024-editor"
 #: The currently-designated dialogue checkpoint -- this run's warm-start base.
 #: Read from docs/current_model.json at call time in main(); duplicated here only as the
@@ -172,27 +188,113 @@ def load_skits(path: Path) -> List[Skit]:
     ]
 
 
-def build_combined_examples(
+def build_category_lists(
     pairs: List[Dict[str, str]], poetry_pairs: List[Dict[str, Any]], skits: List[Skit],
     tok, *, pad_token_id: int,
-) -> List[dict]:
-    """Editor examples, then poetry-instructions examples, then skits examples
+) -> Dict[str, List[dict]]:
+    """Editor examples, poetry-instructions examples, and skits examples
     (with_think=False -- this stage is about editing/turn-structure/poetry, not the
-    separate think-block objective).
+    separate think-block objective), each returned as its OWN list rather than one
+    flattened list -- needed so a caller can stratify a held-out split across types
+    (see `_stratified_split`) instead of taking the tail of a type-concatenated list,
+    which silently held out 100% skits in this stage's first run.
 
     `build_editor_example`/`build_poetry_example` may each return `None` when truncation to
     `MAX_SEQ_LEN` would leave zero real supervised positions (prompt alone >= MAX_SEQ_LEN) --
     filtered out here so no zero-signal example reaches the dataloader.
     """
-    examples = [build_editor_example(p, tok, pad_token_id=pad_token_id) for p in pairs]
-    examples += [
-        build_poetry_example(p, tok, pad_token_id=pad_token_id) for p in poetry_pairs
+    editor_examples = [
+        e for e in (build_editor_example(p, tok, pad_token_id=pad_token_id) for p in pairs)
+        if e is not None
     ]
-    examples += [
-        build_skit_example(s, tok, with_think=False, pad_token_id=pad_token_id)
-        for s in skits
+    poetry_examples = [
+        e for e in (
+            build_poetry_example(p, tok, pad_token_id=pad_token_id) for p in poetry_pairs
+        )
+        if e is not None
     ]
-    return [e for e in examples if e is not None]
+    skit_examples = [
+        e for e in (
+            build_skit_example(s, tok, with_think=False, pad_token_id=pad_token_id)
+            for s in skits
+        )
+        if e is not None
+    ]
+    return {"editor": editor_examples, "poetry": poetry_examples, "skits": skit_examples}
+
+
+def build_combined_examples(
+    pairs: List[Dict[str, str]], poetry_pairs: List[Dict[str, Any]], skits: List[Skit],
+    tok, *, pad_token_id: int,
+) -> List[dict]:
+    """Editor examples, then poetry-instructions examples, then skits examples,
+    flattened into one list -- see `build_category_lists` for the per-type breakdown this
+    is built from. Kept for callers that don't need per-type access."""
+    categories = build_category_lists(pairs, poetry_pairs, skits, tok, pad_token_id=pad_token_id)
+    return categories["editor"] + categories["poetry"] + categories["skits"]
+
+
+def stratified_split(categories: Dict[str, List[dict]], val_size: int) -> tuple:
+    """Hold out an even share of `val_size` from the TAIL of each category (deterministic,
+    matching `train_skits.py`'s D3 precedent -- no shuffle before this split, so a re-run
+    with the same inputs reproduces the same split), rather than the tail of one
+    type-concatenated list, which can silently hold out 0% of some types entirely.
+
+    Returns `(train_examples, val_examples)`, both flattened across categories in the
+    same dict-iteration order. Each category contributes `val_size // len(categories)` (a
+    category smaller than that contributes everything it has, per `min()` below, rather
+    than raising or padding).
+    """
+    if val_size <= 0 or not categories:
+        train = [e for exs in categories.values() for e in exs]
+        return train, []
+    per_category = max(1, val_size // len(categories))
+    train_examples: List[dict] = []
+    val_examples: List[dict] = []
+    for exs in categories.values():
+        n = min(per_category, len(exs) // 4, len(exs))
+        if n > 0:
+            train_examples += exs[: len(exs) - n]
+            val_examples += exs[len(exs) - n :]
+        else:
+            train_examples += exs
+    return train_examples, val_examples
+
+
+def build_base_blend_example(window) -> Dict[str, list]:
+    """Plain next-token language-modeling example from a contiguous corpus window.
+
+    Full supervision (`labels == input_ids`, no `-100` anywhere) -- unlike
+    `build_editor_example`/`build_poetry_example`/`build_skit_example`, which mask a
+    prompt. That is what makes this an anti-forgetting REFRESH rather than a fourth
+    task-specific slice: the loss signal is exactly the one the base checkpoint was
+    already trained on, not a new objective.
+    """
+    ids = list(window)
+    return {"input_ids": ids, "labels": list(ids)}
+
+
+def sample_base_blend_examples(
+    token_path: Path, n: int, *, seq_len: int = MAX_SEQ_LEN, seed: int
+) -> List[dict]:
+    """Sample `n` random `seq_len`-token windows from the pre-tokenized corpus stream at
+    `token_path` (independently drawn -- overlap between two windows is possible, not
+    systematically avoided). Reads via mmap so the ~1.4GB array is never fully loaded.
+    """
+    import numpy as np
+
+    arr = np.load(token_path, mmap_mode="r")
+    if len(arr) < seq_len:
+        raise ValueError(
+            f"{token_path} has only {len(arr)} tokens, fewer than seq_len={seq_len}"
+        )
+    rng = random.Random(seed)
+    examples = []
+    for _ in range(n):
+        start = rng.randrange(0, len(arr) - seq_len + 1)
+        window = arr[start : start + seq_len].tolist()
+        examples.append(build_base_blend_example(window))
+    return examples
 
 
 def _pad_to_max_seq_len(example: dict, pad_token_id: int) -> dict:
@@ -235,6 +337,17 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--pairs", type=Path, default=DEFAULT_PAIRS)
     ap.add_argument("--poetry-pairs", type=Path, default=DEFAULT_POETRY_PAIRS)
     ap.add_argument("--skits", type=Path, default=DEFAULT_SKITS)
+    ap.add_argument("--base-blend-tokens", type=Path, default=DEFAULT_BASE_BLEND_TOKENS,
+                    help="pre-tokenized corpus stream to sample the anti-forgetting "
+                         "refresh from (design spec sec.4) -- already reflects the "
+                         "corpus's settled per-source shares, so no re-tokenization or "
+                         "share computation is needed")
+    ap.add_argument("--base-blend-ratio", type=float, default=0.6,
+                    help="target fraction of the FINAL combined example count that "
+                         "should be base-blend refresh -- spec sec.4 calls this a "
+                         "MAJORITY share; 0.6 means base-blend outnumbers editor+poetry"
+                         "+skits combined by 1.5x. The first run (2026-08-27) shipped "
+                         "at 0.0 and measured a real regression this is meant to fix")
     ap.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     ap.add_argument("--steps", type=int, default=3000)
     ap.add_argument("--seed", type=int, default=5489)
@@ -261,26 +374,39 @@ def main(argv: List[str] | None = None) -> int:
     pairs = load_editor_pairs(args.pairs)
     poetry_pairs = load_poetry_pairs(args.poetry_pairs)
     skits = load_skits(args.skits)
-    examples = build_combined_examples(pairs, poetry_pairs, skits, tok,
-                                       pad_token_id=pad_token_id)
+    categories = build_category_lists(pairs, poetry_pairs, skits, tok, pad_token_id=pad_token_id)
 
-    # build_combined_examples silently drops zero-supervision examples (prompt alone >=
+    # build_category_lists silently drops zero-supervision examples (prompt alone >=
     # MAX_SEQ_LEN after truncation); recompute the raw count here purely to report how many
     # were dropped, since that's a real measured number the task ruling asked to verify.
+    task_data_count = sum(len(v) for v in categories.values())
     raw_count = len(pairs) + len(poetry_pairs) + len(skits)
-    dropped = raw_count - len(examples)
+    dropped = raw_count - task_data_count
 
-    # Held out as the TAIL of the combined, file-order list -- deterministic, matching
-    # train_skits.py's D3. No shuffle before this split, so a re-run with the same input
-    # files reproduces the same split.
+    # Base-blend sized so it is `args.base_blend_ratio` of the FINAL combined count:
+    # base_blend / (base_blend + task_data) == ratio  =>  base_blend = ratio/(1-ratio) * task_data.
+    ratio = args.base_blend_ratio
+    if not 0.0 <= ratio < 1.0:
+        raise ValueError(f"--base-blend-ratio must be in [0, 1); got {ratio}")
+    base_blend_count = round(ratio / (1 - ratio) * task_data_count) if ratio > 0 else 0
+    categories["base_blend"] = (
+        sample_base_blend_examples(args.base_blend_tokens, base_blend_count, seed=args.seed)
+        if base_blend_count > 0 else []
+    )
+
+    examples = [e for exs in categories.values() for e in exs]
+
+    # Stratified across ALL FOUR types, not a tail-of-one-list split -- the first run's
+    # val set was silently 100% skits (see stratified_split's docstring and CLAUDE.md).
     val_size = max(0, min(args.val_size, len(examples) // 4))
-    train_examples = examples[: len(examples) - val_size] if val_size else examples
-    val_examples = examples[len(examples) - val_size :] if val_size else []
+    train_examples, val_examples = stratified_split(categories, val_size)
 
     lengths = sorted(len(e["input_ids"]) for e in examples)
     over_max = sum(1 for l in lengths if l > MAX_SEQ_LEN)
+    realized_base_blend_share = len(categories["base_blend"]) / len(examples) if examples else 0.0
     print(f"pairs={len(pairs):,}  poetry_pairs={len(poetry_pairs):,}  "
-          f"skits={len(skits):,}  total_examples={len(examples):,}  "
+          f"skits={len(skits):,}  base_blend={len(categories['base_blend']):,} "
+          f"({realized_base_blend_share:.1%})  total_examples={len(examples):,}  "
           f"train={len(train_examples):,}  val={len(val_examples):,}  "
           f"dropped_zero_supervision={dropped:,}")
     print(f"token lengths: min {lengths[0]}  median {lengths[len(lengths)//2]}  "
@@ -297,7 +423,7 @@ def main(argv: List[str] | None = None) -> int:
     # (1, 1) ONLY -- see this file's module docstring and this plan's Global Constraints.
     ttml.open_device_mesh((1, 1))
     try:
-        # Pad every example to a FIXED MAX_SEQ_LEN here -- not inside build_combined_examples
+        # Pad every example to a FIXED MAX_SEQ_LEN here -- not inside build_category_lists
         # -- so the length report printed above still reflects real, unpadded content.
         # See _pad_to_max_seq_len's docstring for why this is load-bearing, not cosmetic.
         train_examples_padded = [_pad_to_max_seq_len(e, pad_token_id) for e in train_examples]

@@ -3,11 +3,16 @@
 """Example-building and masking only. No `ttml`/`ttnn` import, no device -- these tests run
 in a bare CPU environment, same convention as tests/test_corrupt.py.
 """
+import numpy as np
+
 from scripts.train_editor import (
     MAX_SEQ_LEN,
     _pad_to_max_seq_len,
+    build_base_blend_example,
     build_editor_example,
     build_poetry_example,
+    sample_base_blend_examples,
+    stratified_split,
 )
 
 
@@ -160,3 +165,96 @@ def test_build_poetry_example_returns_none_when_prompt_alone_exceeds_max_seq_len
     pair = {"kind": "continuation", "input": poem_input, "arg": None, "target": "c d"}
     ex = build_poetry_example(pair, tok, pad_token_id=99)
     assert ex is None
+
+
+def test_build_base_blend_example_is_full_supervision_no_masking():
+    window = list(range(10, 20))
+    ex = build_base_blend_example(window)
+    assert ex["input_ids"] == window
+    assert ex["labels"] == window
+    assert -100 not in ex["labels"]
+
+
+def test_build_base_blend_example_returns_independent_lists():
+    window = [1, 2, 3]
+    ex = build_base_blend_example(window)
+    ex["input_ids"].append(99)
+    assert ex["labels"] == [1, 2, 3]
+
+
+def test_sample_base_blend_examples_reads_real_windows_from_disk(tmp_path):
+    arr = np.arange(1000, dtype=np.uint32)
+    token_path = tmp_path / "train_ids.npy"
+    np.save(token_path, arr)
+
+    examples = sample_base_blend_examples(token_path, 5, seq_len=32, seed=0)
+    assert len(examples) == 5
+    for ex in examples:
+        assert len(ex["input_ids"]) == 32
+        assert ex["input_ids"] == ex["labels"]
+        # every window must be a real contiguous slice of arr, not fabricated
+        start = ex["input_ids"][0]
+        assert ex["input_ids"] == list(range(start, start + 32))
+
+
+def test_sample_base_blend_examples_is_deterministic_given_the_same_seed(tmp_path):
+    arr = np.arange(1000, dtype=np.uint32)
+    token_path = tmp_path / "train_ids.npy"
+    np.save(token_path, arr)
+
+    a = sample_base_blend_examples(token_path, 5, seq_len=32, seed=7)
+    b = sample_base_blend_examples(token_path, 5, seq_len=32, seed=7)
+    assert a == b
+
+
+def test_sample_base_blend_examples_raises_if_array_shorter_than_seq_len(tmp_path):
+    arr = np.arange(10, dtype=np.uint32)
+    token_path = tmp_path / "train_ids.npy"
+    np.save(token_path, arr)
+
+    try:
+        sample_base_blend_examples(token_path, 1, seq_len=32, seed=0)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_stratified_split_holds_out_from_every_category_not_just_the_tail():
+    # A "skits"-only tail-of-one-list split (the first run's real bug) would put ALL
+    # held-out examples in one category. This fixture makes that failure visible: if
+    # any category contributes ZERO val examples, the split is not actually stratified.
+    categories = {
+        "editor": [{"input_ids": [i], "labels": [i]} for i in range(20)],
+        "poetry": [{"input_ids": [i], "labels": [i]} for i in range(100, 120)],
+        "skits": [{"input_ids": [i], "labels": [i]} for i in range(200, 220)],
+        "base_blend": [{"input_ids": [i], "labels": [i]} for i in range(300, 320)],
+    }
+    train, val = stratified_split(categories, val_size=8)
+    val_ids = {e["input_ids"][0] for e in val}
+    for name, exs in categories.items():
+        category_ids = {e["input_ids"][0] for e in exs}
+        assert val_ids & category_ids, f"category {name!r} contributed zero val examples"
+    # every example is in exactly one of train/val
+    train_ids = {e["input_ids"][0] for e in train}
+    assert not (train_ids & val_ids)
+    assert len(train_ids) + len(val_ids) == sum(len(v) for v in categories.values())
+
+
+def test_stratified_split_val_size_zero_returns_everything_as_train():
+    categories = {"editor": [{"input_ids": [1], "labels": [1]}]}
+    train, val = stratified_split(categories, val_size=0)
+    assert train == categories["editor"]
+    assert val == []
+
+
+def test_stratified_split_tiny_category_contributes_everything_to_train():
+    # A category too small to safely hold out from (len // 4 == 0) must not be emptied
+    # into val -- it should keep all its examples in train instead.
+    categories = {
+        "editor": [{"input_ids": [i], "labels": [i]} for i in range(2)],
+        "poetry": [{"input_ids": [i], "labels": [i]} for i in range(100, 140)],
+    }
+    train, val = stratified_split(categories, val_size=8)
+    editor_val = [e for e in val if e["input_ids"][0] < 100]
+    assert editor_val == []
+    assert len(train) + len(val) == 42
