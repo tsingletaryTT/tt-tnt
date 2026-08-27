@@ -11,9 +11,11 @@
 # What this can and cannot check
 # ------------------------------
 # `artifacts/` is gitignored: checkpoints, converted HF directories, token arrays
-# and the 1.6 GB corpus are not in a clone. So this job runs the ~1039 tests that
-# need none of them and SKIPS ~43 that do. The run prints that split every time
-# (see tests/conftest.py) rather than letting a green tick imply more than it means.
+# and the 1.6 GB corpus are not in a clone. So this job runs the ~1592 tests that
+# need none of them and SKIPS ~81 that do (both counts drift as the suite grows --
+# read the actual run's summary line, not this comment, for the current numbers).
+# The run prints that split every time (see tests/conftest.py) rather than letting
+# a green tick imply more than it means.
 #
 # No hardware, no network, no Tenstorrent card. Anything needing a device is a
 # separate, manual concern -- the device gates in this repo take a gozer lease and
@@ -47,18 +49,31 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install test dependencies
-        # Measured, not guessed: with only pytest/numpy/pyyaml/ml_dtypes this suite
-        # produces 12 failures and 49 collection errors. With the list below it is
-        # 1037 passed, 45 skipped, 0 failed -- verified in a clean venv before this
-        # workflow was written.
+        # Measured, not guessed: with the list below (plus the nltk data step following
+        # this one) a fresh checkout is 1592 passed, 81 skipped, 0 failed -- verified in a
+        # bare clone (no artifacts/), not this box's own environment, which has local
+        # artifacts and optional installs this job must not rely on.
         #
         # `ttnn` is Tenstorrent's own PyPI package and imports fine with no card
         # present. `ttml` (tt-train) is NOT on PyPI; tests needing it already skip.
         # Versions are deliberately unpinned: if an upstream release breaks us, that
         # is a thing worth being told about rather than insulated from.
-        run: pip install pytest numpy pyyaml ml_dtypes ttnn transformers tokenizers datasets
+        #
+        # `nltk` backs train/content_add.py's content-word gate (pyproject.toml's
+        # `content` extra). That module's own tests deliberately skip nothing and fail
+        # loudly if the gate cannot run -- "the right behaviour for the module that
+        # decides the training vocabulary" (pyproject.toml). This job went red because
+        # that design was correct and this install step was never updated alongside it
+        # when the content-word gate landed; the fix belongs here, not in the tests.
+        run: pip install pytest numpy pyyaml ml_dtypes ttnn transformers tokenizers datasets nltk
+
+      - name: Download nltk tagger data
+        # train/content_add.py needs both packages at runtime, not just import-time
+        # presence of the `nltk` module -- see its _require_nltk() and the pyproject.toml
+        # comment on the `content` extra for the exact two package names.
+        run: python -m nltk.downloader averaged_perceptron_tagger_eng punkt_tab
 
       - name: Run the offline suite
-        # -rs prints the reason for every skip, so "43 skipped" is auditable rather
+        # -rs prints the reason for every skip, so "N skipped" is auditable rather
         # than a number to scroll past.
         run: pytest -q -rs
