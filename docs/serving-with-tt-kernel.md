@@ -625,6 +625,18 @@ task, not a serving-infra debugging task, and the ninth hypothesis above already
 effort on a closely related area. Recorded here as a new, reproducible data point for whoever
 next attacks this surface, not as a new fix.
 
+**A resilience wrapper, not a fix, 2026-08-28.** `scripts/serve_supervisor.py` accepts this
+defect as a standing fact of serving through this stack rather than something to route
+around per-invocation: it launches the same recipe as a subprocess in its own process group,
+health-checks `/v1/models` and the process's own exit status every few seconds, and
+transparently relaunches on either signal (a fresh gozer lease each time). Confirmed live: the
+served engine crashed a second time, unattended, mid-session while this script was being
+written — exactly the failure mode it exists to absorb. It kills the WHOLE process group on
+relaunch, not just the top-level `gozer run` pid, because that alone was observed twice to
+leave `server_example_tt.py`/`EngineCore` orphaned and the lease stuck `HELD-FOREIGN`. Every
+restart is logged with a timestamp, so an operator can see how often this is actually firing
+rather than watching an illusion of stability.
+
 One thing to carry away if you are gating a serving path of your own: the `tt_transformers`
 PCC check passed at **0.9940–0.9998** throughout, because it exercises prefill far harder than
 long decode. **A green PCC is not evidence of correct generation.**
