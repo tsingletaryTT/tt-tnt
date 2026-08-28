@@ -67,6 +67,14 @@ DEFAULT_VISIBLE_DEVICES = "0000:01:00.0,0000:02:00.0,0000:03:00.0,0000:04:00.0"
 HEALTH_TIMEOUT_S = 5.0
 POLL_INTERVAL_S = 5.0
 STARTUP_TIMEOUT_S = 240.0
+#: Seconds to wait before a relaunch attempt (not the very first launch) -- gives the
+#: just-killed lease time to actually release so the next `gozer run` is granted
+#: rather than queued (exit code 10; see the `restarts > 0` branch in `main()`).
+RELAUNCH_BACKOFF_S = 10.0
+#: gozer's own convention for "the lease request was queued, not granted" (see the
+#: gozer-keymaster skill) -- distinct from every other nonzero exit, which means the
+#: launch genuinely failed or the served process crashed.
+GOZER_QUEUED_EXIT_CODE = 10
 
 
 def log(msg: str) -> None:
@@ -150,13 +158,27 @@ def main(argv: list | None = None) -> int:
 
     while not shutting_down:
         if proc is None:
+            if restarts > 0:
+                # Give the just-killed lease time to actually release before asking
+                # gozer for a new one. Without this, a relaunch can race the previous
+                # process's release/reset and gozer QUEUES the request instead of
+                # granting it (exit code 10) -- observed live: restart #1 exited in 5s
+                # with code 10, requiring a second attempt to actually come up.
+                log(f"waiting {RELAUNCH_BACKOFF_S}s for the previous lease to release "
+                    f"before relaunching")
+                time.sleep(RELAUNCH_BACKOFF_S)
             log(f"launching (restart #{restarts}): {' '.join(launch_cmd)}")
             proc = subprocess.Popen(launch_cmd, cwd=EXAMPLES_DIR, start_new_session=True)
             start = time.monotonic()
             while time.monotonic() - start < STARTUP_TIMEOUT_S:
                 if proc.poll() is not None:
-                    log(f"process exited during startup (code {proc.returncode}) "
-                        f"before ever becoming healthy")
+                    if proc.returncode == GOZER_QUEUED_EXIT_CODE:
+                        log("gozer queued this request rather than granting it "
+                            "(exit code 10) -- the backoff above wasn't long enough "
+                            "this time; retrying")
+                    else:
+                        log(f"process exited during startup (code {proc.returncode}) "
+                            f"before ever becoming healthy")
                     break
                 if is_healthy(args.port):
                     log(f"healthy after {time.monotonic() - start:.1f}s")
