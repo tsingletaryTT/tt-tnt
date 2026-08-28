@@ -502,6 +502,28 @@ reused slot, or a token buffer retained at a previous call's padded width) is no
 `--no-enable-prefix-caching` is set — that flag evidently controls the scheduler's cache-hash
 lookup, not whatever internal state this defect actually lives in.
 
+### It is not our model — confirmed on stock `meta-llama/Llama-3.2-1B-Instruct`
+
+Served **`meta-llama/Llama-3.2-1B-Instruct`** (a fully-supported, officially-listed model in
+`model_config.py`'s own `MAX_PREFILL_CHUNK_SIZES_DIV1024` table) through the identical stack —
+same `server_example_tt.py`, same 2-chip `MESH_DEVICE=P300x2`, same `--no-enable-prefix-caching`
+— with `--max_model_len 512` set explicitly to match our model's native context. Ran the
+identical growing-multi-turn reproduction (append each turn's user+assistant messages, resend
+the full history). **Identical crash, identical signature**, at turn 3 (prompt_tokens=91,
+nowhere near 512):
+
+```
+AssertionError: Sequence length 1024 exceeds max seq len 512
+```
+
+This settles the question of whose bug it is: **it is a generic tt-metal/vLLM serving defect,
+not anything in this project's model, adapter, or training.** Real Llama/Qwen deployments never
+observe it because they are served at their native context (4096-131072 tokens), where an
+ordinary few-turn chat conversation never grows anywhere near double that. Our checkpoint is
+uniquely exposed only because `max_position_embeddings=512` is small enough that ordinary usage
+trivially reaches the boundary where this latent bug fires — the same defect a production-size
+Llama deployment would need a genuinely deep, multi-thousand-token conversation to ever surface.
+
 ### What we did instead
 
 Kept serving to single-turn-per-request usage (each skit turn, or each `/v1/completions` call,
@@ -509,3 +531,12 @@ submitted as a self-contained prompt with no accumulated chat history) until thi
 upstream or root-caused further — confirmed safe by reproduction step 2 above (25 independent
 non-growing requests, zero crashes). Interactive multi-turn chat (Open WebUI or otherwise)
 against this checkpoint should be treated as unreliable past 3 turns until this is resolved.
+
+**Model-side hardening this finding actually motivates:** since the exposure is proportional to
+`(conversation growth per turn) / max_position_embeddings`, not a defect in this project's
+training, the two real levers are (a) training a checkpoint with a larger native context (this
+project already has 384-at-2048 variants) so ordinary conversations sit far from the boundary
+the way production Llama/Qwen deployments do, and (b) a serving-layer guard — independent of the
+upstream fix — that server-side truncates or windows conversation history before it reaches
+vLLM, so no request ever asks the engine to hold a full unbounded transcript regardless of the
+model's declared context.
