@@ -373,6 +373,71 @@ def test_tokenizer_class_matches_what_actually_loads(tmp_path):
     assert source["tokenizer_class"] == "PreTrainedTokenizer"
 
 
+def test_chat_template_is_written_to_out_dir_only(tmp_path):
+    """The chat template must ship with the converted model (so no server needs a
+    --chat-template CLI flag pointed at an external file) but must never touch
+    artifacts/tokenizer/ -- same separation-of-artifacts rule as tokenizer_class above."""
+    from convert.to_hf import _CHAT_TEMPLATE, convert_checkpoint
+
+    header = _synth_header(weight_tying=True)
+    tensors = _synth_tensors(weight_tying=True)
+    ckpt = _write_fake_checkpoint(tmp_path / "fake.pkl", header, tensors)
+    tok_dir = _write_fake_tokenizer_dir(tmp_path / "tokenizer")
+
+    out = tmp_path / "hf_out"
+    convert_checkpoint(ckpt, tok_dir, out)
+
+    written = json.loads((out / "tokenizer_config.json").read_text(encoding="utf-8"))
+    assert written["chat_template"] == _CHAT_TEMPLATE
+
+    source = json.loads((tok_dir / "tokenizer_config.json").read_text(encoding="utf-8"))
+    assert "chat_template" not in source
+
+
+def test_chat_template_windows_history_to_the_documented_cap():
+    """The substantive check: the shipped template actually renders through Jinja2 and
+    actually drops everything but the trailing MAX_CHAT_TEMPLATE_MESSAGES messages -- not
+    just that the string got written somewhere. Directly reproduces the failure mode
+    documented in docs/upstream-tt-metal-asks.md entry 6: a real conversation crashed the
+    serving engine at 7 accumulated messages after 5 succeeded, so a cap that let 7 or more
+    through would not actually guard against the defect it exists for."""
+    import jinja2
+
+    from convert.to_hf import MAX_CHAT_TEMPLATE_MESSAGES, _CHAT_TEMPLATE
+
+    env = jinja2.Environment()
+    template = env.from_string(_CHAT_TEMPLATE)
+
+    # One more message than the cap allows -- the oldest one must be dropped.
+    n = MAX_CHAT_TEMPLATE_MESSAGES + 1
+    messages = [
+        {"role": "user" if i % 2 == 0 else "assistant", "content": f"turn-{i}"}
+        for i in range(n)
+    ]
+    rendered = template.render(messages=messages)
+
+    assert "turn-0" not in rendered, "the oldest message must be dropped once over the cap"
+    for i in range(1, n):
+        assert f"turn-{i}" in rendered, f"turn-{i} is within the cap and must survive"
+
+
+def test_chat_template_cap_is_at_or_below_the_reproduced_failure_point():
+    """Pins the actual number, not just its existence: docs/upstream-tt-metal-asks.md entry 6
+    reproduced a crash at 7 accumulated messages (5 succeeded). The shipped cap must stay at
+    or below the last PROVEN-safe point (5) -- this is a tripwire so a future edit that raises
+    MAX_CHAT_TEMPLATE_MESSAGES without re-verifying against the live serving stack fails loudly
+    here instead of silently reopening the crash."""
+    from convert.to_hf import MAX_CHAT_TEMPLATE_MESSAGES
+
+    PROVEN_SAFE_MESSAGE_COUNT = 5
+    assert MAX_CHAT_TEMPLATE_MESSAGES <= PROVEN_SAFE_MESSAGE_COUNT, (
+        f"MAX_CHAT_TEMPLATE_MESSAGES={MAX_CHAT_TEMPLATE_MESSAGES} exceeds the last message "
+        f"count ({PROVEN_SAFE_MESSAGE_COUNT}) directly reproduced as safe -- re-verify "
+        f"against a live serving stack (see docs/upstream-tt-metal-asks.md entry 6) before "
+        f"raising this, don't just bump the number"
+    )
+
+
 def test_max_position_embeddings_equals_the_trained_sequence_length(tmp_path):
     """Guards the serving trap: tokenizer_config.json advertises model_max_length
     1000000000000000019884624838656 (a sentinel for "no limit"). A caller deriving a serving

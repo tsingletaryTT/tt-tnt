@@ -339,9 +339,20 @@ SIZES: Dict[str, ModelSize] = {
         num_heads=16,
         num_groups=4,
         vocab_size=32000,
-        max_sequence_length=512,
+        max_sequence_length=2048,
         theta=500000.0,
         rationale=(
+            "RAISED to 2048 on 2026-08-28 (matching 384's precedent) for a real longer-"
+            "context run, motivated by a serving finding rather than a loss probe on this "
+            "shape: an independent control test showed stock meta-llama/Llama-3.2-1B-"
+            "Instruct crashes identically (AssertionError: Sequence length 1024 exceeds "
+            "max seq len 512) on the exact same stack at max_model_len=512, proving the "
+            "growing-conversation KV-cache crash this project hit is a generic tt-metal/"
+            "vLLM defect exposed by a small context relative to ordinary chat length -- "
+            "not a defect in this project's model. Raising context is real hardening: it "
+            "moves the crash boundary far enough out that ordinary use never approaches "
+            "it, the way production-context Llama/Qwen deployments never do. See "
+            "docs/upstream-tt-metal-asks.md entry 6. "
             "The multi-chip-capable size. num_groups=4 admits mesh widths {1,2,4}, so "
             "single-chip, N300/P300 and a 4-chip QuietBox 2 all satisfy "
             "tt_transformers' head-divisibility assertions — which 384 cannot. "

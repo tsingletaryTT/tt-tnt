@@ -63,7 +63,6 @@ EXAMPLES_DIR = "/home/ttuser/vllm-tt-plugin-standalone/examples"
 DEFAULT_MODEL = "episod/tt-tnt-1024"
 DEFAULT_PORT = 8003
 DEFAULT_MESH_DESC = "/home/ttuser/code/tt-tnt/train/configs/mesh/mesh-1x4-ring.textproto"
-DEFAULT_CHAT_TEMPLATE = "/home/ttuser/code/tt-tnt/scratch/minimal_chat_template.jinja"
 #: All four p300c BDFs on this box, in the ring order the mesh descriptor assumes.
 DEFAULT_VISIBLE_DEVICES = "0000:01:00.0,0000:02:00.0,0000:03:00.0,0000:04:00.0"
 HEALTH_TIMEOUT_S = 5.0
@@ -117,7 +116,6 @@ def build_launch_cmd(args) -> list:
         "--additional-config", '{"tt":{"fabric_config":"FABRIC_2D_TORUS_XY"}}',
         "--port", str(args.port),
         "--enable-auto-tool-choice", "--tool-call-parser", "hermes",
-        "--chat-template", args.chat_template,
         "--no-enable-prefix-caching",
     ]
 
@@ -156,7 +154,6 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--mesh-desc", default=DEFAULT_MESH_DESC)
-    ap.add_argument("--chat-template", default=DEFAULT_CHAT_TEMPLATE)
     ap.add_argument("--visible-devices", default=DEFAULT_VISIBLE_DEVICES)
     args = ap.parse_args(argv)
 

@@ -40,6 +40,34 @@ _BOS_TOKEN_ID = 1
 _EOS_TOKEN_ID = 2
 _PAD_TOKEN_ID = 3
 
+#: Conservative cap on how many trailing chat messages the shipped chat template renders,
+#: regardless of how much history a client sends. Motivated by a real, reproduced serving
+#: defect (docs/upstream-tt-metal-asks.md entry 6): a generic tt-metal/vLLM KV-cache bug --
+#: confirmed on stock meta-llama/Llama-3.2-1B-Instruct too, so it is not specific to this
+#: project's model -- crashes the whole engine on a growing multi-turn conversation well
+#: before the rendered prompt approaches the model's own declared context. Reproduced
+#: directly: 5 trailing messages (2 completed exchanges + 1 new turn, ~106 tokens on a
+#: 512-token model) served successfully; 7 messages crashed. This constant is deliberately
+#: set BELOW that observed failure point, not merely "some finite number" -- raising it
+#: without re-verifying against the current serving stack would silently reopen the crash.
+#: A raised context (config["max_position_embeddings"]) makes the crash boundary itself much
+#: harder to reach, but this backstop stays in place regardless: it costs nothing on an
+#: ordinary short exchange and protects any future context size the same way.
+MAX_CHAT_TEMPLATE_MESSAGES = 5
+
+#: Jinja2 chat template shipped in tokenizer_config.json's ``chat_template`` field, so every
+#: server that loads this tokenizer renders chat requests through the SAME windowing guard
+#: without needing a `--chat-template` CLI flag pointed at some external file. ``messages``
+#: is sliced to the last MAX_CHAT_TEMPLATE_MESSAGES entries before rendering -- this is not
+#: a token-accurate truncation, but it is a hard ceiling on how much history the model ever
+#: has to process per request, which is the actual quantity the crash this guards against is
+#: sensitive to.
+_CHAT_TEMPLATE = (
+    "{% set messages = messages[-" + str(MAX_CHAT_TEMPLATE_MESSAGES) + ":] %}"
+    "{% for message in messages %}{{ message['role'] }}: {{ message['content'] }}\n"
+    "{% endfor %}assistant:"
+)
+
 
 def _tokenizer_special_ids(tokenizer_dir: Path) -> Optional[Dict[str, int]]:
     """Resolve (bos, eos, pad) token ids from the tokenizer's own on-disk files.
@@ -324,13 +352,20 @@ def convert_checkpoint(ckpt: Path, tokenizer_dir: Path, out_dir: Path) -> Dict[s
     # separate artifact published on its own schedule; patching it here (post-copy, in the HF
     # output directory only) fixes what `transformers` reports for this specific model
     # directory without touching that other artifact or invalidating its own tests.
+    # chat_template is added the same way and for the same reason as the tokenizer_class
+    # fix above: on the copy in out_dir only, never on artifacts/tokenizer/ (a separate,
+    # already-published artifact this step must not perturb). Without it, `transformers`
+    # v4.44+ refuses to render `/v1/chat/completions` requests at all, which is why serving
+    # has been carrying a `--chat-template` CLI flag pointed at a throwaway scratch file --
+    # this makes the windowing guard travel with the model itself instead.
     tok_config_dst = out_dir / "tokenizer_config.json"
     if tok_config_dst.is_file():
         tok_config = json.loads(tok_config_dst.read_text(encoding="utf-8"))
         if tok_config.get("tokenizer_class") == "PreTrainedTokenizer":
             tok_config["tokenizer_class"] = "PreTrainedTokenizerFast"
-            tok_config_dst.write_text(
-                json.dumps(tok_config, indent=2) + "\n", encoding="utf-8"
-            )
+        tok_config["chat_template"] = _CHAT_TEMPLATE
+        tok_config_dst.write_text(
+            json.dumps(tok_config, indent=2) + "\n", encoding="utf-8"
+        )
 
     return config
