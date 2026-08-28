@@ -57,6 +57,8 @@ import time
 import urllib.error
 import urllib.request
 
+from serve_proxy import RESTART_FLAG_PATH  # same path serve_proxy.py writes to
+
 EXAMPLES_DIR = "/home/ttuser/vllm-tt-plugin-standalone/examples"
 DEFAULT_MODEL = "episod/tt-tnt-1024"
 DEFAULT_PORT = 8003
@@ -67,10 +69,28 @@ DEFAULT_VISIBLE_DEVICES = "0000:01:00.0,0000:02:00.0,0000:03:00.0,0000:04:00.0"
 HEALTH_TIMEOUT_S = 5.0
 POLL_INTERVAL_S = 5.0
 STARTUP_TIMEOUT_S = 240.0
-#: Seconds to wait before a relaunch attempt (not the very first launch) -- gives the
-#: just-killed lease time to actually release so the next `gozer run` is granted
-#: rather than queued (exit code 10; see the `restarts > 0` branch in `main()`).
+#: Seconds to wait before relaunching after a NORMAL crash -- one where the server
+#: was healthy for a while first, then died the documented KV-cache-position way.
+#: This is the fast path: gives the just-killed lease time to actually release so
+#: the next `gozer run` is granted rather than queued (exit code 10), and nothing
+#: more.
 RELAUNCH_BACKOFF_S = 10.0
+#: When a launch attempt fails WITHOUT ever becoming healthy -- gozer itself
+#: erroring, the device refusing to open, anything other than "served fine, then
+#: hit the known bug" -- back off exponentially instead of retrying at the fast,
+#: fixed interval. Observed live: hammering `gozer run` every ~15s for several
+#: minutes straight against a device that would not open turned a recoverable
+#: hiccup into a sustained "unreadable tt_serial" driver-level wedge. A struggling
+#: driver needs LESS traffic while it settles, not more.
+STARTUP_FAILURE_BACKOFF_BASE_S = 15.0
+STARTUP_FAILURE_BACKOFF_MAX_S = 300.0
+#: After this many consecutive failed-to-become-healthy attempts, stop retrying
+#: automatically and wait for a human. A tight loop that never succeeds is not
+#: "resilience" -- past this point the device is plausibly wedged in a way no
+#: amount of relaunching fixes, and continuing to hammer it risks making that
+#: worse, per the observed pattern above.
+MAX_CONSECUTIVE_STARTUP_FAILURES = 5
+GIVE_UP_POLL_INTERVAL_S = 60.0
 #: gozer's own convention for "the lease request was queued, not granted" (see the
 #: gozer-keymaster skill) -- distinct from every other nonzero exit, which means the
 #: launch genuinely failed or the served process crashed.
@@ -142,6 +162,11 @@ def main(argv: list | None = None) -> int:
 
     launch_cmd = build_launch_cmd(args)
     restarts = 0
+    #: Consecutive launches that NEVER became healthy -- reset to 0 the moment one
+    #: does. This is the counter exponential backoff and the give-up threshold key
+    #: off, deliberately separate from `restarts` (which also counts the normal,
+    #: fast-recovery crash-after-served case and should not slow that path down).
+    consecutive_startup_failures = 0
     proc: subprocess.Popen | None = None
     shutting_down = False
 
@@ -158,15 +183,33 @@ def main(argv: list | None = None) -> int:
 
     while not shutting_down:
         if proc is None:
-            if restarts > 0:
-                # Give the just-killed lease time to actually release before asking
-                # gozer for a new one. Without this, a relaunch can race the previous
-                # process's release/reset and gozer QUEUES the request instead of
-                # granting it (exit code 10) -- observed live: restart #1 exited in 5s
-                # with code 10, requiring a second attempt to actually come up.
-                log(f"waiting {RELAUNCH_BACKOFF_S}s for the previous lease to release "
-                    f"before relaunching")
-                time.sleep(RELAUNCH_BACKOFF_S)
+            if consecutive_startup_failures >= MAX_CONSECUTIVE_STARTUP_FAILURES:
+                log(f"{consecutive_startup_failures} consecutive launches never became "
+                    f"healthy -- this looks like a wedged device, not the crash this "
+                    f"script exists to absorb. Waiting {GIVE_UP_POLL_INTERVAL_S:.0f}s "
+                    f"before trying again rather than hammering it further; a human "
+                    f"should check `gozer status` and the driver "
+                    f"(`cat /sys/class/tenstorrent/tenstorrent!0/tt_serial`).")
+                time.sleep(GIVE_UP_POLL_INTERVAL_S)
+            elif restarts > 0:
+                if consecutive_startup_failures > 0:
+                    backoff = min(
+                        STARTUP_FAILURE_BACKOFF_BASE_S * (2 ** (consecutive_startup_failures - 1)),
+                        STARTUP_FAILURE_BACKOFF_MAX_S,
+                    )
+                    log(f"previous launch never became healthy "
+                        f"({consecutive_startup_failures} in a row); backing off "
+                        f"{backoff:.0f}s before retrying instead of hammering a "
+                        f"possibly-struggling device")
+                else:
+                    # Give the just-killed lease time to actually release before asking
+                    # gozer for a new one -- the fast path, for the normal crash. Without
+                    # this a relaunch can race the previous process's release/reset and
+                    # gozer QUEUES the request instead of granting it (exit code 10).
+                    backoff = RELAUNCH_BACKOFF_S
+                    log(f"waiting {backoff:.0f}s for the previous lease to release "
+                        f"before relaunching")
+                time.sleep(backoff)
             log(f"launching (restart #{restarts}): {' '.join(launch_cmd)}")
             proc = subprocess.Popen(launch_cmd, cwd=EXAMPLES_DIR, start_new_session=True)
             start = time.monotonic()
@@ -182,6 +225,7 @@ def main(argv: list | None = None) -> int:
                     break
                 if is_healthy(args.port):
                     log(f"healthy after {time.monotonic() - start:.1f}s")
+                    consecutive_startup_failures = 0
                     break
                 time.sleep(POLL_INTERVAL_S)
             else:
@@ -190,6 +234,16 @@ def main(argv: list | None = None) -> int:
                 kill_process_group(proc)
                 proc = None
                 restarts += 1
+                consecutive_startup_failures += 1
+                continue
+            if proc.poll() is not None:
+                # The inner loop above broke out of a failed launch (either the
+                # queued case or a genuine failure); either way this attempt never
+                # got healthy, so it counts toward the exponential-backoff/give-up
+                # tracking, not the fast normal-crash path.
+                proc = None
+                restarts += 1
+                consecutive_startup_failures += 1
                 continue
 
         time.sleep(POLL_INTERVAL_S)
@@ -203,6 +257,15 @@ def main(argv: list | None = None) -> int:
         if not is_healthy(args.port):
             log("process alive but /v1/models is not responding -- treating as a "
                 "hang, killing the whole process group and relaunching")
+            kill_process_group(proc)
+            proc = None
+            restarts += 1
+            continue
+        if os.path.exists(RESTART_FLAG_PATH):
+            log(f"proactive restart requested ({RESTART_FLAG_PATH} present) -- "
+                f"cycling the server BEFORE the known bug's ~18-20-request "
+                f"threshold, not in reaction to it")
+            os.remove(RESTART_FLAG_PATH)
             kill_process_group(proc)
             proc = None
             restarts += 1

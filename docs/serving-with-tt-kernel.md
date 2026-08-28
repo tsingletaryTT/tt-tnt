@@ -637,6 +637,48 @@ leave `server_example_tt.py`/`EngineCore` orphaned and the lease stuck `HELD-FOR
 restart is logged with a timestamp, so an operator can see how often this is actually firing
 rather than watching an illusion of stability.
 
+**A tight reactive-restart loop can wedge the device harder than the crash it was reacting
+to.** The supervisor's first version retried at a fixed 10s interval regardless of WHY a
+launch failed. Live incident: several real chat turns crashed the engine faster than
+expected (each turn was firing 3-4 backend requests — see the Open WebUI config note below),
+and the fixed-interval retry hammered `gozer run` against a device that would not open,
+turning a recoverable crash into `tt-smi -s` itself failing to enumerate devices
+(`unreadable tt_serial` on all 4 chips simultaneously, persisting for minutes, requiring a
+real `tt-smi -r` to clear — done bare, outside any lease, only after confirming `gozer status`
+showed nothing held/claimed by another tenant and that gozer itself could not grant ANY lease
+either, per the gozer-gatekeeper skill's documented fallback for exactly this state). Fixed by
+splitting the backoff: a launch that crashed AFTER serving fine for a while (the expected,
+designed-for failure) still retries fast; a launch that never became healthy at all backs off
+exponentially (15s, 30s, 60s... capped at 300s) and gives up entirely after 5 consecutive
+failures, logging that a human should check the driver rather than continuing to retry
+forever. **Resilience to an expected failure and resilience to an unexpected one are different
+problems** — treating them identically is what caused the second, worse outage.
+
+**`scripts/serve_proxy.py` closes the other half of the gap: making restarts (planned or
+not) invisible to the client, and switching from reactive to proactive.** Point any
+OpenAI-compatible client at the proxy's port instead of the backend's directly. It does two
+things: (1) counts real generation requests (`/v1/chat/completions`, `/v1/completions` —
+`/v1/models`/`/health`/`/metrics` polling does NOT count, since Open WebUI hits those every
+15-20s regardless of chat activity and counting them would trigger restarts far more often
+than actual usage warrants) and drops a flag file well under the ~18-20-request crash
+threshold (default 10), which the supervisor checks and acts on as a normal, fast-path
+restart — a scheduled cycle instead of an unpredictable crash; (2) if the backend is down
+(restarting, planned or not), retries the client's original request transparently instead of
+returning an error, so a restart costs latency, not a failed request. Concurrency needs no
+special handling: it is a multi-threaded server, so N simultaneous client connections run in N
+threads each blocking on the backend's own async continuous-batching engine — confirmed live
+with 5 truly-concurrent chat requests (identical `created` timestamps, distinct responses, no
+destabilization).
+
+**The other real find in the same incident: Open WebUI was issuing 3-4 backend requests per
+user-visible chat turn**, not one — `task.title.enable`, `task.tags.enable`, and
+`task.follow_up.enable` were all `true` by default, each firing its own LLM call on top of the
+actual reply. Against a server with an ~18-20-request budget, that alone explained "crashes on
+every question." Disabled directly in the Open WebUI sqlite config (`webui.db`'s `config`
+table, since these are DB-persisted admin settings that survive a container restart and are
+not simply controlled by an env var) rather than left as a silent multiplier on an already
+tight budget.
+
 One thing to carry away if you are gating a serving path of your own: the `tt_transformers`
 PCC check passed at **0.9940–0.9998** throughout, because it exercises prefill far harder than
 long decode. **A green PCC is not evidence of correct generation.**
