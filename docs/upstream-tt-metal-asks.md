@@ -434,3 +434,78 @@ multi-thousand-step run never has to be gambled on an untested assumption. `scri
 train_editor_lora.py` is kept in the repo, documented as blocked, ready to resume once this is
 fixed upstream — the data-loading, category-building, and stratified-split logic it reuses from
 `scripts/train_editor.py` are unaffected by this defect and need no rework.
+
+## 6. Sequential prefill's KV-cache state does not reset between independent requests in a growing multi-turn conversation
+
+### The defect
+
+Serving `episod/tt-tnt-1024` (max_position_embeddings=512) crashes deterministically at the
+**4th** turn of ANY growing multi-turn `/v1/chat/completions` conversation (i.e. the 4th HTTP
+request in a session where each request resends the full accumulated message history, the
+pattern every OpenAI-style chat client — Open WebUI, and this project's own skit turn-by-turn
+generation — uses), with:
+
+```
+AssertionError: Sequence length 1024 exceeds max seq len 512
+```
+
+thrown from `models/tt_transformers/tt/model.py`'s `prepare_inputs_prefill`
+(`assert mat_len >= seq_len`), which kills the whole `EngineCore` (`EngineDeadError`) and the
+`vLLM` `APIServer` self-shuts-down. The failing request's own prompt, per vLLM's own
+`usage.prompt_tokens`, was **~101-107 tokens** — nowhere near 512. `seq_len` is not derived from
+the actual request content; it lands at exactly **1024 = 2 × mat_len** every single time,
+independent of the real prompt size.
+
+### Reproduction, and what was ruled out
+
+Isolated with `--no-enable-prefix-caching` already set (this project's own earlier
+crash-proofing pass), on 2 chips (`MESH_DEVICE=P300x2`), no supervisor/proxy in front:
+
+1. **A single request whose prompt genuinely exceeds 512 tokens is rejected cleanly** with HTTP
+   400 ("This model's maximum context length is 512 tokens...") by vLLM's own admission check
+   (`vllm/renderers/params.py`) — proves the crash is not simple context overflow.
+2. **25 independent, non-growing, single-turn short requests in a row: zero crashes.** Proves it
+   is not "N cumulative requests" in the abstract.
+3. **A growing multi-turn conversation (each turn appends the prior turn's user+assistant
+   messages, matching real chat-client and skit-turn-by-turn behavior): crashes on request #4,
+   every time**, with `usage.prompt_tokens` around 101-107 at the failing request — proves it is
+   specifically about state carried across turns of ONE conversation, not raw request count.
+4. **`--block-size 512` (vs. default 64): identical failure**, same turn, same `seq_len=1024`.
+   Rules out page/block-table accounting as the mechanism.
+5. **`--max-num-seqs 1` (forces the scheduler to admit exactly one sequence at a time, making
+   `batch_size > 1` structurally unreachable — the precondition for `generator.py`'s
+   `use_batched_prefill` path): identical failure**, same turn, same `seq_len=1024`. Rules out
+   concurrent/batched-prefill slot mixing as the mechanism, despite `seq_len` landing on exactly
+   `2 × mat_len` (the value a padded_batch=2 batched-prefill bug would produce) — that value
+   apparently arises even on the plain sequential single-user prefill path
+   (`prefill_forward_single_user_text`), which computes `last_token_idx = seq_len - 1` from
+   `prompt_lens[idx]` and `num_cached_tokens = int(start_pos[idx])` — meaning the leaked state is
+   most likely a stale `start_pos`/cached-token count (or a token buffer still sized to a
+   previous call's padded width) that survives from one turn to the next instead of resetting,
+   even with prefix caching disabled at the request-admission layer.
+
+### Why it matters
+
+Every turn-by-turn generation pattern this project cares about — skit turns
+(`train/skit.py`'s five-slot schema), a real editor/dialogue back-and-forth, or simply a human
+chatting for more than 3 turns — hits this by the 4th exchange, on any chip count, any block
+size, any concurrency setting. It is not a multi-chip fabric issue and not a context-length
+issue; it reproduces identically on the plain, single-sequence, single-chip-equivalent path.
+
+### The fix
+
+Lives inside `models/tt_transformers/tt/generator.py`/`model.py`'s KV-cache/`start_pos`
+bookkeeping in the tt-metal source tree (`models/tt_transformers`), which this project's standing
+rule prohibits patching directly. The state that should reset per independent request (whether
+that is `start_pos[idx]`, the paged-attention block table's notion of "computed tokens" for the
+reused slot, or a token buffer retained at a previous call's padded width) is not resetting when
+`--no-enable-prefix-caching` is set — that flag evidently controls the scheduler's cache-hash
+lookup, not whatever internal state this defect actually lives in.
+
+### What we did instead
+
+Kept serving to single-turn-per-request usage (each skit turn, or each `/v1/completions` call,
+submitted as a self-contained prompt with no accumulated chat history) until this is fixed
+upstream or root-caused further — confirmed safe by reproduction step 2 above (25 independent
+non-growing requests, zero crashes). Interactive multi-turn chat (Open WebUI or otherwise)
+against this checkpoint should be treated as unreliable past 3 turns until this is resolved.
