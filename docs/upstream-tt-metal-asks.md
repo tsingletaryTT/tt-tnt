@@ -369,3 +369,68 @@ replicated exactly, and DDP's invariant survives a feature that is otherwise str
 Nothing that changes the training: this is reported, not worked around. `replicated_for_save`
 writes replica 0, and `.superpowers/ddp-checkpoint-fix.md` records that this is a choice among N
 rather than a distinction without a difference.
+
+---
+
+## 5. `SFTTrainer`'s `peft_config`/`AdamW` path computes correct LoRA gradients but never applies them
+
+Status: open, blocking. No workaround exists from our side — this is inside `AdamW::step()`,
+which our repo does not build or patch. Found 2026-08-27 while designing a LoRA-based approach
+to the editor objective (`scripts/train_editor_lora.py`); see CLAUDE.md's matching entry for the
+project-side account.
+
+### The defect
+
+`SFTTrainer(model=model, peft_config=LoraConfig(...), ...)` — the exact, documented usage from
+`tt-train/docs/SFT_TRAINER.md`'s own LoRA section, no custom code — trains for real steps,
+reports a normal-looking loss curve, and never moves a single `lora_A`/`lora_B` tensor from its
+initial value. This was isolated to `AdamW.step()` itself through five independent, increasingly
+narrow experiments, each confirmed on real hardware before ruling it out:
+
+| test | result |
+|---|---|
+| ttml's own core autograd: frozen input activation, trainable weight, one `linear` + `backward()` | weight gradient correctly nonzero (0.0339) — ttml's autograd is not the problem |
+| standalone `LoraLinear` (no model, no trainer), one forward + `backward()` | `lora_B` gradient correctly nonzero (0.0427); `lora_A` gradient correctly zero (expected: `lora_B` inits to all-zeros, so `d(loss)/d(lora_A)` is mathematically zero until `lora_B` moves) |
+| real warm-started model, `LoraModel`-injected, manual forward + `backward()` (no `SFTTrainer`) | `lora_B` gradient correctly nonzero (0.0015); confirms injection genuinely reaches the real forward pass (`type(blocks[2].attention.q_linear) == LoraLinear`, and it is the *same* Python object `.parameters()` returns) |
+| manual `zero_grad → forward → backward → clip_grad_norm → optimizer.step()`, replicating `SFTTrainer`'s own sequence by hand | gradient present and nonzero (0.0010) immediately before `.step()`; **`lora_B`'s value is bit-identical before and after** `.step()` |
+| `SFTTrainer(..., peft_config=LoraConfig(...))` — the native, undocumented-workaround path, no custom wrapper class at all | same result: `max|delta| == 0.0` after a real training step |
+
+The last two rows are decisive: gradient computation is correct at every point up to and
+including immediately before `AdamW.step()` is called, and the parameter is provably unchanged
+immediately after. `sft_trainer.py`'s own source (`_save_checkpoint`'s docstring) already flags
+this area as unfinished: *"When a `peft_config` is used and the model is wrapped in `LoraModel`,
+the default saver currently saves all parameters (base + LoRA)... TODO: filter... to save only
+LoRA adapter parameters"* — evidence that PEFT support in this `SFTTrainer`/`AdamW` combination
+has not been exercised end-to-end before.
+
+The leading (unconfirmed) hypothesis, from reading `optimizers/adamw.cpp`: `AdamW`'s constructor
+populates `m_exp_avg`/`m_exp_avg_sq` only for parameter names with `requires_grad()==true` **at
+construction time**, and `step()` looks each parameter's moment buffers up **by name** in those
+maps. If the name-to-tensor association `AdamW` captured at construction (from one call to
+`model.parameters()`) does not, for a freshly-`LoraModel`-injected parameter, correctly persist
+through to the live tensor `backward()` actually accumulates into on a later call, `step()`'s
+per-name lookup could silently apply zero effective update — but this was not confirmed at the
+C++ source level; it is a plausible mechanism consistent with every symptom observed, not a
+proven root cause.
+
+### The measurement
+
+All five rows above, one Blackhole p300c, `tt-tnt-1024` (123M params, 8 blocks), `LoraConfig(rank=8,
+alpha=16.0, target_modules=["q_linear","kv_linear","out_linear"])`, warm-started from a real
+checkpoint. Every intermediate script is a throwaway diagnostic, not committed to this repo.
+
+### The fix
+
+Needs tt-train maintainer attention inside `AdamW`'s C++ implementation (or wherever the
+name-to-tensor binding between `LoraModel`-injected parameters and the optimizer's per-parameter
+state is established) — outside what this repo can patch or work around.
+
+### What we did instead
+
+Did not run the real training job. A 3000-step run against a mechanism already proven, on real
+hardware, to apply zero update to any LoRA parameter would have been pure waste — the five
+diagnostics above are individually cheap (seconds to low minutes each) precisely so a
+multi-thousand-step run never has to be gambled on an untested assumption. `scripts/
+train_editor_lora.py` is kept in the repo, documented as blocked, ready to resume once this is
+fixed upstream — the data-loading, category-building, and stratified-split logic it reuses from
+`scripts/train_editor.py` are unaffected by this defect and need no rework.

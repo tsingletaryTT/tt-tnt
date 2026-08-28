@@ -2635,3 +2635,57 @@ teach at this scale (19,593 editor pairs, now a smaller relative share of a 215K
 mix). `tt-tnt-1024-editor-blend-v2`'s `docs/current_model.json` note is unchanged by this
 (still correctly "not promoted") -- this closes the open question it left, rather than
 reversing its verdict.
+
+## LoRA for the editor objective: blocked by a real upstream bug, no training run attempted (2026-08-27)
+
+LoRA is structurally a different lever than the base-blend slice for the SAME anti-forgetting
+problem: it freezes 100% of the base weights, so general fluency cannot regress by construction,
+regardless of the task-data share. `ttml.modules.lora` ships a complete implementation (`LoraLinear`,
+`LoraColumnParallelLinear`/`LoraRowParallelLinear`, `LoraModel`, plus a native `SFTTrainer(...,
+peft_config=LoraConfig(...))` integration) -- no third-party tool needed for this.
+
+**A real naming trap, found and fixed before writing training-critical code.** `LoraModel` does not
+override `.parameters()`, so calling it on the wrapper returns names walked from the wrapper's own
+root (`LoraModel/model/blocks/N/...`), not the canonical `llama/llama_block_N/...` this project's
+checkpoint format and HF conversion expect. `TtTntLoraModel`, a two-line subclass delegating
+`.parameters()` to the inner model, fixes this -- the same pattern `train.model.TtTntLlama` already
+uses for its own name translation, confirmed correct by direct inspection (printing both the wrapper's
+and the inner model's parameter names on real hardware before trusting either).
+
+**The training run never happened, because five independent hardware diagnostics proved it would
+have wasted the whole budget.** `scripts/train_editor_lora.py`, built and dry-run tested, was ready
+to launch a real 3000-step run when a first attempt (with the naming fix) trained for the full 3000
+steps and reported `lora_B` moved from zero: 0/24 -- every single LoRA parameter stayed at EXACTLY
+its initial value across the entire run, despite a normal-looking loss curve. Rather than assume a
+bug in my own code and iterate blindly, each link in the chain was tested in isolation, on real
+hardware, cheapest-first:
+
+1. ttml's own core autograd (frozen input, trainable weight, one `linear` + `backward()`) --
+   correctly computes a nonzero weight gradient. Not an autograd bug.
+2. A standalone `LoraLinear` (no model, no trainer) -- `lora_B`'s gradient is correctly nonzero;
+   `lora_A`'s is correctly zero at step 1 (mathematically expected: `lora_B` inits to all-zeros, so
+   `d(loss)/d(lora_A)` is exactly zero until `lora_B` moves away from it). Not a `LoraLinear` bug.
+3. The REAL warm-started, LoRA-injected model, manual forward + `backward()` (no `SFTTrainer`) --
+   `type(blocks[2].attention.q_linear) is LoraLinear`, it is the SAME object `.parameters()`
+   returns, and it produces a real nonzero `lora_B` gradient. Injection genuinely reaches the real
+   forward pass; not a wiring bug.
+4. Manually replicating `SFTTrainer`'s own `zero_grad -> forward -> backward -> clip_grad_norm ->
+   optimizer.step()` sequence by hand -- gradient present and nonzero (0.0010) immediately before
+   `.step()`. **`lora_B`'s value is bit-identical before and after `.step()`.**
+5. `SFTTrainer(model=model, peft_config=LoraConfig(...))` -- the exact, documented, un-customized
+   usage from `tt-train/docs/SFT_TRAINER.md`'s own LoRA section, bypassing my `TtTntLoraModel`
+   entirely -- same result: `max|delta| == 0.0`.
+
+**This isolates the defect to `AdamW.step()` itself, inside `ttml`'s compiled C++ -- something this
+repo does not build or patch.** `sft_trainer.py`'s own source independently corroborates that this
+path is unfinished: its checkpoint-save docstring already has a `TODO: filter... to save only LoRA
+adapter parameters`, evidence nobody has exercised `peft_config` end-to-end through a real optimizer
+step before. Full writeup, every measurement, and the leading (unconfirmed) hypothesis about the
+exact C++ mechanism: `docs/upstream-tt-metal-asks.md` entry 5.
+
+**No tt-metal issue filed, per this project's standing "document, don't file yet" instruction.**
+`scripts/train_editor_lora.py` is kept, clearly marked blocked in its own module docstring -- the
+data-loading, category-building, and stratified-split logic it reuses from `scripts/train_editor.py`
+needs no rework once the upstream fix lands; only the actual parameter-update path is broken. Five
+cheap diagnostics (seconds to low minutes of real device time each) is what made it possible to
+prove this BEFORE gambling a 3000-step run on an untested assumption, rather than after.
