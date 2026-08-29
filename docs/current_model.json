@@ -10,7 +10,18 @@
     "the designation does NOT mean. Change it in a deliberate commit that cites new evidence --",
     "never as a side effect of a run, and never by a script. Nothing in this repo writes it.",
     "",
-    "AS OF 2026-08-29: `hf_model` is `artifacts/hf-tt-tnt-1024` -- ONE fixed directory that",
+    "CONFIRMED REGRESSION, 2026-08-29 (same day as publish): this checkpoint (and the copy",
+    "currently live on the Hub at episod/tt-tnt-1024) was retrained with `--tokens-dir",
+    "artifacts/tokens-v3` -- the corpus generation from BEFORE the dialogue slice",
+    "(databricks-dolly-15k) was added. artifacts/tokens-v4 is the correct, current corpus",
+    "(docs/corpus_blend.md confirms this explicitly). Verified directly: greedy-decoded",
+    "'Q: What is the capital of France?\\nAnswer:' now produces repetitive non-answers",
+    "('Cantons, Cantons, Cantons...') instead of the dialogue checkpoint's correct 'Paris'.",
+    "A corrected retrain on tokens-v4 (artifacts/checkpoints-tt-tnt-1024-ctx2048-v4corpus) is",
+    "in progress -- re-publish once it passes the same Q&A check. Until then, treat this",
+    "designation's Q&A/dialogue capability claim as KNOWN FALSE, not merely unverified.",
+    "",
+    "AS OF 2026-08-29 (path convention): `hf_model` is `artifacts/hf-tt-tnt-1024` -- ONE fixed directory that",
     "gets overwritten with whatever the current best idea for this size is, rather than a new",
     "`-dialogue`/`-editor`/`-ctx2048`-suffixed sibling per experiment. That sprawl (a dozen-plus",
     "`artifacts/hf-tt-tnt-1024-*` directories, several documented negative results left sitting",
@@ -35,6 +46,6 @@
       "artifacts/checkpoints-tt-tnt-1024-ctx2048/val_losses.jsonl",
       "tests/test_to_hf.py"
     ],
-    "qualification": "Not unqualified, and not a claim of behavioural improvement: no signal in the paired comparison against the prior checkpoint clears both the seed-only noise floor and its own paired minimum-detectable difference, in either direction, at n=1 seed -- this is a real loss gain and a clean behavioural null, not a behavioural win. The prior checkpoint's own known regression (4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor) is therefore neither confirmed fixed nor newly measured here. This checkpoint was trained at a 2048-token window; the prior one it replaces was trained and measured at 512 -- this project has already published one wrong headline from treating a 512-window loss and a 2048-window loss as commensurable, so the matched-window comparison above is deliberately re-measured at 512 rather than diffing the two training-time trajectories directly. The MoE routing, die-region routing, thinking, skits, and reach-dial experiments described in docs/model-card-1024.md were run against the PRIOR 512-context checkpoint this one was retrained from, and have not been re-verified against these specific weights."
+    "qualification": "CONFIRMED REGRESSION as of 2026-08-29 (see the _readme note above): this checkpoint was trained on the wrong corpus generation (tokens-v3, predating the dialogue slice) and has measurably LOST the Q&A capability the checkpoint it replaces was designated for -- greedy-decoded 'capital of France' now loops on 'Cantons, Cantons, Cantons...' instead of answering 'Paris'. A corrected retrain on tokens-v4 is in progress; do not treat this designation's dialogue capability as intact until that lands and is verified. Not unqualified, and not a claim of behavioural improvement: no signal in the paired comparison against the prior checkpoint clears both the seed-only noise floor and its own paired minimum-detectable difference, in either direction, at n=1 seed -- this is a real loss gain and a clean behavioural null, not a behavioural win. The prior checkpoint's own known regression (4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor) is therefore neither confirmed fixed nor newly measured here. This checkpoint was trained at a 2048-token window; the prior one it replaces was trained and measured at 512 -- this project has already published one wrong headline from treating a 512-window loss and a 2048-window loss as commensurable, so the matched-window comparison above is deliberately re-measured at 512 rather than diffing the two training-time trajectories directly. The MoE routing, die-region routing, thinking, skits, and reach-dial experiments described in docs/model-card-1024.md were run against the PRIOR 512-context checkpoint this one was retrained from, and have not been re-verified against these specific weights."
   }
 }

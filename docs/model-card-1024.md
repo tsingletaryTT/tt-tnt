@@ -32,6 +32,17 @@ checkpoint this one was retrained from** (same corpus, same architecture, same w
 lineage) — none of MoE routing, die-region routing, thinking, skits, or the reach dial has
 been re-verified against these specific retrained weights.
 
+🛑 **CONFIRMED REGRESSION (2026-08-29): this retrain used the wrong corpus generation and
+lost the Q&A capability described below.** It was trained with `--tokens-dir
+artifacts/tokens-v3`, which predates the `dialogue` slice (`databricks-dolly-15k`) added for
+the checkpoint it replaces — `artifacts/tokens-v4` is the correct, current corpus
+(`docs/corpus_blend.md` confirms this explicitly). Verified directly: greedy-decoded
+`Q: What is the capital of France?\nAnswer:` now loops on `Cantons, Cantons, Cantons...`
+instead of answering `Paris`. A corrected retrain on `tokens-v4`
+(`artifacts/checkpoints-tt-tnt-1024-ctx2048-v4corpus`) is in progress. **Until that lands and
+is verified, treat every "What it does"/"What it gets wrong" example below as describing the
+PRIOR checkpoint, not the weights currently published to `episod/tt-tnt-1024`.**
+
 ## What it does best
 
 **Routing by physical die address.** Tokens can be assigned to experts by *where

@@ -2764,3 +2764,55 @@ the real context/loss facts and an explicit note that its MoE/die-routing/thinki
 reach-dial sections describe experiments run against the *prior* 512-context checkpoint, not
 re-verified against these retrained weights. Full suite: 1631 passed, 5 skipped (all
 pre-existing, correctly-guarded skips for now-genuinely-absent optional local artifacts).
+
+## The ctx2048 retrain used the wrong corpus generation, and published a real capability regression (2026-08-29)
+
+Published `episod/tt-tnt-1024` (the ctx2048 checkpoint above), ran a real vLLM throughput
+benchmark on hardware, then began the two follow-ups this project's own convention calls
+for on any retrain: a seed replicate, and a check that the retrain didn't silently lose the
+capability the checkpoint it replaces was designated for. The second one caught a real
+mistake in the FIRST one.
+
+**The bug.** The ctx2048 training run used `--tokens-dir artifacts/tokens-v3`. `tokens-v3` is
+the corpus generation from *before* the `dialogue` slice (`databricks-dolly-15k`) was added —
+`docs/corpus_blend.md` says this explicitly, and it is directly checkable: the dialogue
+checkpoint's own header records `corpus_tokens: 391823393`, which matches `tokens-v4`'s
+total token count exactly (391,823,393) and does not match `tokens-v3`'s (391,921,555).
+`tokens-v3` was the *right* choice for the original `tt-tnt-1024a` run (which predates the
+dialogue slice) and the *wrong* one for a checkpoint meant to continue the dialogue lineage —
+copying the earlier recipe without checking which corpus generation the checkpoint being
+"raised in context" had actually been trained on.
+
+**Verified, not assumed.** `Q: What is the capital of France?\nAnswer:` under greedy decoding
+through `artifacts/hf-tt-tnt-1024` (the wrong-corpus checkpoint, CPU-only, no device needed):
+`Cantons, Cantons, Cantons, Cantons, ...` — a repetition loop, not merely a wrong-but-fluent
+answer. The dialogue checkpoint this replaced answered `Paris` correctly under the identical
+prompt and decoding. `Q: What is the capital of Italy?` similarly degrades to a circular
+non-answer (`The capital of the Italian region of Italy...`). This is not a subtle
+regression: the retrain trained on a corpus that never contained the dialogue slice at all,
+so there was nothing for the capability to survive on.
+
+**What was already in flight when this was found, and what happened to it.** A seed
+replicate (`--seed 20260815`) had been launched on the same wrong corpus and was ~18 steps in
+when the Q&A check came back negative; killed immediately (negligible compute lost) and its
+partial checkpoint deleted rather than left to confuse a later run. A corrected run
+(`artifacts/checkpoints-tt-tnt-1024-ctx2048-v4corpus`, same seed 5489, `--tokens-dir
+artifacts/tokens-v4`, otherwise identical) was launched in its place. The already-published
+Hub weights (`episod/tt-tnt-1024`) and the local `artifacts/hf-tt-tnt-1024`/
+`artifacts/checkpoints-tt-tnt-1024-ctx2048` were **not** reverted or deleted -- both
+`docs/current_model.json` and `docs/model-card-1024.md` were updated in place with an
+explicit, dated regression notice instead, so a reader hits the correction before hitting a
+stale claim, and the Hub-published copy will be corrected by re-publishing once the
+`tokens-v4` retrain passes the same Q&A check that caught this. `docs/current_model.json`'s
+`_readme` and `current.qualification` both say, in these words: treat the dialogue capability
+as **known false**, not merely unverified, until that lands.
+
+**The lesson.** A corpus generation is not implied by a model size or a training recipe --
+`train/paths.py`'s own docstring already warns about exactly this class of mistake for
+tokenizer/tokens regeneration ("retraining the tokenizer... produces numerically different
+ids under the same filenames, with nothing on disk to tell the two generations apart"), and
+this is the same failure mode one level up: reusing a *specific* tokens directory by copying
+a prior run's recipe, without checking whether the checkpoint actually being extended had
+moved to a newer one. The check that catches it is cheap and CPU-only -- decode a handful of
+prompts the model was previously known to answer, greedy, before trusting a training run's
+loss curve to mean the capability came along for free.
