@@ -171,15 +171,16 @@ def test_architecture_can_shard_onto_the_declared_mesh(path):
 #: the same trap this test exists to catch, from the other direction, and a bigger bite of
 #: it than the 512 case was.
 #:
-#: ``1024`` still has no published weights at all (``episod/tt-tnt-1024`` does not exist on
-#: the Hub -- checked, ``RepositoryNotFoundError``), so its entry is not a *published* fact
-#: but a placeholder. It tracks the registry's design target, which is what that size will
-#: actually be trained to when it is trained, so that the packaging path is exercised
-#: against a coherent number rather than one left behind by an earlier architecture.
+#: ``1024`` was retrained (DDP-4-chip, 10,764 steps, seed 5489) and republished to
+#: ``episod/tt-tnt-1024`` on 2026-08-29 at the registry's new 2048 target -- verified
+#: directly, not taken on trust: the Hub repo's ``config.json`` reads
+#: ``max_position_embeddings: 2048`` (``scripts/publish_to_hub.py --verify`` passes against
+#: that exact expectation), and its ``model.safetensors`` is the freshly-uploaded file, not
+#: the prior 512-context checkpoint this replaces. See CLAUDE.md's 2026-08-28/29 entry.
 #:
 #: Update a *published* entry here only once that size's weights are ACTUALLY retrained and
 #: republished at the new context length -- not when the registry's design target changes.
-_PUBLISHED_CONTEXT = {"384": 2048, "1024": 512}
+_PUBLISHED_CONTEXT = {"384": 2048, "1024": 2048}
 
 
 @pytest.mark.parametrize("path", _manifests(), ids=lambda p: p.stem)

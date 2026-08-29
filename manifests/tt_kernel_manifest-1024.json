@@ -1,6 +1,6 @@
 {
   "name": "tt-tnt-1024",
-  "description": "TT-TNT-1024 -- a Llama-3-style model sized for Tenstorrent: num_groups=4 so it shards across 1, 2 or 4 chips, and a derived SwiGLU width of 2816 (88 tiles = 8x11) that fits a harvested Blackhole grid at 80%. Weights are the 'dialogue' run: 123M parameters, 10,764 steps on a corpus carrying a 2% instruction slice. It answers questions in form and sometimes in fact; its 4-gram repeat rate is worse than the tt-tnt-1024a control at 3.32x the seed floor.",
+  "description": "TT-TNT-1024 -- a Llama-3-style model sized for Tenstorrent: num_groups=4 so it shards across 1, 2 or 4 chips, and a derived SwiGLU width of 2816 (88 tiles = 8x11) that fits a harvested Blackhole grid at 80%. Weights are the 2048-context run (2026-08-28): 123M parameters, 10,764 steps, retrained from the 'dialogue' lineage at a 2048-token context (up from 512) to push a real growing-conversation KV-cache crash -- confirmed a generic tt-metal/vLLM defect, not this model, see docs/upstream-tt-metal-asks.md entry 6 -- far out of ordinary reach. Also ships a chat template capping rendered conversation history to the last 5 messages as a backstop. Matched-window (512) loss improved -0.2318 nats against the prior checkpoint; no behavioural signal cleared the seed floor in either direction (n=1 seed).",
   "platform": {
     "ttnn": ">=0.65,<0.80"
   },
@@ -19,10 +19,10 @@
   },
   "weights": {
     "repo": "episod/tt-tnt-1024",
-    "revision": "b1b9a1b54a26"
+    "revision": "82b4d93a4f32314e68c9ae0c3d04c0b2435a169f"
   },
   "resources": {
-    "max_model_len": 512,
+    "max_model_len": 2048,
     "max_num_seqs": 32,
     "command_override": {
       "p150": [
@@ -31,7 +31,7 @@
         "--model",
         "episod/tt-tnt-1024",
         "--max_model_len",
-        "512",
+        "2048",
         "--max_num_seqs",
         "8"
       ]
