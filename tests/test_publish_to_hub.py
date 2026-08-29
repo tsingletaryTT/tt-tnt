@@ -120,11 +120,18 @@ def test_publish_refuses_an_artifact_with_the_wrong_context_length(tmp_path, mon
 
 
 def test_verify_labels_are_not_hardcoded_numbers():
-    """``--verify``'s printed labels must interpolate the constants, not restate them.
+    """``--verify``'s printed labels must interpolate a value, not restate a number.
 
-    The bug this pins: the label spelled the number out while the comparison used a
-    constant. Bumping the constant to 512 left the check correct and its own output wrong
-    -- it reported passing a check named for 256 having just verified 512.
+    The bug this pins (round 1): the label spelled the number out while the comparison
+    used a constant. Bumping the constant to 512 left the check correct and its own output
+    wrong -- it reported passing a check named for 256 having just verified 512.
+
+    The bug this pins (round 2): ``cmd_verify`` used the bare module-level ``EXPECTED_*``
+    constants regardless of ``repo_id``, so verifying any target other than the one those
+    constants describe (``episod/tt-tnt``) silently checked it against the wrong repo's
+    shape -- ``episod/tt-tnt-1024`` (122,962,944 params) reported a false "parameter count
+    == 22,025,088" failure. Labels must come from ``target_for(repo_id)``, per-repo, not a
+    module constant that only ever described one of the targets.
 
     Scans only the ``check(...)`` call lines, not the whole file: the prose above those
     calls necessarily quotes the old bad label to explain it, and a whole-file scan would
@@ -140,7 +147,11 @@ def test_verify_labels_are_not_hardcoded_numbers():
         assert "== 512" not in line
         assert "== 32000" not in line
         assert "22,025,088" not in line
-    assert any("{EXPECTED_MAX_POSITION_EMBEDDINGS}" in line for line in check_lines)
+        assert "EXPECTED_MAX_POSITION_EMBEDDINGS" not in line, (
+            "cmd_verify must read target_for(repo_id)['max_position_embeddings'], not the "
+            "module constant that only describes episod/tt-tnt"
+        )
+    assert any("{expected_max_pos}" in line for line in check_lines)
 
 
 @needs_artifacts("artifacts/hf-tt-tnt-v3")

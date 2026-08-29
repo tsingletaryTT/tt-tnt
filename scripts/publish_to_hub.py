@@ -142,6 +142,10 @@ TARGETS = {
         "vocab_size": EXPECTED_VOCAB_SIZE,
         "param_count": EXPECTED_PARAM_COUNT,
         "card": CARD_PATH,
+        # Explicitly authorized out-of-band on 2026-08-14 (see module docstring); --verify
+        # checks the Hub against this recorded expectation rather than a hardcoded True/False
+        # that would go stale the day visibility legitimately changes again.
+        "expected_private": False,
         "note": "tt-tnt-v3, 384-dim at a 2048 context. The protected baseline.",
     },
     "episod/tt-tnt-1024": {
@@ -157,6 +161,10 @@ TARGETS = {
         "tie_word_embeddings": True,
         "vocab_size": 32000,
         "param_count": 122962944,
+        # Never explicitly authorized public the way episod/tt-tnt was (see that target's
+        # comment and the module docstring) -- stays private until a deliberate, separate
+        # decision flips it, the same way this script itself never flips visibility.
+        "expected_private": True,
         "card": ROOT / "docs" / "model-card-1024.md",
         "note": (
             "tt-tnt-1024, raised to a 2048-token context (from 512) to push the "
@@ -408,10 +416,20 @@ def cmd_restore_card(repo_id: str, dry_run: bool, yes: bool) -> int:
 
 
 def cmd_verify(repo_id: str) -> int:
-    """Round-trip verification from the Hub, not local state. Read-only."""
+    """Round-trip verification from the Hub, not local state. Read-only.
+
+    Reads its expectations from ``target_for(repo_id)``, not the bare module-level
+    ``EXPECTED_*`` constants -- those describe ``episod/tt-tnt`` only (see the constants'
+    own comment). Before this fix, ``--verify`` for ANY OTHER target silently checked it
+    against the wrong repo's shape and privacy expectation: verifying
+    ``episod/tt-tnt-1024`` (122,962,944 params, expected private) reported false failures
+    for "parameter count == 22,025,088" and "repo private == False", because both were the
+    384 line's numbers applied to a different model entirely.
+    """
     from huggingface_hub import HfApi, ModelCard
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    target = target_for(repo_id)
     checks: list[bool] = []
 
     def check(name: str, cond: bool, detail: str = "") -> None:
@@ -419,27 +437,31 @@ def cmd_verify(repo_id: str) -> int:
         print(f"[{status}] {name}{('  ' + detail) if detail else ''}")
         checks.append(bool(cond))
 
-    print(f"loading {repo_id} fresh from the Hub (not from {HF_DIR.name}/) ...")
+    print(f"loading {repo_id} fresh from the Hub (not from {target['hf_dir'].name}/) ...")
     tok = AutoTokenizer.from_pretrained(repo_id)
     model = AutoModelForCausalLM.from_pretrained(repo_id)
     model.eval()
     cfg = model.config
 
-    # Labels are interpolated from the constants, never spelled out. A hardcoded
-    # "max_position_embeddings == 256" next to a comparison against a constant that says
-    # 512 is a check that lies in its own output -- and this file had exactly that until
-    # the 512 bump, which is precisely when a reader most needs the label to be true.
-    check(f"max_position_embeddings == {EXPECTED_MAX_POSITION_EMBEDDINGS}",
-          cfg.max_position_embeddings == EXPECTED_MAX_POSITION_EMBEDDINGS,
+    # Labels are interpolated from the target dict, never spelled out. A hardcoded
+    # "max_position_embeddings == 256" next to a comparison against a value that says 512
+    # is a check that lies in its own output -- and this file had exactly that until the
+    # 512 bump, which is precisely when a reader most needs the label to be true.
+    expected_max_pos = target["max_position_embeddings"]
+    check(f"max_position_embeddings == {expected_max_pos}",
+          cfg.max_position_embeddings == expected_max_pos,
           f"(got {cfg.max_position_embeddings})")
-    check(f"tie_word_embeddings is {EXPECTED_TIE_WORD_EMBEDDINGS}",
-          cfg.tie_word_embeddings is EXPECTED_TIE_WORD_EMBEDDINGS,
+    expected_tied = target["tie_word_embeddings"]
+    check(f"tie_word_embeddings is {expected_tied}",
+          cfg.tie_word_embeddings is expected_tied,
           f"(got {cfg.tie_word_embeddings})")
-    check(f"vocab_size == {EXPECTED_VOCAB_SIZE}", cfg.vocab_size == EXPECTED_VOCAB_SIZE,
+    expected_vocab = target["vocab_size"]
+    check(f"vocab_size == {expected_vocab}", cfg.vocab_size == expected_vocab,
           f"(got {cfg.vocab_size})")
 
+    expected_params = target["param_count"]
     n_params = sum(p.numel() for p in model.parameters())
-    check(f"parameter count == {EXPECTED_PARAM_COUNT:,}", n_params == EXPECTED_PARAM_COUNT,
+    check(f"parameter count == {expected_params:,}", n_params == expected_params,
           f"(got {n_params:,})")
 
     import torch
@@ -459,7 +481,8 @@ def cmd_verify(repo_id: str) -> int:
 
     api = HfApi()
     info = api.model_info(repo_id)
-    check(f"repo private == {EXPECTED_PRIVATE}", info.private is EXPECTED_PRIVATE,
+    expected_private = target["expected_private"]
+    check(f"repo private == {expected_private}", info.private is expected_private,
           f"(got {info.private})")
 
     card = ModelCard.load(repo_id, repo_type="model")
