@@ -8,105 +8,33 @@
     "This file is DATA, not a claim of quality in the abstract. `reason` states what the",
     "designation rests on, `evidence` says where to check it, and `qualification` states what",
     "the designation does NOT mean. Change it in a deliberate commit that cites new evidence --",
-    "never as a side effect of a run, and never by a script. Nothing in this repo writes it."
+    "never as a side effect of a run, and never by a script. Nothing in this repo writes it.",
+    "",
+    "AS OF 2026-08-29: `hf_model` is `artifacts/hf-tt-tnt-1024` -- ONE fixed directory that",
+    "gets overwritten with whatever the current best idea for this size is, rather than a new",
+    "`-dialogue`/`-editor`/`-ctx2048`-suffixed sibling per experiment. That sprawl (a dozen-plus",
+    "`artifacts/hf-tt-tnt-1024-*` directories, several documented negative results left sitting",
+    "alongside the real one) was consolidated away in a deliberate cleanup -- see CLAUDE.md's",
+    "2026-08-29 entry for what was removed and why. A checkpoint worth keeping as a distinct,",
+    "citable artifact going forward gets that argued for explicitly, not created by default.",
+    "The raw training checkpoints under artifacts/checkpoints-* are untouched by this -- only",
+    "the derived, cheaply-regeneratable HF conversions were collapsed to one."
   ],
   "current": {
-    "label": "tt-tnt-1024-dialogue",
-    "hf_model": "artifacts/hf-tt-tnt-1024-dialogue",
-    "checkpoints": "artifacts/checkpoints-1024-dialogue",
-    "training_window": 512,
-    "designated": "2026-08-18",
+    "label": "tt-tnt-1024",
+    "hf_model": "artifacts/hf-tt-tnt-1024",
+    "checkpoints": "artifacts/checkpoints-tt-tnt-1024-ctx2048",
+    "training_window": 2048,
+    "designated": "2026-08-29",
     "designated_in_commit": "PENDING",
-    "reason": "It is the only checkpoint in this project that answers a question in the shape of an answer, and sometimes in fact: under greedy decoding through the served bundle it returns Paris for France and Rome for Italy. Nothing before it had any notion of answering. That capability comes from a 2% dialogue slice (databricks-dolly-15k) funded by taking TinyStories from 31% to 29%. The designation is a choice about what this project is currently optimising for -- a model that can be interrogated -- and not a claim that it is the best checkpoint on every axis. It is not.",
+    "reason": "Retrained the prior dialogue-trained checkpoint's lineage at a 2048-token context (up from 512), specifically to hold conversations far out of reach of a real, reproduced growing-conversation KV-cache crash confirmed to be a generic tt-metal/vLLM defect -- not this project's model -- by reproducing the identical failure on stock meta-llama/Llama-3.2-1B-Instruct at the same context size (docs/upstream-tt-metal-asks.md entry 6). Also ships a chat template baked into tokenizer_config.json that caps rendered conversation history to the last 5 messages, the proven-safe boundary from direct reproduction, as a backstop regardless of context size. At a matched 512-token window, loss improved -0.2318 nats against the prior checkpoint (2.7726 -> 2.5408).",
     "evidence": [
-      "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-dialogue.md",
-      "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-2ep.md",
+      "docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-ctx2048.md",
       "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
-      "docs/measurements/decode-defect-resolved.json",
-      "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
-      "artifacts/checkpoints-tt-tnt-1024a/val_losses.jsonl"
+      "docs/upstream-tt-metal-asks.md",
+      "artifacts/checkpoints-tt-tnt-1024-ctx2048/val_losses.jsonl",
+      "tests/test_to_hf.py"
     ],
-    "qualification": "This designation is not unqualified. It does NOT mean lowest loss: tt-tnt-1024-2ep is better there (matched-window 2.5637 vs 2.7726) and is NOT designated, because it bought that with worse termination at 2.00x the seed floor. Nor does it mean this checkpoint is free of regressions -- its 4-gram repeat rate is WORSE than tt-tnt-1024a at 3.32x the floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and a prediction that short question-answer documents would improve termination was not supported (0.52x the floor, wrong direction). Nine of ten behavioural signals in that comparison came back NOT INTERPRETABLE. No checkpoint here dominates the others; this one was chosen for a capability, with a known cost. And it is a 512-window model: its loss is measured at a 512-token window and is NOT comparable to tt-tnt-v3's, which was trained and measured at 2048. evaluate() windows at cfg.seq_len, so those two numbers are on different scales and comparing them is the error this file exists to prevent.",
-    "supersedes": {
-      "label": "tt-tnt-1024a",
-      "hf_model": "artifacts/hf-tt-tnt-1024a",
-      "checkpoints": "artifacts/checkpoints-tt-tnt-1024a",
-      "training_window": 512,
-      "designated": "2026-08-15",
-      "designated_in_commit": "e0495fa",
-      "reason": "At a MATCHED 512-token window it is the lowest-loss checkpoint this project has: capacity is worth -0.2994 nats on average against the 384s512 control and is negative at 22/22 checkpoints (sign test p ~ 4.8e-7, sd 0.0538), where the seed-only control wanders across sign (8/22 negative, sd 0.1944). Final matched-window validation loss 2.9281 vs 384s512's 3.1938.",
-      "evidence": [
-        "artifacts/checkpoints-tt-tnt-1024a/val_losses.jsonl",
-        "artifacts/checkpoints-tt-tnt-384s512/val_losses.jsonl",
-        "artifacts/checkpoints-tt-tnt-v3/val_losses.jsonl",
-        "artifacts/checkpoints-tt-tnt-v5/val_losses.jsonl",
-        "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
-        "docs/measurements/behaviour-tt-tnt-384s512-vs-tt-tnt-1024a-setB.json"
-      ],
-      "qualification": "\"Best\" here is not unqualified. 1024a is trained at a 512 context while v3/v4/v5 are trained at 2048, so 1024a serves a quarter of the context and its loss advantage is only established AT 512 -- the two are not comparable at v3's own window, and this repo has already published one wrong headline by treating a 512-window loss and a 2048-window loss as commensurable. 1024a is also 123.0M parameters against v3's 22M, so it is the slower model to serve. Its register advantage over v3 was substantially CONTEXT, not capacity: the clean capacity leg (384s512 -> 1024a) moves the tinystories margin only 1.03x the seed floor, which is a null by this project's standing rule.",
-      "supersedes": null
-    }
-  },
-  "candidates": [
-    {
-      "label": "tt-tnt-1024-dialogue",
-      "hf_model": "artifacts/hf-tt-tnt-1024-dialogue",
-      "training_window": 512,
-      "note": "The current designation. Answers questions in form and sometimes in fact; 4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor."
-    },
-    {
-      "label": "tt-tnt-v3",
-      "hf_model": "artifacts/hf-tt-tnt-v3",
-      "training_window": 2048,
-      "note": "The long-context model, and the one the published Hub artifact and the parity gate grew up around. Still the right subject for any question about 2048-token context; not comparable to 1024a on loss."
-    },
-    {
-      "label": "tt-tnt-v4",
-      "hf_model": "artifacts/hf-tt-tnt-v4",
-      "training_window": 2048,
-      "note": "v3 plus an LR decay tail. The decay 'finding' was refuted by the seed-only control; treat v4 as a v3 replicate, not an improvement."
-    },
-    {
-      "label": "tt-tnt-v5",
-      "hf_model": "artifacts/hf-tt-tnt-v5",
-      "training_window": 2048,
-      "note": "The seed-only control for v3. Its whole job is to be the noise floor, so it is never the subject of a benchmark."
-    },
-    {
-      "label": "tt-tnt-384s512",
-      "hf_model": "artifacts/hf-tt-tnt-384s512",
-      "training_window": 512,
-      "note": "v3's capacity at 1024a's context -- the control that separates the two. The correct baseline for any 1024a comparison, because it is the only checkpoint that differs from 1024a in exactly one thing."
-    },
-    {
-      "label": "tt-tnt-1024a",
-      "hf_model": "artifacts/hf-tt-tnt-1024a",
-      "training_window": 512,
-      "note": "Designated current -- see `current` above."
-    },
-    {
-      "label": "tt-tnt-1024-2ep",
-      "hf_model": "artifacts/hf-tt-tnt-1024-2ep",
-      "training_window": 512,
-      "note": "Two epochs on the pre-dialogue corpus. LOWEST matched-window loss here (2.5637 vs 2.7726) and deliberately NOT designated: it bought that with termination worse at 2.00x the seed floor. The right subject for 'does more training help', whose answer was: on loss yes, on behaviour no."
-    },
-    {
-      "label": "tt-tnt-1024-editor",
-      "hf_model": "artifacts/hf-tt-tnt-1024-editor",
-      "training_window": 512,
-      "note": "Continued from tt-tnt-1024-dialogue on an editor+poetry-instructions+skits blend, 3000 steps. IMPORTANT CAVEAT found in the final whole-branch review: this run never implements the design spec's sec.4-mandated majority base-blend anti-forgetting slice -- realized mix is 22.8% editor / 21.6% skits / 56.0% poetry / 0% base-blend, i.e. 100% task data with no anti-forgetting refresh, the exact failure mode the spec's own risk section predicted. A DOCUMENTED NEGATIVE RESULT, not a candidate for promotion: story_tools.py::self_edit() still fails on the exact 2026-08-27 negative-result draft (all 3 candidates flagged internal_repeat); held-out corruption recovery (n=15, bounded by a real on-device serving crash -- see docs/serving-with-tt-kernel.md sec.7) scored mean_word_overlap=0.463 against a draft baseline of 0.859 -- edited output is closer to target than the uncorrected draft on 0/15 pairs, worse on 12/15; fake_word_rate=0.400. The CPU-only comparison against tt-tnt-1024-dialogue (device-independent, so not confounded by that crash) shows matched-window loss improving slightly (2.7726 -> 2.7092) alongside three CONFIRMED regressions clearing the seed floor: termination rate worse (2.14x), 4-gram repeat rate much worse (21.76x), longest repeated span much worse (30.17x). See docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-editor.md."
-    },
-    {
-      "label": "tt-tnt-1024-editor-blend",
-      "hf_model": "artifacts/hf-tt-tnt-1024-editor-blend",
-      "training_window": 512,
-      "note": "CATASTROPHICALLY BROKEN, kept only as evidence -- NOT a candidate. The first attempt at implementing tt-tnt-1024-editor's missing base-blend slice: build_base_blend_example shipped with labels == input_ids (unshifted, HF-style) instead of ttml's labels[t]==input_ids[t+1] convention. Matched-window held-out loss went to 15.03 nats (worse than the ln(32000)=10.37 uniform ceiling); 4-gram repeat rate 420.29x the seed floor, longest repeated span 849.98x; every 'spine'-register frozen prompt collapsed into repeating one word from token one. See CLAUDE.md and docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-editor-blend.md."
-    },
-    {
-      "label": "tt-tnt-1024-editor-blend-v2",
-      "hf_model": "artifacts/hf-tt-tnt-1024-editor-blend-v2",
-      "training_window": 512,
-      "note": "Corrected re-run of tt-tnt-1024-editor-blend with the labels-shift bug fixed -- same 3000-step run, --base-blend-ratio 0.6 (majority, per design spec sec.4). Direct generation on the exact 'spine' prompts that catastrophically collapsed before now produces normal grammatical text; the CPU-only comparison against tt-tnt-1024-dialogue confirms a REAL, PARTIAL fix of tt-tnt-1024-editor's regression: termination rate no longer distinguishable from the control (was worse at 2.14x the floor), 4-gram repeat rate is now measurably BETTER (3.00x the floor, the right direction), longest repeated span no longer clears paired detection (was worse at 30.17x). Matched-window loss -0.0730 (floor-less). Not a clean sweep: prompt engagement is a new, real, floor-clearing regression at 3.87x (smaller than what it fixed, but real). UPDATE: on-device editor checks now run -- held-out corruption recovery n=15, mean_word_overlap=0.318 vs draft baseline 0.859 (0/15 improved, 13/15 worse, fake_word_rate=0.467), and story_tools.py::self_edit() on the same negative-result draft still fails (all 3 candidates internal_repeat, text if anything more broken). The base-blend fix repaired the general-fluency regression but did NOT improve the editor capability itself -- flat to slightly worse than tt-tnt-1024-editor on that axis. NOT promoted to current. See CLAUDE.md and docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-editor-blend-v2.md, docs/measurements/editor-eval-blend-v2.json."
-    }
-  ]
+    "qualification": "Not unqualified, and not a claim of behavioural improvement: no signal in the paired comparison against the prior checkpoint clears both the seed-only noise floor and its own paired minimum-detectable difference, in either direction, at n=1 seed -- this is a real loss gain and a clean behavioural null, not a behavioural win. The prior checkpoint's own known regression (4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor) is therefore neither confirmed fixed nor newly measured here. This checkpoint was trained at a 2048-token window; the prior one it replaces was trained and measured at 512 -- this project has already published one wrong headline from treating a 512-window loss and a 2048-window loss as commensurable, so the matched-window comparison above is deliberately re-measured at 512 rather than diffing the two training-time trajectories directly. The MoE routing, die-region routing, thinking, skits, and reach-dial experiments described in docs/model-card-1024.md were run against the PRIOR 512-context checkpoint this one was retrained from, and have not been re-verified against these specific weights."
+  }
 }

@@ -63,7 +63,7 @@ left exactly as it was.
 
     # the shipped run: whole corpus (ruling B), ruling C armed by its tokenizer
     python3 scripts/derive_dialogue_skits.py \
-        --tokenizer artifacts/hf-tt-tnt-1024-dialogue
+        --tokenizer artifacts/hf-tt-tnt-1024
 """
 from __future__ import annotations
 

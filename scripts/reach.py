@@ -89,7 +89,7 @@ MEASUREMENT = ROOT / "docs" / "measurements" / "reach-dial.json"
 #: carry weights only). Same two values `scripts/eval_reach.py` uses.
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
-TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024"
 
 #: Used only when no scene is given AND the held-out skits file is unavailable, so that
 #: `python scripts/reach.py` with zero arguments works on a fresh clone too.

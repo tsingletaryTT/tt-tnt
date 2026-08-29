@@ -43,7 +43,7 @@ P300 board where the vLLM path could not be pinned to one chip -- direct TTNN
 device access can open a single enumerated chip.
 
     gozer run --chips 1 --who claude:decode-bisect --reason "direct greedy arm" -- \
-      python scripts/direct_greedy_check.py --hf-model artifacts/hf-tt-tnt-1024-dialogue
+      python scripts/direct_greedy_check.py --hf-model artifacts/hf-tt-tnt-1024
 """
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def local_repeat(tokens: list[str], window: int = 4) -> float:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--hf-model", default=str(ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"))
+    p.add_argument("--hf-model", default=str(ROOT / "artifacts" / "hf-tt-tnt-1024"))
     p.add_argument("--tokens", type=int, default=40)
     p.add_argument("--max-seq-len", type=int, default=512)
     p.add_argument("--paged", action="store_true",

@@ -787,13 +787,20 @@ def test_a_missing_designation_is_refused_rather_than_guessed(tmp_path):
         load_designation(tmp_path / "nothing.json")
 
 
-def test_the_shipped_designation_file_is_valid_json_with_every_candidate_listed():
+def test_the_shipped_designation_file_has_no_candidate_museum():
+    """As of the 2026-08-29 consolidation, this file names ONE current model and does not
+    accumulate a `candidates`/`supersedes` history of every checkpoint ever trained --
+    that sprawl is exactly what motivated collapsing a dozen-plus artifacts/hf-tt-tnt-1024-*
+    directories down to one (see CLAUDE.md's 2026-08-29 entry). Historical checkpoints are
+    project history, recorded in CLAUDE.md's log, not a growing list this file has to keep
+    in sync with every artifact directory that ever existed."""
     payload = json.loads(CURRENT_MODEL_JSON.read_text())
-    labels = {c["label"] for c in payload["candidates"]}
-    assert payload["current"]["label"] in labels
-    # All five trained checkpoints, so a reader can see what was NOT chosen.
-    assert labels >= {"tt-tnt-v3", "tt-tnt-v4", "tt-tnt-v5", "tt-tnt-384s512",
-                      "tt-tnt-1024a"}
+    assert "candidates" not in payload
+    assert "supersedes" not in payload["current"]
+    required = ("label", "hf_model", "reason", "qualification", "evidence",
+                "training_window")
+    for key in required:
+        assert payload["current"].get(key), f"current model designation missing {key!r}"
 
 
 # ---------------------------------------------------------------------------------------

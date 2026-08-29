@@ -104,7 +104,7 @@ DERIVE_MANIFEST_PATH = ROOT / "artifacts" / "improv" / "derive_manifest.json"
 #: exactly. Its own WEIGHTS are never used for anything in this file.
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
-TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024"
 
 
 def paired_verdict(a: Sequence[float], b: Sequence[float], direction: str) -> Dict[str, object]:

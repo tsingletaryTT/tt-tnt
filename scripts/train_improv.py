@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.derive_traces import build_sft_examples  # noqa: E402
 
 MODEL_YAML = ROOT / "train" / "configs" / "model" / "tt-tnt-1024.yaml"
-TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024"
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
 

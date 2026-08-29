@@ -43,7 +43,7 @@ are statistically real. That is the outcome this run is built to be able to repo
 USAGE
 -----
     python scripts/probe_die_steering.py \
-        --hf-model artifacts/hf-tt-tnt-1024-dialogue \
+        --hf-model artifacts/hf-tt-tnt-1024 \
         --regions docs/measurements/die-regions-tt-tnt-1024-dialogue.json \
         --hops 2 --samples 16 \
         --json-out docs/measurements/die-steering.json
@@ -125,7 +125,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--hf-model", type=Path,
-                   default=ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue")
+                   default=ROOT / "artifacts" / "hf-tt-tnt-1024")
     p.add_argument("--map", type=Path, default=ROOT / "artifacts" / "token_core_map.npz")
     p.add_argument("--regions", type=Path,
                    default=ROOT / "docs" / "measurements"

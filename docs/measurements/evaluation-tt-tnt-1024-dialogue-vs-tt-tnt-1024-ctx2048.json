@@ -1,0 +1,409 @@
+{
+  "kind": "tt-tnt/evaluation/1",
+  "mode": "comparison",
+  "started_utc": "2026-08-29T16:22:45+00:00",
+  "baseline": {
+    "kind": "tt-tnt/evaluation/1",
+    "mode": "single",
+    "started_utc": "2026-08-29T16:20:04+00:00",
+    "model": {
+      "path": "artifacts/hf-tt-tnt-1024-dialogue",
+      "label": "tt-tnt-1024-dialogue",
+      "max_position_embeddings": 512,
+      "training_window": 512,
+      "hidden_size": 1024,
+      "num_hidden_layers": 8,
+      "checkpoint_dir": "artifacts/checkpoints-1024-dialogue"
+    },
+    "comparability": {
+      "eval_window": 512,
+      "model_max_position_embeddings": 512,
+      "training_window": 512,
+      "tokens": {
+        "path": "artifacts/tokens-v3/val_ids.npy",
+        "size_bytes": 156768736,
+        "n_tokens": 39192152
+      },
+      "prompt_set": "b",
+      "num_samples": 32,
+      "n_windows": 256,
+      "seed": 0
+    },
+    "window_loss": 2.7726293141245186,
+    "instruments": [
+      {
+        "name": "behaviour",
+        "argv": [
+          "/home/ttuser/.tenstorrent-venv/bin/python3",
+          "/home/ttuser/code/tt-tnt/scripts/score_behaviour.py",
+          "--hf-model",
+          "artifacts/hf-tt-tnt-1024-dialogue",
+          "--label",
+          "tt-tnt-1024-dialogue",
+          "--prompt-set",
+          "b",
+          "--num-samples",
+          "32",
+          "--max-new-tokens",
+          "60",
+          "--seed",
+          "0",
+          "--out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-dialogue/behaviour-setB.md",
+          "--json-out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-dialogue/behaviour-setB.json"
+        ],
+        "json": "docs/measurements/evaluation-tt-tnt-1024-dialogue/behaviour-setB.json",
+        "markdown": "docs/measurements/evaluation-tt-tnt-1024-dialogue/behaviour-setB.md",
+        "status": "ok"
+      },
+      {
+        "name": "context",
+        "argv": [
+          "/home/ttuser/.tenstorrent-venv/bin/python3",
+          "/home/ttuser/code/tt-tnt/scripts/probe_context_use.py",
+          "--hf-model",
+          "artifacts/hf-tt-tnt-1024-dialogue",
+          "--tokens",
+          "/home/ttuser/code/tt-tnt/artifacts/tokens-v3/val_ids.npy",
+          "--seq-len",
+          "512",
+          "--n-windows",
+          "256",
+          "--seed",
+          "0",
+          "--out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-dialogue/context-use.md",
+          "--json-out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-dialogue/context-use.json"
+        ],
+        "json": "docs/measurements/evaluation-tt-tnt-1024-dialogue/context-use.json",
+        "markdown": "docs/measurements/evaluation-tt-tnt-1024-dialogue/context-use.md",
+        "status": "ok"
+      }
+    ],
+    "designation": {
+      "label": "tt-tnt-1024-dialogue",
+      "hf_model": "/home/ttuser/code/tt-tnt/artifacts/hf-tt-tnt-1024-dialogue",
+      "reason": "It is the only checkpoint in this project that answers a question in the shape of an answer, and sometimes in fact: under greedy decoding through the served bundle it returns Paris for France and Rome for Italy. Nothing before it had any notion of answering. That capability comes from a 2% dialogue slice (databricks-dolly-15k) funded by taking TinyStories from 31% to 29%. The designation is a choice about what this project is currently optimising for -- a model that can be interrogated -- and not a claim that it is the best checkpoint on every axis. It is not.",
+      "qualification": "This designation is not unqualified. It does NOT mean lowest loss: tt-tnt-1024-2ep is better there (matched-window 2.5637 vs 2.7726) and is NOT designated, because it bought that with worse termination at 2.00x the seed floor. Nor does it mean this checkpoint is free of regressions -- its 4-gram repeat rate is WORSE than tt-tnt-1024a at 3.32x the floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and a prediction that short question-answer documents would improve termination was not supported (0.52x the floor, wrong direction). Nine of ten behavioural signals in that comparison came back NOT INTERPRETABLE. No checkpoint here dominates the others; this one was chosen for a capability, with a known cost. And it is a 512-window model: its loss is measured at a 512-token window and is NOT comparable to tt-tnt-v3's, which was trained and measured at 2048. evaluate() windows at cfg.seq_len, so those two numbers are on different scales and comparing them is the error this file exists to prevent.",
+      "evidence": [
+        "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-dialogue.md",
+        "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-2ep.md",
+        "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+        "docs/measurements/decode-defect-resolved.json",
+        "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
+        "artifacts/checkpoints-tt-tnt-1024a/val_losses.jsonl"
+      ],
+      "designated": "2026-08-18",
+      "source": "docs/current_model.json"
+    }
+  },
+  "candidate": {
+    "kind": "tt-tnt/evaluation/1",
+    "mode": "single",
+    "started_utc": "2026-08-29T16:22:45+00:00",
+    "model": {
+      "path": "artifacts/hf-tt-tnt-1024-ctx2048",
+      "label": "tt-tnt-1024-ctx2048",
+      "max_position_embeddings": 2048,
+      "training_window": 2048,
+      "hidden_size": 1024,
+      "num_hidden_layers": 8,
+      "checkpoint_dir": "artifacts/checkpoints-tt-tnt-1024-ctx2048"
+    },
+    "comparability": {
+      "eval_window": 512,
+      "model_max_position_embeddings": 2048,
+      "training_window": 2048,
+      "tokens": {
+        "path": "artifacts/tokens-v3/val_ids.npy",
+        "size_bytes": 156768736,
+        "n_tokens": 39192152
+      },
+      "prompt_set": "b",
+      "num_samples": 32,
+      "n_windows": 256,
+      "seed": 0
+    },
+    "window_loss": 2.540779859214064,
+    "instruments": [
+      {
+        "name": "behaviour",
+        "argv": [
+          "/home/ttuser/.tenstorrent-venv/bin/python3",
+          "/home/ttuser/code/tt-tnt/scripts/score_behaviour.py",
+          "--hf-model",
+          "artifacts/hf-tt-tnt-1024-ctx2048",
+          "--label",
+          "tt-tnt-1024-ctx2048",
+          "--prompt-set",
+          "b",
+          "--num-samples",
+          "32",
+          "--max-new-tokens",
+          "60",
+          "--seed",
+          "0",
+          "--out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-ctx2048/behaviour-setB.md",
+          "--json-out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-ctx2048/behaviour-setB.json"
+        ],
+        "json": "docs/measurements/evaluation-tt-tnt-1024-ctx2048/behaviour-setB.json",
+        "markdown": "docs/measurements/evaluation-tt-tnt-1024-ctx2048/behaviour-setB.md",
+        "status": "ok"
+      },
+      {
+        "name": "context",
+        "argv": [
+          "/home/ttuser/.tenstorrent-venv/bin/python3",
+          "/home/ttuser/code/tt-tnt/scripts/probe_context_use.py",
+          "--hf-model",
+          "artifacts/hf-tt-tnt-1024-ctx2048",
+          "--tokens",
+          "/home/ttuser/code/tt-tnt/artifacts/tokens-v3/val_ids.npy",
+          "--seq-len",
+          "512",
+          "--n-windows",
+          "256",
+          "--seed",
+          "0",
+          "--out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-ctx2048/context-use.md",
+          "--json-out",
+          "/home/ttuser/code/tt-tnt/docs/measurements/evaluation-tt-tnt-1024-ctx2048/context-use.json"
+        ],
+        "json": "docs/measurements/evaluation-tt-tnt-1024-ctx2048/context-use.json",
+        "markdown": "docs/measurements/evaluation-tt-tnt-1024-ctx2048/context-use.md",
+        "status": "ok"
+      }
+    ],
+    "designation": {
+      "label": "tt-tnt-1024-dialogue",
+      "hf_model": "/home/ttuser/code/tt-tnt/artifacts/hf-tt-tnt-1024-dialogue",
+      "reason": "It is the only checkpoint in this project that answers a question in the shape of an answer, and sometimes in fact: under greedy decoding through the served bundle it returns Paris for France and Rome for Italy. Nothing before it had any notion of answering. That capability comes from a 2% dialogue slice (databricks-dolly-15k) funded by taking TinyStories from 31% to 29%. The designation is a choice about what this project is currently optimising for -- a model that can be interrogated -- and not a claim that it is the best checkpoint on every axis. It is not.",
+      "qualification": "This designation is not unqualified. It does NOT mean lowest loss: tt-tnt-1024-2ep is better there (matched-window 2.5637 vs 2.7726) and is NOT designated, because it bought that with worse termination at 2.00x the seed floor. Nor does it mean this checkpoint is free of regressions -- its 4-gram repeat rate is WORSE than tt-tnt-1024a at 3.32x the floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and a prediction that short question-answer documents would improve termination was not supported (0.52x the floor, wrong direction). Nine of ten behavioural signals in that comparison came back NOT INTERPRETABLE. No checkpoint here dominates the others; this one was chosen for a capability, with a known cost. And it is a 512-window model: its loss is measured at a 512-token window and is NOT comparable to tt-tnt-v3's, which was trained and measured at 2048. evaluate() windows at cfg.seq_len, so those two numbers are on different scales and comparing them is the error this file exists to prevent.",
+      "evidence": [
+        "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-dialogue.md",
+        "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-2ep.md",
+        "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+        "docs/measurements/decode-defect-resolved.json",
+        "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
+        "artifacts/checkpoints-tt-tnt-1024a/val_losses.jsonl"
+      ],
+      "designated": "2026-08-18",
+      "source": "docs/current_model.json"
+    }
+  },
+  "eval_window": 512,
+  "seed_floor": {
+    "provenance": "derived-live",
+    "behaviour": {
+      "collapse_rate": 0.05416666666666667,
+      "frame_collapse_rate": 0.003472222222222222,
+      "lexical_collapse_rate": 0.05625,
+      "termination_rate": 0.014583333333333334,
+      "repeat_rate": 0.0022186568206833106,
+      "longest_repeat": 0.05763888888888889,
+      "tinystories_margin": 0.07454077771002197,
+      "register_tinystories_share": 0.03680555555555556,
+      "engagement": 0.006623677248677251,
+      "n_tokens": 0.3277777777777778
+    },
+    "behaviour_source": "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+    "behaviour_prompt_set": "b",
+    "loss_sd": 0.1944021805232848,
+    "loss_mean": 0.041335227272727225,
+    "loss_sign": {
+      "n": 22,
+      "n_negative": 8,
+      "n_positive": 14,
+      "n_zero": 0,
+      "p_two_sided": 0.28627872467041016
+    },
+    "loss_window": null,
+    "loss_sources": [
+      "artifacts/checkpoints-tt-tnt-v3/val_losses.jsonl",
+      "artifacts/checkpoints-tt-tnt-v5/val_losses.jsonl"
+    ],
+    "notes": []
+  },
+  "seed_floor_problems": [],
+  "floor_ratio_threshold": 1.2,
+  "matched_window_loss_delta": -0.2318494549104546,
+  "behaviour": [
+    {
+      "signal": "collapse_rate",
+      "title": "genre collapse rate (any marker)",
+      "better": "lower",
+      "baseline": 0.06458333333333334,
+      "candidate": 0.07430555555555556,
+      "delta": 0.009722222222222222,
+      "ci95": [
+        -0.009333333333333332,
+        0.028777777777777777
+      ],
+      "min_detectable": 0.019055555555555555,
+      "ci_verdict": "no change",
+      "seed_floor": 0.05416666666666667,
+      "floor_ratio": 0.1794871794871795,
+      "label": "NOT INTERPRETABLE"
+    },
+    {
+      "signal": "frame_collapse_rate",
+      "title": "\u2014 story-frame collapse",
+      "better": "lower",
+      "baseline": 0.011805555555555555,
+      "candidate": 0.013888888888888888,
+      "delta": 0.0020833333333333333,
+      "ci95": [
+        -0.0041944332707507595,
+        0.008361099937417427
+      ],
+      "min_detectable": 0.006277766604084093,
+      "ci_verdict": "no change",
+      "seed_floor": 0.003472222222222222,
+      "floor_ratio": 0.6,
+      "label": "NOT INTERPRETABLE"
+    },
+    {
+      "signal": "lexical_collapse_rate",
+      "title": "\u2014 lexical-habit collapse",
+      "better": "lower",
+      "baseline": 0.05625,
+      "candidate": 0.06666666666666667,
+      "delta": 0.010416666666666666,
+      "ci95": [
+        -0.007740501756617705,
+        0.02857383508995104
+      ],
+      "min_detectable": 0.01815716842328437,
+      "ci_verdict": "no change",
+      "seed_floor": 0.05625,
+      "floor_ratio": 0.18518518518518517,
+      "label": "NOT INTERPRETABLE"
+    },
+    {
+      "signal": "termination_rate",
+      "title": "termination rate (</s>)",
+      "better": "higher",
+      "baseline": 0.04652777777777778,
+      "candidate": 0.04236111111111111,
+      "delta": -0.004166666666666667,
+      "ci95": [
+        -0.022490036893364766,
+        0.014156703560031434
+      ],
+      "min_detectable": 0.0183233702266981,
+      "ci_verdict": "no change",
+      "seed_floor": 0.014583333333333334,
+      "floor_ratio": 0.2857142857142857,
+      "label": "NOT INTERPRETABLE"
+    },
+    {
+      "signal": "repeat_rate",
+      "title": "4-gram repeat rate",
+      "better": "lower",
+      "baseline": 0.03658425358311578,
+      "candidate": 0.02931772187440472,
+      "delta": -0.00726653170871106,
+      "ci95": [
+        -0.015474946303359119,
+        0.0009418828859369989
+      ],
+      "min_detectable": 0.008208414594648059,
+      "ci_verdict": "no change",
+      "seed_floor": 0.0022186568206833106,
+      "floor_ratio": 3.275194090843254,
+      "label": "below paired detection"
+    },
+    {
+      "signal": "longest_repeat",
+      "title": "longest repeated span (words)",
+      "better": "lower",
+      "baseline": 3.7472222222222222,
+      "candidate": 3.4631944444444445,
+      "delta": -0.28402777777777777,
+      "ci95": [
+        -0.5725846465807738,
+        0.004529091025218257
+      ],
+      "min_detectable": 0.288556868802996,
+      "ci_verdict": "no change",
+      "seed_floor": 0.05763888888888889,
+      "floor_ratio": 4.927710843373493,
+      "label": "below paired detection"
+    },
+    {
+      "signal": "tinystories_margin",
+      "title": "tinystories margin (nats/word)",
+      "better": "lower",
+      "baseline": -0.5542566700030361,
+      "candidate": -0.5244432350498595,
+      "delta": 0.02981343495317677,
+      "ci95": [
+        -0.057869629260031516,
+        0.11749649916638506
+      ],
+      "min_detectable": 0.08768306421320829,
+      "ci_verdict": "no change",
+      "seed_floor": 0.07454077771002197,
+      "floor_ratio": 0.3999614153364054,
+      "label": "NOT INTERPRETABLE"
+    },
+    {
+      "signal": "register_tinystories_share",
+      "title": "nearest source == tinystories",
+      "better": "lower",
+      "baseline": 0.18680555555555556,
+      "candidate": 0.21180555555555555,
+      "delta": 0.025,
+      "ci95": [
+        -0.019073526004217585,
+        0.0690735260042176
+      ],
+      "min_detectable": 0.044073526004217586,
+      "ci_verdict": "no change",
+      "seed_floor": 0.03680555555555556,
+      "floor_ratio": 0.679245283018868,
+      "label": "NOT INTERPRETABLE"
+    },
+    {
+      "signal": "engagement",
+      "title": "prompt engagement",
+      "better": "higher",
+      "baseline": 0.21730213844797178,
+      "candidate": 0.20581349206349206,
+      "delta": -0.011488646384479715,
+      "ci95": [
+        -0.03999265395365091,
+        0.017015361184691477
+      ],
+      "min_detectable": 0.028504007569171194,
+      "ci_verdict": "no change",
+      "seed_floor": 0.006623677248677251,
+      "floor_ratio": 1.734481610916957,
+      "label": "below paired detection"
+    },
+    {
+      "signal": "n_tokens",
+      "title": "generated tokens before </s>",
+      "better": null,
+      "baseline": 58.85347222222222,
+      "candidate": 58.96736111111111,
+      "delta": 0.11388888888888889,
+      "ci95": [
+        -0.5384668322347294,
+        0.7662446100125072
+      ],
+      "min_detectable": 0.6523557211236183,
+      "ci_verdict": "n/a",
+      "seed_floor": 0.3277777777777778,
+      "floor_ratio": 0.3474576271186441,
+      "label": "NOT INTERPRETABLE"
+    }
+  ],
+  "trajectory": null,
+  "trajectory_refusal": "skipped by --skip-trajectory; no training-time loss comparison is reported"
+}

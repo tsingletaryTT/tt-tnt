@@ -21,7 +21,7 @@ repeats more than this does, so what you see here is the model at its actual qua
 
 Commands inside the REPL: ``--temp <float>``, ``--len <int>``, ``/greedy``, ``/quit``.
 
-DEFAULT MODEL: ``artifacts/hf-tt-tnt-1024-dialogue`` — 123M parameters, 8 layers, dim
+DEFAULT MODEL: ``artifacts/hf-tt-tnt-1024`` — 123M parameters, 8 layers, dim
 1024, 512-token context, one full epoch. The previous default was ``artifacts/hf``, which
 is still on disk but is the OLD 384-dim/6-layer/256-context model from an earlier
 iteration; pointing at it silently served a much weaker model that looked like this one.
@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MODEL = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+DEFAULT_MODEL = ROOT / "artifacts" / "hf-tt-tnt-1024"
 
 
 def main() -> int:

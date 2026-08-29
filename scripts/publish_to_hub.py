@@ -145,18 +145,30 @@ TARGETS = {
         "note": "tt-tnt-v3, 384-dim at a 2048 context. The protected baseline.",
     },
     "episod/tt-tnt-1024": {
-        "hf_dir": ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue",
-        "max_position_embeddings": 512,
+        # NOT None -- None resolves to module-level HF_DIR above, which is the 384 line's
+        # canonical path (hf-tt-tnt-v3). artifacts/hf-tt-tnt-1024 is this size's OWN ONE
+        # canonical directory, always overwritten with the current best idea rather than
+        # accumulating a new -dialogue/-editor/-ctx2048-suffixed sibling per change (see
+        # CLAUDE.md's 2026-08-29 consolidation entry for why this stopped being a
+        # per-experiment directory), but it is a size-specific fixed path, not the shared
+        # HF_DIR constant.
+        "hf_dir": ROOT / "artifacts" / "hf-tt-tnt-1024",
+        "max_position_embeddings": 2048,
         "tie_word_embeddings": True,
         "vocab_size": 32000,
         "param_count": 122962944,
         "card": ROOT / "docs" / "model-card-1024.md",
         "note": (
-            "tt-tnt-1024 trained on the corpus carrying the dialogue slice. "
-            "Answers questions in form and sometimes in fact (Paris, Rome); "
-            "4-gram repeat rate is WORSE than tt-tnt-1024a at 3.32x the seed "
-            "floor, and termination is unimproved. See "
-            "docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-dialogue.md."
+            "tt-tnt-1024, raised to a 2048-token context (from 512) to push the "
+            "growing-conversation KV-cache crash (docs/upstream-tt-metal-asks.md "
+            "entry 6 -- confirmed a generic tt-metal/vLLM defect, not this "
+            "project's model) far out of ordinary reach, plus a chat template "
+            "shipped in tokenizer_config.json that caps rendered history to the "
+            "last 5 messages as a backstop. Matched-window (512) loss improved "
+            "-0.2318 nats against the prior dialogue-trained checkpoint; no "
+            "behavioural signal clears both the seed floor and its own paired "
+            "interval in either direction (n=1 seed). See "
+            "docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-ctx2048.md."
         ),
     },
 }

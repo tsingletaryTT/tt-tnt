@@ -239,7 +239,7 @@ def test_the_reach_line_really_reaches_the_dial_arms_token_stream():
 
 
 @needs_artifacts("artifacts/reach-skits/skits.jsonl",
-                 "artifacts/hf-tt-tnt-1024-dialogue",
+                 "artifacts/hf-tt-tnt-1024",
                  reason="the length relation is a property of the real tokenizer and the "
                         "real slot values; a fixture cannot establish it")
 def test_the_dial_arm_is_never_shorter_and_is_longer_in_aggregate():
@@ -609,7 +609,7 @@ def test_drop_positions_removes_exactly_those_positions_and_keeps_order():
     assert len(drop_positions(skits, [99])) == 5
 
 
-@needs_artifacts("artifacts/reach-skits/skits.jsonl", "artifacts/hf-tt-tnt-1024-dialogue")
+@needs_artifacts("artifacts/reach-skits/skits.jsonl", "artifacts/hf-tt-tnt-1024")
 def test_the_derivations_length_gate_really_did_miss_rows_on_the_real_artifact():
     """The defect this re-application exists for, asserted on the real file.
 

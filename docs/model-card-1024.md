@@ -18,6 +18,20 @@ through the Tenstorrent vLLM plugin, and packaged with
 It is small on purpose. One epoch takes about an hour on a single p300c, which is
 what makes it useful as an instrument rather than a product.
 
+⚠️ **This card's weights were retrained on 2026-08-28 to a 2048-token context** (up from
+512), to push a real growing-conversation KV-cache crash — confirmed as a generic
+tt-metal/vLLM defect, not specific to this model (see
+`docs/upstream-tt-metal-asks.md` entry 6) — far out of ordinary reach, and now ships a chat
+template (baked into `tokenizer_config.json`) that caps rendered conversation history to
+the last 5 messages as a backstop. Matched-window (512) loss improved -0.2318 nats against
+the prior checkpoint this card otherwise describes; no behavioural signal moved past its
+noise floor in either direction (n=1 seed — no replicate exists yet). Full comparison:
+`docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-ctx2048.md`.
+**The feature-support table and experiments below describe the prior 512-context
+checkpoint this one was retrained from** (same corpus, same architecture, same warm-start
+lineage) — none of MoE routing, die-region routing, thinking, skits, or the reach dial has
+been re-verified against these specific retrained weights.
+
 ## What it does best
 
 **Routing by physical die address.** Tokens can be assigned to experts by *where
@@ -60,10 +74,11 @@ not useful. It is not a claim that the model is good.
 |---|---|
 | parameters | 122,962,944 |
 | hidden size / layers / heads | 1024 / 8 / 16 (4 KV heads) |
-| context | 512 |
+| context | 2048 |
 | vocabulary | 32,000 (BPE, trained on this corpus) |
-| training | 10,764 steps, batch 64, seq 512, 4-chip DDP on one p300c |
-| final validation loss | 2.8230 |
+| training | 10,764 steps, batch 64, seq 2048, 4-chip DDP on one p300c |
+| final validation loss (2048-token window) | 2.4504 |
+| loss at matched 512-token window | 2.5408 (vs. 2.7726 for the prior 512-context checkpoint) |
 
 4 KV heads means it shards across 1, 2 or 4 chips without violating
 head-divisibility.

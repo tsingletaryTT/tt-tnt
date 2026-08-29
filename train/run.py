@@ -749,7 +749,7 @@ def main() -> int:
                         "die-region directions and is meaningless against random embeddings.")
     p.add_argument("--reference-hf-dir", default=None,
                    help="Converted HF artifact whose embedding matrix the die map was "
-                        "measured on, e.g. artifacts/hf-tt-tnt-1024-dialogue. Supplies the "
+                        "measured on, e.g. artifacts/hf-tt-tnt-1024. Supplies the "
                         "embeddings that seed the gate. Defaults to the designated model in "
                         "docs/current_model.json when --gate-policy needs one.")
     p.add_argument("--gate-policy", default="learned", choices=("learned", "seeded", "frozen"),

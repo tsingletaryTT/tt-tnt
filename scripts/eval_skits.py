@@ -129,7 +129,7 @@ DERIVE_MANIFEST_PATH = ROOT / "artifacts" / "skits-200k" / "derive_manifest.json
 #: from. Its WEIGHTS are never used here (see eval_improv.sft_checkpoint_to_hf).
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
-TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024"
 
 #: Corpus record separator — NOT a blank line (see scripts/derive_skits.py).
 STORY_SEP = "</s>"

@@ -63,7 +63,7 @@ PROMPT = "Lily found a needle. She showed it to her mother."
 COMPLETION = " Her mother took the needle and sewed the button."
 
 MODEL_YAML = ROOT / "train" / "configs" / "model" / "tt-tnt-1024.yaml"
-TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024"
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
 

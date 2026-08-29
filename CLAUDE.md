@@ -2689,3 +2689,78 @@ data-loading, category-building, and stratified-split logic it reuses from `scri
 needs no rework once the upstream fix lands; only the actual parameter-update path is broken. Five
 cheap diagnostics (seconds to low minutes of real device time each) is what made it possible to
 prove this BEFORE gambling a 3000-step run on an untested assumption, rather than after.
+
+## Growing-conversation KV-cache crash: confirmed upstream, hardened, then the variant sprawl cleaned up (2026-08-28/29)
+
+**The bug.** Serving `episod/tt-tnt-1024` through the TT vLLM plugin crashed reliably a few
+turns into any growing multi-turn conversation (Open WebUI chat, or turn-by-turn skit
+generation), with `AssertionError: Sequence length {seq_len} exceeds max seq len {mat_len}` --
+the whole `EngineCore` dying (`EngineDeadError`). Reproduced directly and narrowed by
+elimination, each with a controlled experiment on real hardware: NOT simple context overflow
+(a genuinely-too-long single prompt gets a clean HTTP 400 from vLLM's own admission check);
+NOT request volume (25 independent, non-growing short requests: zero crashes); NOT block-size
+accounting (`--block-size 512` vs. default 64: identical failure); NOT concurrent/batched-
+prefill slot mixing (`--max-num-seqs 1`, which makes batching structurally impossible: identical
+failure). It IS specifically about a growing conversation's accumulated messages -- crashed
+deterministically at request #4 with the real prompt only ~100 tokens, `seq_len` always landing
+at exactly `2 x mat_len`.
+
+**It is not our model.** Served stock `meta-llama/Llama-3.2-1B-Instruct` -- no custom adapter --
+on the identical stack at the same `--max_model_len 512`, ran the identical reproduction:
+**identical crash, identical signature.** This is a generic tt-metal/vLLM KV-cache defect.
+Real Llama/Qwen deployments never see it because they run at native context (4k-131k tokens),
+where an ordinary chat conversation never approaches double that; our checkpoint's honest
+512-token context is what exposed a bug that was always there. Full reproduction and the
+control experiment: `docs/upstream-tt-metal-asks.md` entry 6.
+
+**Two hardening fixes, both in this repo alone, no tt-metal edit.**
+1. **A chat template now ships baked into the model's own `tokenizer_config.json`**
+   (`convert/to_hf.py`'s `_CHAT_TEMPLATE`/`MAX_CHAT_TEMPLATE_MESSAGES`), capping rendered
+   history to the last 5 messages -- the exact proven-safe boundary from direct reproduction
+   (5 messages served fine, 7 crashed). No server needs a `--chat-template` CLI flag pointed
+   at an external file anymore; the old throwaway `scratch/minimal_chat_template.jinja` and
+   its reference in `scripts/serve_supervisor.py` are gone. A test pins the cap number itself
+   as a tripwire (`test_chat_template_cap_is_at_or_below_the_reproduced_failure_point`) so a
+   future edit can't silently raise it past the proven-safe point.
+2. **`tt-tnt-1024`'s registered context raised 512 -> 2048** (matching `384`'s precedent),
+   trained for real: DDP-4-chip, 10,764 steps (same as the original 1024a run for
+   comparability), seed 5489, `artifacts/checkpoints-tt-tnt-1024-ctx2048`. First mesh-open
+   attempt hit a transient fabric-router-sync timeout (unrelated flaky ethernet handshake);
+   the retry trained cleanly, real val loss **2.4504** (train loss 10.63 -> 2.54). At a
+   matched 512-token window against the prior checkpoint: **2.7726 -> 2.5408, -0.2318 nats,
+   a real improvement**. Behaviourally: every signal in the paired comparison is either at or
+   below the 1.2x seed-floor rule or below its own paired minimum-detectable difference --
+   a clean null, not a regression, at n=1 seed. Full report:
+   `docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-ctx2048.md`.
+
+**Then: the artifact sprawl this whole project had been quietly accumulating got named and
+fixed.** Before this, `artifacts/hf-tt-tnt-1024-*` held a dozen-plus directories --
+`-1024a`, `-dialogue`, `-2ep`, `-editor`, `-editor-blend`, `-editor-blend-v2`, `-v077`,
+`-ctx2048` -- 4.6GB, several of them documented negative results left sitting alongside the
+one actually in use, and `docs/current_model.json` had grown a `supersedes` chain plus a
+`candidates` array re-describing every one of them. Direct instruction: stop creating a new
+suffixed sibling per idea; there should be ONE directory, always overwritten. Every HF
+conversion directory is a cheap, regeneratable derivative of its source `.pkl` checkpoint --
+verified each still had one before deleting anything -- so nothing irreplaceable was at risk.
+Consolidated to **`artifacts/hf-tt-tnt-1024`** (matching the already-clean, never-suffixed
+Hub repo name `episod/tt-tnt-1024`, and the `384` line's own long-established one-fixed-name
+convention, `artifacts/hf-tt-tnt-v3`). Reclaimed 3.2GB deleting `-1024a`, `-2ep`, `-editor`,
+`-editor-blend`, `-editor-blend-v2`, `-v077`, then also `-dialogue` once its ctx2048
+replacement was renamed into the canonical slot. 18 scripts/tests defaulting to the old
+`-dialogue` path were bulk-updated; `scripts/publish_to_hub.py`'s `episod/tt-tnt-1024` target
+entry updated to the new path and `max_position_embeddings: 2048` (caught, before committing,
+that its `hf_dir` must NOT be `None` the way `episod/tt-tnt`'s is -- `None` resolves to the
+module-level `HF_DIR` constant, which is the *384 line's* canonical path; the two sizes need
+their own fixed paths, not a shared sentinel). `docs/current_model.json`'s `supersedes`/
+`candidates` apparatus was removed outright -- historical checkpoints are project history,
+recorded here in CLAUDE.md's log, not a growing list this file has to keep in sync with every
+artifact directory that ever existed; `tests/test_evaluate.py`'s
+`test_the_shipped_designation_file_is_valid_json_with_every_candidate_listed` (which enforced
+the very museum being retired) was replaced with a test for the opposite invariant --
+no `candidates`, no `supersedes`, just the one required designation. Raw training checkpoints
+under `artifacts/checkpoints-*` were left untouched throughout: they are the actual
+irreplaceable evidence, not what was asked to change. `docs/model-card-1024.md` updated with
+the real context/loss facts and an explicit note that its MoE/die-routing/thinking/skits/
+reach-dial sections describe experiments run against the *prior* 512-context checkpoint, not
+re-verified against these retrained weights. Full suite: 1631 passed, 5 skipped (all
+pre-existing, correctly-guarded skips for now-genuinely-absent optional local artifacts).

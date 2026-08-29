@@ -51,7 +51,7 @@ than after writing a kernel.
 USAGE
 -----
     python scripts/probe_die_regions.py \
-        --hf-model artifacts/hf-tt-tnt-1024-dialogue \
+        --hf-model artifacts/hf-tt-tnt-1024 \
         --map artifacts/token_core_map.npz \
         --out docs/measurements/die-regions.md \
         --json-out docs/measurements/die-regions.json
@@ -202,7 +202,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--hf-model", type=Path,
-                   default=ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue")
+                   default=ROOT / "artifacts" / "hf-tt-tnt-1024")
     p.add_argument("--map", type=Path, default=ROOT / "artifacts" / "token_core_map.npz")
     p.add_argument("--corpus-dir", type=Path, default=ROOT / "artifacts" / "corpus")
     p.add_argument("--words-per-source", type=int, default=1_000_000)

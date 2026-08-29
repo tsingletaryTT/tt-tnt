@@ -20,7 +20,7 @@ tc = {"model_type":"llama","num_heads":16,"num_groups":4,"embedding_dim":1024,
       "max_sequence_length":512,"runner_type":"default","theta":500000.0}
 model = tt_tnt_model.create_model(cfg, tc)
 
-emb = load_file("artifacts/hf-tt-tnt-1024-dialogue/model.safetensors")["model.embed_tokens.weight"].float().numpy()
+emb = load_file("artifacts/hf-tt-tnt-1024/model.safetensors")["model.embed_tokens.weight"].float().numpy()
 per_tok = enthusiast_of_token(balance=True)
 hp = MoEHyperparams(dim=1024, moe_inter_dim=928, n_routed_experts=10, n_activated_experts=2)
 summary = install_enthusiasts(model, hp, gate_policy="frozen", first_moe_block=2,

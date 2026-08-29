@@ -152,7 +152,7 @@ MEASURED_TURN = MODEL_TURNS[MEASURED_BLOCK]
 DEFAULT_SKITS = ROOT / "artifacts" / "reach-skits" / "skits.jsonl"
 DERIVE_MANIFEST = ROOT / "artifacts" / "reach-skits" / "derive_manifest.json"
 CORPUS = ROOT / "artifacts" / "corpus" / "tinystories.txt"
-TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024-dialogue"
+TOKENIZER_DIR = ROOT / "artifacts" / "hf-tt-tnt-1024"
 WARM_START_CKPT = (ROOT / "artifacts" / "checkpoints-v077-beta2-control"
                    / "tt_tnt_step00010764.pkl")
 #: The 3000-step arms this eval was written against. Kept as the DEFAULT so

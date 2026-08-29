@@ -886,7 +886,7 @@ def reach_scale(tmp_path_factory):
     return man, rows
 
 
-TOKENIZER = "artifacts/hf-tt-tnt-1024-dialogue"
+TOKENIZER = "artifacts/hf-tt-tnt-1024"
 
 
 @needs_artifacts(CORPUS, TOKENIZER, reason="bucket balance is a property of scale")
