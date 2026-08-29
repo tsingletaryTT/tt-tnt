@@ -540,3 +540,75 @@ the way production Llama/Qwen deployments do, and (b) a serving-layer guard — 
 upstream fix — that server-side truncates or windows conversation history before it reaches
 vLLM, so no request ever asks the engine to hold a full unbounded transcript regardless of the
 model's declared context.
+
+## 7. `FABRIC_2D_TORUS_XY` on a degenerate 1x4 mesh — a source-level hypothesis, not yet confirmed on hardware
+
+### The defect, as previously measured
+
+`docs/serving-with-tt-kernel.md` §8 already recorded a controlled A/B (same prompt, same
+sampling settings, `scripts/story_tools.py`) run back-to-back on 4-chip
+(`FABRIC_2D_TORUS_XY`, `mesh-1x4-ring.textproto`: `dims: [1, 4] dim_types: [LINE, RING]`) and
+2-chip: 2-chip's candidates were grammatically rough but recognizable English throughout;
+4-chip produced invented non-words (`Tryburg`, `Alexandary`, `Higheriq`) across most
+candidates — a pattern distinct from ordinary repetition-collapse. Root cause was left as "a
+numerical correctness issue in that fabric's collective ops is the leading suspect, untested."
+This entry is that follow-up investigation, done at the source level (no hardware was free —
+see below), and it narrows the suspect without confirming it.
+
+### What source reading actually narrows down
+
+`tt_metal/fabric/fabric_context.cpp`'s `need_deadlock_avoidance_support()` treats
+`FabricType::TORUS_XY` (what `FABRIC_2D_TORUS_XY` maps to via `get_fabric_type()`) as
+requiring deadlock-avoidance support in **every** direction unconditionally — the function's
+`torus_mismatch` check only special-cases `TORUS_X`/`TORUS_Y` individually, never `TORUS_XY`,
+so for `TORUS_XY` the check is always `false` and deadlock avoidance is applied everywhere.
+On our actual mesh (`dims: [1, 4]`), only ONE of the two logical dimensions is genuinely
+torused (the size-4 `RING` dimension); the size-1 `LINE` dimension has no real wraparound to
+protect. Applying deadlock-avoidance logic to a direction that doesn't need it is the *safe*
+direction of a mismatch (extra caution, not skipped correctness) and, read in isolation,
+looks unlikely to be the mechanism that corrupts *values* rather than *timing/scheduling*.
+
+No CCL op source (`ttnn/.../operations/ccl/**`) references `Torus` by name at all — the
+collective-reduce math itself appears topology-agnostic and delegates entirely to the fabric
+routing layer for how packets move between participants. That makes the fabric routing layer
+(the same `fabric.cpp` area as the already-documented `#22524` 1D workaround-loop bug) the
+more plausible place for a value-level defect: if a `TORUS_XY`-configured route enumerates a
+degenerate 1-row mesh's participants incorrectly (an extra hop, a missed wraparound, a
+double-counted neighbor), a collective's partial sum would be computed over the wrong
+participant set — producing a finite, plausible-looking but numerically wrong hidden state,
+which is exactly the "fluent but occasionally invents a word" symptom rather than a crash or
+gross garbage.
+
+**Absence of evidence, itself noted rather than treated as a null result:** no test file under
+`tests/tt_metal/tt_fabric/` and no doc under a fabric-related path in this tt-metal checkout
+mentions a degenerate 1xN torus shape by name. Combined with `docs/serving-with-tt-kernel.md`
+§8's own note that this project's own 2-chip config has never itself been verified under
+`FABRIC_2D_TORUS_XY` either, the honest reading is: a 1x4 "2D torus" is unexercised
+configuration space in this tt-metal checkout's own test coverage, not a well-trodden path
+this project happened to hit a rare bug in.
+
+### What this is NOT
+
+This is not a confirmed root cause. It is a plausible mechanism (routing-layer participant
+miscount under a degenerate torus dimension) inferred from source reading alone, with no
+on-device measurement behind it -- the investigation ran while all 4 chips were occupied by
+the corrected ctx2048 retrain (see CLAUDE.md's 2026-08-29 entry), so nothing here was tested
+live.
+
+### The concrete verification this needs, once hardware is free
+
+The `$autofix`/`ttm-multichip` pattern this project has used before: compare 4-chip TTNN
+output to the 2-chip baseline with **identical synthetic weights and inputs** (removes
+model-quality confounds entirely), at the component level -- attention output before/after
+the all-reduce, specifically -- rather than only comparing generated text. A clean PCC match
+at every component would refute this hypothesis outright; a divergence localized to the
+all-reduce/all-gather boundary would confirm it and point at the exact op to patch (in our
+own model code, not tt-metal, if the fix is a topology/config choice rather than a tt-metal
+bug) or file upstream (if it is).
+
+### What we did instead
+
+Kept `docs/serving-with-tt-kernel.md` §8's existing "do not use 4-chip for anything
+quality-sensitive yet" caveat in force -- this entry adds a narrowed hypothesis and a concrete
+next experiment, not a fix. 2-chip serving (verified stable and correct throughout this
+project) remains the config to trust.
