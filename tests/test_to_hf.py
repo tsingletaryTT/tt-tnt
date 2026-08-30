@@ -665,3 +665,39 @@ def test_convert_to_hf_module_imports_no_tenstorrent():
         capture_output=True, text=True, check=True, cwd=str(Path(__file__).parent.parent),
     )
     assert out.stdout.strip() == "", f"convert.to_hf pulled in: {out.stdout.strip()}"
+
+
+def test_both_conversion_paths_apply_the_tokenizer_fixups(tmp_path):
+    """The gap that cost real debugging time on 2026-08-29: convert_checkpoint installed the
+    chat template and sft_checkpoint_to_hf did not, so the tool-calling checkpoint reached a
+    served vLLM with no template and every chat request returned HTTP 400.
+
+    Asserted at the SOURCE level rather than by running both converters (the SFT path needs a
+    real SFT checkpoint): both must call the one shared function, so neither can drift.
+    """
+    from pathlib import Path as _P
+
+    to_hf = _P("convert/to_hf.py").read_text()
+    eval_improv = _P("scripts/eval_improv.py").read_text()
+    assert "def apply_tokenizer_fixups" in to_hf
+    assert "apply_tokenizer_fixups(out_dir)" in to_hf, "convert_checkpoint must call it"
+    assert "apply_tokenizer_fixups(out_dir)" in eval_improv, "sft_checkpoint_to_hf must call it"
+
+
+def test_apply_tokenizer_fixups_installs_template_and_corrects_class(tmp_path):
+    import json as _json
+
+    from convert.to_hf import _CHAT_TEMPLATE, apply_tokenizer_fixups
+
+    cfg = tmp_path / "tokenizer_config.json"
+    cfg.write_text(_json.dumps({"tokenizer_class": "PreTrainedTokenizer"}), encoding="utf-8")
+    apply_tokenizer_fixups(tmp_path)
+    written = _json.loads(cfg.read_text(encoding="utf-8"))
+    assert written["tokenizer_class"] == "PreTrainedTokenizerFast"
+    assert written["chat_template"] == _CHAT_TEMPLATE
+
+
+def test_apply_tokenizer_fixups_is_a_noop_when_there_is_no_tokenizer_config(tmp_path):
+    from convert.to_hf import apply_tokenizer_fixups
+
+    apply_tokenizer_fixups(tmp_path)  # must not raise

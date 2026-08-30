@@ -282,6 +282,13 @@ def sft_checkpoint_to_hf(step_pkl: Path, *, warm_start_ckpt: Path, tokenizer_dir
         src = tokenizer_dir / f
         if src.is_file():
             shutil.copy2(src, out_dir / f)
+    # Same fixups convert_checkpoint applies -- shared, not duplicated. Without this an
+    # SFT-converted checkpoint reaches a served vLLM with no chat template and every
+    # /v1/chat/completions request returns HTTP 400; that happened for real with the
+    # tool-calling checkpoint on 2026-08-29 (see CLAUDE.md).
+    from convert.to_hf import apply_tokenizer_fixups
+
+    apply_tokenizer_fixups(out_dir)
     return config
 
 

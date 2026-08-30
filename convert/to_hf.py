@@ -367,20 +367,40 @@ def convert_checkpoint(ckpt: Path, tokenizer_dir: Path, out_dir: Path) -> Dict[s
     # separate artifact published on its own schedule; patching it here (post-copy, in the HF
     # output directory only) fixes what `transformers` reports for this specific model
     # directory without touching that other artifact or invalidating its own tests.
-    # chat_template is added the same way and for the same reason as the tokenizer_class
-    # fix above: on the copy in out_dir only, never on artifacts/tokenizer/ (a separate,
-    # already-published artifact this step must not perturb). Without it, `transformers`
-    # v4.44+ refuses to render `/v1/chat/completions` requests at all, which is why serving
-    # has been carrying a `--chat-template` CLI flag pointed at a throwaway scratch file --
-    # this makes the windowing guard travel with the model itself instead.
-    tok_config_dst = out_dir / "tokenizer_config.json"
-    if tok_config_dst.is_file():
-        tok_config = json.loads(tok_config_dst.read_text(encoding="utf-8"))
-        if tok_config.get("tokenizer_class") == "PreTrainedTokenizer":
-            tok_config["tokenizer_class"] = "PreTrainedTokenizerFast"
-        tok_config["chat_template"] = _CHAT_TEMPLATE
-        tok_config_dst.write_text(
-            json.dumps(tok_config, indent=2) + "\n", encoding="utf-8"
-        )
+    apply_tokenizer_fixups(out_dir)
 
     return config
+
+
+def apply_tokenizer_fixups(out_dir: Path) -> None:
+    """Correct ``tokenizer_class`` and install the chat template, in an HF output directory.
+
+    Extracted so EVERY conversion path applies it, not just this module's. There are two
+    paths in this repo -- ``convert_checkpoint`` here, and
+    ``scripts/eval_improv.py::sft_checkpoint_to_hf`` for SFT-format checkpoints (skits,
+    improv, tool-calling) -- and only this one used to do it. The cost of that gap was
+    concrete: the tool-calling checkpoint reached a served vLLM instance with no chat
+    template at all and every ``/v1/chat/completions`` request returned HTTP 400 ("you must
+    provide a chat template if the tokenizer does not define one"). A shared function is the
+    fix; two copies of these few lines would drift again.
+
+    Applied to the copy in ``out_dir`` ONLY, never to ``artifacts/tokenizer/`` -- that is a
+    separate artifact on its own publication schedule with its own tests.
+
+    Two corrections, both load-bearing:
+
+    * ``tokenizer_class``: ``PreTrainedTokenizerFast.save_pretrained()`` writes
+      "PreTrainedTokenizer" (transformers strips the ``Fast`` suffix on save -- an upstream
+      quirk), while the tokenizer actually loads back as ``PreTrainedTokenizerFast``.
+    * ``chat_template``: without it ``transformers`` v4.44+ refuses to render chat requests
+      at all; with the WRONG one it renders a prompt shape the model was never trained on,
+      which silently costs the capability rather than erroring (see :data:`_CHAT_TEMPLATE`).
+    """
+    tok_config_dst = Path(out_dir) / "tokenizer_config.json"
+    if not tok_config_dst.is_file():
+        return
+    tok_config = json.loads(tok_config_dst.read_text(encoding="utf-8"))
+    if tok_config.get("tokenizer_class") == "PreTrainedTokenizer":
+        tok_config["tokenizer_class"] = "PreTrainedTokenizerFast"
+    tok_config["chat_template"] = _CHAT_TEMPLATE
+    tok_config_dst.write_text(json.dumps(tok_config, indent=2) + "\n", encoding="utf-8")
