@@ -24,10 +24,22 @@ class _FakeTok:
         return ([0] if add_special_tokens else []) + list(range(1, n + 1))
 
 
-def test_max_seq_len_is_2048_not_the_editor_scripts_512():
-    """The one constant this file must NOT inherit by copy-paste from train_editor.py -- see
-    that module's docstring point 1."""
-    assert MAX_SEQ_LEN == 2048
+def test_max_seq_len_matches_the_published_models_real_context():
+    """This constant must track the PUBLISHED model's context, not be copy-pasted or left
+    behind by a registry change.
+
+    It has now been wrong in both directions, which is why the test pins it rather than
+    trusting it: written as 2048 when the 2048-context line was live, and stale at 2048 for
+    exactly as long as it took this test to go red after that line was reverted on 2026-08-29
+    (see CLAUDE.md). Padding every training example to a cap the model was never trained to is
+    silent -- nothing downstream would have raised.
+    """
+    from train.sizes import get_size
+
+    assert MAX_SEQ_LEN == 512
+    assert MAX_SEQ_LEN == get_size("1024").max_sequence_length, (
+        "MAX_SEQ_LEN drifted from the size registry -- update both together"
+    )
 
 
 def test_build_tool_calling_example_masks_the_question_and_supervises_the_tool_call():

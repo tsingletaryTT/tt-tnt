@@ -18,30 +18,25 @@ through the Tenstorrent vLLM plugin, and packaged with
 It is small on purpose. One epoch takes about an hour on a single p300c, which is
 what makes it useful as an instrument rather than a product.
 
-⚠️ **This card's weights were retrained on 2026-08-28 to a 2048-token context** (up from
-512), to push a real growing-conversation KV-cache crash — confirmed as a generic
-tt-metal/vLLM defect, not specific to this model (see
-`docs/upstream-tt-metal-asks.md` entry 6) — far out of ordinary reach, and now ships a chat
-template (baked into `tokenizer_config.json`) that caps rendered conversation history to
-the last 5 messages as a backstop. Matched-window (512) loss improved -0.2318 nats against
-the prior checkpoint this card otherwise describes; no behavioural signal moved past its
-noise floor in either direction (n=1 seed — no replicate exists yet). Full comparison:
-`docs/measurements/evaluation-tt-tnt-1024-dialogue-vs-tt-tnt-1024-ctx2048.md`.
-**The feature-support table and experiments below describe the prior 512-context
-checkpoint this one was retrained from** (same corpus, same architecture, same warm-start
-lineage) — none of MoE routing, die-region routing, thinking, skits, or the reach dial has
-been re-verified against these specific retrained weights.
+**New in this revision (2026-08-29): a chat template ships with the model**, baked into
+`tokenizer_config.json`, capping rendered conversation history at the last 5 messages. That
+guard is what makes multi-turn chat safe here: a growing conversation otherwise crashes the
+vLLM engine outright, which is a **generic tt-metal/vLLM defect, not this model** —
+reproduced identically on stock `meta-llama/Llama-3.2-1B-Instruct` at the same context size
+(`docs/upstream-tt-metal-asks.md` entry 6). Measured with the guard active at 512 context:
+**14 growing turns, zero crashes**, prompt tokens plateauing at ~102 while messages sent grew
+to 27 — against a hard crash at turn 3 without it.
 
-🛑 **CONFIRMED REGRESSION (2026-08-29): this retrain used the wrong corpus generation and
-lost the Q&A capability described below.** It was trained with `--tokens-dir
-artifacts/tokens-v3`, which predates the `dialogue` slice (`databricks-dolly-15k`) added for
-the checkpoint it replaces — `artifacts/tokens-v4` is the correct, current corpus
-(`docs/corpus_blend.md` confirms this explicitly). Verified directly: greedy-decoded
-`Q: What is the capital of France?\nAnswer:` now loops on `Cantons, Cantons, Cantons...`
-instead of answering `Paris`. A corrected retrain on `tokens-v4`
-(`artifacts/checkpoints-tt-tnt-1024-ctx2048-v4corpus`) is in progress. **Until that lands and
-is verified, treat every "What it does"/"What it gets wrong" example below as describing the
-PRIOR checkpoint, not the weights currently published to `episod/tt-tnt-1024`.**
+*Weights themselves are unchanged from the 2026-08-18 checkpoint this card describes.* A
+2048-context replacement was trained, published, measured to answer questions **worse**, and
+reverted the same day; the context raise had been motivated entirely by that crash, and the
+guard turned out to fix the crash by itself. The reason 2048 degraded question answering was
+**not isolated** — the obvious epoch-inflation explanation was tested by a six-checkpoint
+sweep and *not* supported. Full data, including what the instruments failed to show:
+`docs/measurements/ctx2048-regression-and-guard-efficacy.json`.
+
+Everything below — the feature-support table, the experiments, the good and bad examples —
+describes these weights, which are the ones published.
 
 ## What it does best
 
@@ -85,11 +80,11 @@ not useful. It is not a claim that the model is good.
 |---|---|
 | parameters | 122,962,944 |
 | hidden size / layers / heads | 1024 / 8 / 16 (4 KV heads) |
-| context | 2048 |
+| context | 512 |
 | vocabulary | 32,000 (BPE, trained on this corpus) |
-| training | 10,764 steps, batch 64, seq 2048, 4-chip DDP on one p300c |
-| final validation loss (2048-token window) | 2.4504 |
-| loss at matched 512-token window | 2.5408 (vs. 2.7726 for the prior 512-context checkpoint) |
+| training | 10,764 steps, batch 64, seq 512, 4-chip DDP on one p300c |
+| final validation loss | 2.8230 |
+| chat history cap | last 5 messages (chat template, see above) |
 
 4 KV heads means it shards across 1, 2 or 4 chips without violating
 head-divisibility.

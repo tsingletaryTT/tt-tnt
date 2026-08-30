@@ -171,16 +171,21 @@ def test_architecture_can_shard_onto_the_declared_mesh(path):
 #: the same trap this test exists to catch, from the other direction, and a bigger bite of
 #: it than the 512 case was.
 #:
-#: ``1024`` was retrained (DDP-4-chip, 10,764 steps, seed 5489) and republished to
-#: ``episod/tt-tnt-1024`` on 2026-08-29 at the registry's new 2048 target -- verified
-#: directly, not taken on trust: the Hub repo's ``config.json`` reads
-#: ``max_position_embeddings: 2048`` (``scripts/publish_to_hub.py --verify`` passes against
-#: that exact expectation), and its ``model.safetensors`` is the freshly-uploaded file, not
-#: the prior 512-context checkpoint this replaces. See CLAUDE.md's 2026-08-28/29 entry.
+#: ``1024`` went to 2048 on 2026-08-29 and came BACK to 512 the same day. The 2048 publish
+#: was real (it happened, and is in this file's git history), and was reverted because the
+#: 2048-context weights answered questions measurably worse than the 512 checkpoint they
+#: replaced, while the serving crash that motivated the raise turned out to be fixed by the
+#: chat-template windowing guard alone -- verified at 512 context, 14 growing turns, zero
+#: crashes. See CLAUDE.md's 2026-08-29 entry and ``train/configs/model/tt-tnt-1024.yaml``.
+#:
+#: This constant is therefore back to 512, which is what ``episod/tt-tnt-1024`` actually
+#: serves again. That round trip is itself the argument for this constant existing: it
+#: tracks the PUBLISHED artifact, so it moved twice in one day without either value ever
+#: having been wrong at the time it was set.
 #:
 #: Update a *published* entry here only once that size's weights are ACTUALLY retrained and
 #: republished at the new context length -- not when the registry's design target changes.
-_PUBLISHED_CONTEXT = {"384": 2048, "1024": 2048}
+_PUBLISHED_CONTEXT = {"384": 2048, "1024": 512}
 
 
 @pytest.mark.parametrize("path", _manifests(), ids=lambda p: p.stem)

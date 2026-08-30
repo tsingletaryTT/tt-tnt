@@ -1,0 +1,160 @@
+{
+  "schema": "tt-tnt/measurement/1",
+  "title": "2048-context regression: epoch sweep, control, and guard efficacy",
+  "date": "2026-08-29",
+  "summary": "Two questions, one answered decisively and one NOT answered. (1) GUARD EFFICACY: the chat-template windowing guard (5-message cap) prevents the growing-conversation KV-cache crash BY ITSELF at 512 context -- 14 turns, zero crashes, prompt_tokens plateauing at ~102 while messages sent grew to 27, against a hard crash at turn 3 without it. The 2048 context raise was therefore unnecessary. (2) WHY 2048 DEGRADED Q&A: NOT ANSWERED. The epoch-inflation hypothesis was tested by this sweep and is NOT supported -- termination is non-monotone across 0.74-4.00 epochs and every comparison against the 512 control is NOT SIGNIFICANT at n=32. The metrics chosen (termination rate, type/token ratio) do not discriminate these models at all; what discriminates is Q&A coherence, which was read rather than scored.",
+  "instrument_limitations": [
+    "n=32 sampled completions per checkpoint -- underpowered for proportions near 0.1 (binomial SE ~0.05), which is why every pairwise comparison lands NOT SIGNIFICANT.",
+    "Termination measured on 4 story prompts x 8 samples, NOT this project's frozen prompt set B, so these numbers are NOT comparable to score_behaviour.py's published termination figures (0.0542/0.0250). Within-sweep comparison is valid; cross-instrument comparison is not.",
+    "Type/token ratio is flat (0.707-0.741) across every checkpoint including the control -- it carries no signal here and should not be cited as evidence in either direction.",
+    "The 512-vs-2048 comparison is CONFOUNDED: those runs differ in seq_len AND epochs (1.00 vs 4.00) simultaneously. This data cannot separate them."
+  ],
+  "guard_efficacy": {
+    "condition": "episod/tt-tnt-1024 served at --max_model_len 512 (the exact crash condition), chat template active from tokenizer_config.json",
+    "turns_attempted": 14,
+    "turns_completed": 14,
+    "crashes": 0,
+    "prompt_tokens_by_turn": [
+      19,
+      61,
+      102,
+      102,
+      103,
+      102,
+      101,
+      102,
+      103,
+      103,
+      103,
+      102,
+      102,
+      102
+    ],
+    "messages_sent_final": 27,
+    "before_guard": {
+      "turn_0": 23,
+      "turn_1": 65,
+      "turn_2": 106,
+      "turn_3": "ENGINE CRASH"
+    },
+    "verdict": "guard alone is sufficient; context raise unnecessary"
+  },
+  "control_512_dialogue": {
+    "label": "CONTROL-dialogue-512",
+    "epochs": 1.0,
+    "termination_rate": 0.15625,
+    "mean_type_token_ratio": 0.7349828244218548,
+    "mean_worst_run_length": 1.0625,
+    "qa_greedy": [
+      "The city of Tarn is the capital of the French department of Tarn.",
+      "The city of Turin is the capital of the Province of Turin.",
+      "The body of a spider is called a spider. The body of a spider is called a spider. The body of a spider is called a spider. The body of a spider is called a spider.",
+      "The color of the sky is blue."
+    ],
+    "termination_se": 0.0642
+  },
+  "epoch_sweep_2048": [
+    {
+      "label": "step00002000",
+      "epochs": 0.74,
+      "termination_rate": 0.03125,
+      "mean_type_token_ratio": 0.7162272531566556,
+      "mean_worst_run_length": 1.09375,
+      "qa_greedy": [
+        "The capital of France is the capital of the Republic of France. The capital of the Republic of France is the capital of the Republic of France. The capital is the capital of the Republic of France.",
+        "The capital of the province is the capital of the province. The province is divided into two parts: the province is divided into two parts: the province is divided into two parts: the province is divided",
+        "The spider has a long neck, and a long neck. The spider has a long neck, and a long neck. The spider has a long neck, and a long neck. The spider has a",
+        "The sun is the moon. It is the moon. It is the moon. It is the moon. It is the moon. It is the moon. It is the moon. It is the moon"
+      ],
+      "termination_se": 0.0308,
+      "vs_control_delta": 0.125,
+      "vs_control_t": 1.76,
+      "vs_control_verdict": "NOT SIGNIFICANT"
+    },
+    {
+      "label": "step00004000",
+      "epochs": 1.49,
+      "termination_rate": 0.09375,
+      "mean_type_token_ratio": 0.7351242650588203,
+      "mean_worst_run_length": 1.03125,
+      "qa_greedy": [
+        "The capital of the country is Paris. It is the capital of the French Republic. It is the capital of the French Republic. It is the capital of the French Republic. It is the capital of",
+        "The capital of the country is the city of Rome. It is the capital of the country. It is the capital of the country. It is the capital of the country. It is the capital of",
+        "The spider is a spider of prey. It is a spider of prey. It is a spider of prey. It is a spider of prey. It is a spider of prey. It is a spider",
+        "The sun is a bright blue color. It is a color of light and color. It is a color of light and color. It is a color of light and color. It is a color of"
+      ],
+      "termination_se": 0.0515,
+      "vs_control_delta": 0.0625,
+      "vs_control_t": 0.76,
+      "vs_control_verdict": "NOT SIGNIFICANT"
+    },
+    {
+      "label": "step00006000",
+      "epochs": 2.23,
+      "termination_rate": 0.25,
+      "mean_type_token_ratio": 0.7296430467834468,
+      "mean_worst_run_length": 1.09375,
+      "qa_greedy": [
+        "The capital of France is called in the year of the year. It is the capital of the department of the department. It is the capital of the department of the department. It is the capital of",
+        "The capital of Italy is called in the year of the city of Parma. It is the capital of the Republic of Italy. It is the capital of the Republic of Italy. It is the capital of",
+        "The most common way to clean a sausage is to clean a sausage. The most common way to clean a sausage is to clean a sausage with a knife. The most common way to clean a sausage is",
+        "The color of the sky is not always the same. The color of the sky is usually the same. The color of the sky is usually the same. The color of the sky is usually the same"
+      ],
+      "termination_se": 0.0765,
+      "vs_control_delta": -0.0938,
+      "vs_control_t": 0.94,
+      "vs_control_verdict": "NOT SIGNIFICANT"
+    },
+    {
+      "label": "step00008000",
+      "epochs": 2.97,
+      "termination_rate": 0.0625,
+      "mean_type_token_ratio": 0.7229860750578156,
+      "mean_worst_run_length": 1.1875,
+      "qa_greedy": [
+        "The capital of France is the city of Almer\u00eda. It is the capital of the province of Almer\u00eda. It is the capital of the province of Almer\u00eda. Almer\u00eda is",
+        "The capital of Italy is the city of Naples. It is the capital of the province of Naples. It is the capital of the province of Naples. It is the capital of the province of Naples.",
+        "The spider is a very small insect, with a long, thick body, and a long, thin body. The spider is found in all parts of the world, from the Middle and Eastern States to",
+        "The air is heated by a flame. The air is heated by a flame. The air is heated by a flame. The air is heated by a flame. The air is heated by a flame."
+      ],
+      "termination_se": 0.0428,
+      "vs_control_delta": 0.0938,
+      "vs_control_t": 1.22,
+      "vs_control_verdict": "NOT SIGNIFICANT"
+    },
+    {
+      "label": "step00010000",
+      "epochs": 3.72,
+      "termination_rate": 0.03125,
+      "mean_type_token_ratio": 0.706842943763722,
+      "mean_worst_run_length": 1.03125,
+      "qa_greedy": [
+        "The capital of France is the city of Nice. The capital of Nice is the city of Nice. The capital of Nice is the city of Nice. The capital of Nice is the city of Nice.",
+        "The capital of Italy is Venice, but it is not a province. The capital of Italy is Venice. The capital of Italy is Venice. The capital of Italy is Venice. The capital of Italy is",
+        "The spider is a type of spider. It is a type of spider. It is a type of spider. It is a type of spider. It is a type of spider. It is a type",
+        "The sky is blue, blue, and yellow. The sky is blue, blue, and yellow. The sky is blue, blue, and yellow. The sky is blue, blue, and yellow."
+      ],
+      "termination_se": 0.0308,
+      "vs_control_delta": 0.125,
+      "vs_control_t": 1.76,
+      "vs_control_verdict": "NOT SIGNIFICANT"
+    },
+    {
+      "label": "step00010764",
+      "epochs": 4.0,
+      "termination_rate": 0.0625,
+      "mean_type_token_ratio": 0.7406338247263802,
+      "mean_worst_run_length": 1.09375,
+      "qa_greedy": [
+        "The name of the city is a French word. The city is a place of interest because it is a place of interest because it is a place of interest because it is a place of interest because it",
+        "The city of Cologne is located in the center of the city. It is located in the center of the metropolitan area. The city is located in the center of the metropolitan area. The city is located",
+        "The following list is a summary of the first edition of the book: \"The first edition of the book is a complete one, and the second is a complete one, and the third is a complete",
+        "The sky is blue, the sky is blue, the sky is blue, the sky is blue, the sky is blue, the sky is blue, the sky is blue, the sky is blue,"
+      ],
+      "termination_se": 0.0428,
+      "vs_control_delta": 0.0938,
+      "vs_control_t": 1.22,
+      "vs_control_verdict": "NOT SIGNIFICANT"
+    }
+  ]
+}

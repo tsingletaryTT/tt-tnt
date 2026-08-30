@@ -2,20 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
 """Continued training: tool-calling response modes (train/tool_calling.py's data layer),
-warm-started from the corrected tt-tnt-1024 checkpoint (2048 context, tokens-v4 corpus --
-see CLAUDE.md's 2026-08-29 entries for why "corrected" is load-bearing here).
+warm-started from the published tt-tnt-1024 checkpoint (512 context, tokens-v4 corpus).
 
 Same anti-forgetting discipline `scripts/train_editor.py` learned the hard way: a majority
 base-blend refresh alongside the new task data, not the whole budget spent on task data alone
 (that shipped a catastrophically broken checkpoint once already -- CLAUDE.md, 2026-08-27).
 `--base-blend-ratio` defaults to 0.6 for the same reason it does there.
 
-TWO THINGS THIS FILE MUST NOT INHERIT FROM train_editor.py BY COPY-PASTE
--------------------------------------------------------------------------
-1. `MAX_SEQ_LEN` here is 2048, not 512 -- this checkpoint's real trained context. Padding
-   every example to a WRONG cap would silently truncate perfectly good headroom (harmless)
-   or, the more dangerous direction, would use the wrong value if this file is ever edited
-   to match a future size change without checking here too.
+TWO CONSTANTS THAT MUST TRACK REALITY, NOT BE COPY-PASTED
+----------------------------------------------------------
+1. `MAX_SEQ_LEN` must equal the PUBLISHED model's context. It has been wrong in both
+   directions already: written as 2048 while the 2048-context line was live, then stale at
+   2048 after that line was reverted on 2026-08-29 (CLAUDE.md). Padding every example to a
+   cap the model was never trained to is silent -- nothing downstream raises. A test pins it
+   against `train.sizes` so the two cannot drift apart again.
 2. `DEFAULT_BASE_BLEND_TOKENS` here is `artifacts/tokens-v4/train_ids.npy`, not `tokens-v3`.
    tokens-v3 predates the dialogue slice (the exact mistake this project just made and
    corrected for the base checkpoint itself -- see CLAUDE.md's 2026-08-29 entry, "The
@@ -25,15 +25,10 @@ TWO THINGS THIS FILE MUST NOT INHERIT FROM train_editor.py BY COPY-PASTE
 
 WARM START
 ----------
-Defaults to `artifacts/checkpoints-tt-tnt-1024-ctx2048-v4corpus/tt_tnt_step00010764.pkl` --
-the corrected retrain's final checkpoint. Literal, not resolved from
-`docs/current_model.json` at call time (unlike train_editor.py's `--warm-start` default):
-that file's `current` entry still names the WRONG-corpus checkpoint as of this file's
-writing, with the regression flagged rather than the entry corrected yet (see its own
-`_readme`). Auto-resolving from it here would silently warm-start from the flawed weights
-the moment this script is written, before anyone re-points that designation. Pass
-`--warm-start` explicitly once you know which checkpoint you actually mean; the literal
-default is a stand-in for "the corrected run, once it exists," not a claim that it exists yet.
+Defaults to `artifacts/checkpoints-1024-dialogue/tt_tnt_step00010764.pkl` -- the weights
+`docs/current_model.json` currently designates and `episod/tt-tnt-1024` currently serves.
+Kept literal rather than resolved from that file at call time so a future re-designation
+cannot silently change what this script warm-starts from without someone editing this line.
 """
 
 from __future__ import annotations
@@ -66,10 +61,11 @@ MODEL_YAML = ROOT / "train" / "configs" / "model" / "tt-tnt-1024.yaml"
 DEFAULT_BASE_BLEND_TOKENS = ROOT / "artifacts" / "tokens-v4" / "train_ids.npy"
 DEFAULT_OUT_ROOT = ROOT / "artifacts" / "checkpoints-1024-tool-calling"
 DEFAULT_WARM_START = (
-    ROOT / "artifacts" / "checkpoints-tt-tnt-1024-ctx2048-v4corpus" / "tt_tnt_step00010764.pkl"
+    ROOT / "artifacts" / "checkpoints-1024-dialogue" / "tt_tnt_step00010764.pkl"
 )
-#: This checkpoint's real trained context -- see module docstring point 1.
-MAX_SEQ_LEN = 2048
+#: This checkpoint's real trained context. Was 2048 when written; the 2048 line was
+#: reverted on 2026-08-29 (see CLAUDE.md) and the published model is 512 again.
+MAX_SEQ_LEN = 512
 #: How many of the mined (not hand-authored) Question/Answer pairs to expand into training
 #: examples. Passed straight through to train.tool_calling.build_corpus's own cap.
 DEFAULT_MAX_MINED_PAIRS = 200
@@ -124,7 +120,7 @@ def sample_base_blend_examples(
     token_path: Path, n: int, *, seq_len: int = MAX_SEQ_LEN, seed: int
 ) -> List[dict]:
     """Same convention as scripts/train_editor.py's function of the same name, over THIS
-    checkpoint's real seq_len (2048) and the CORRECTED corpus generation (tokens-v4, passed by
+    checkpoint's real seq_len and the CORRECTED corpus generation (tokens-v4, passed by
     the caller via --base-blend-tokens's default)."""
     import numpy as np
     import random as _random

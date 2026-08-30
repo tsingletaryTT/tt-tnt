@@ -339,20 +339,22 @@ SIZES: Dict[str, ModelSize] = {
         num_heads=16,
         num_groups=4,
         vocab_size=32000,
-        max_sequence_length=2048,
+        max_sequence_length=512,
         theta=500000.0,
         rationale=(
-            "RAISED to 2048 on 2026-08-28 (matching 384's precedent) for a real longer-"
-            "context run, motivated by a serving finding rather than a loss probe on this "
-            "shape: an independent control test showed stock meta-llama/Llama-3.2-1B-"
-            "Instruct crashes identically (AssertionError: Sequence length 1024 exceeds "
-            "max seq len 512) on the exact same stack at max_model_len=512, proving the "
-            "growing-conversation KV-cache crash this project hit is a generic tt-metal/"
-            "vLLM defect exposed by a small context relative to ordinary chat length -- "
-            "not a defect in this project's model. Raising context is real hardening: it "
-            "moves the crash boundary far enough out that ordinary use never approaches "
-            "it, the way production-context Llama/Qwen deployments never do. See "
-            "docs/upstream-tt-metal-asks.md entry 6. "
+            "RAISED to 2048 on 2026-08-28, REVERTED to 512 on 2026-08-29 -- the revert is "
+            "the load-bearing fact and the YAML carries the full argument. Short version: "
+            "the raise was motivated by a serving crash, not by any measurement on this "
+            "shape; the chat-template windowing guard shipped alongside it (5-message cap) "
+            "turned out to fix that crash BY ITSELF, verified at 512 context with 14 "
+            "growing turns and zero crashes where turn 3 crashed before; and every "
+            "2048-context checkpoint trained (2 runs, 6 checkpoints, 0.74-4.00 epochs) "
+            "answered questions measurably worse than the 512 checkpoint it replaced. The "
+            "MECHANISM was not isolated -- the epoch-inflation hypothesis (steps held at "
+            "10,764 while seq_len quadrupled, so epochs went 1.00 -> 4.00) was TESTED by an "
+            "epoch sweep and NOT SUPPORTED: termination came back non-monotone and every "
+            "comparison against the 512 control was NOT SIGNIFICANT at n=32. Do not "
+            "re-raise on the assumption that fewer epochs fixes it. "
             "The multi-chip-capable size. num_groups=4 admits mesh widths {1,2,4}, so "
             "single-chip, N300/P300 and a 4-chip QuietBox 2 all satisfy "
             "tt_transformers' head-divisibility assertions — which 384 cannot. "

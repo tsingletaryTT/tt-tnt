@@ -2807,6 +2807,58 @@ stale claim, and the Hub-published copy will be corrected by re-publishing once 
 `_readme` and `current.qualification` both say, in these words: treat the dialogue capability
 as **known false**, not merely unverified, until that lands.
 
+## The 2048 context raise, reverted — and a hypothesis of mine that the data refuted (2026-08-29)
+
+The corrected `tokens-v4` retrain finished and **still** would not answer questions: greedy
+"capital of France" came back circular ("the capital of France is the capital of the Republic
+of France"), Italy answered "Cologne", sky answered "the sky is blue" six times. Right corpus,
+same failure. So the corpus was necessary and not sufficient, and something about the 2048
+retrain itself was the problem.
+
+**The arithmetic mistake, found by checking rather than assuming.** I had held step count at
+10,764 "for comparability" while quadrupling `seq_len`. Step count is not the comparable
+quantity when sequence length moves: `10,764 x 64 x 512 = 352.7M tokens = 1.00 epoch`, but
+`10,764 x 64 x 2048 = 1,410.9M = 4.00 epochs`. Both 2048 runs silently did four epochs. And
+this project had *already measured* what extra epochs do — `docs/measurements/evaluation-tt-tnt-1024a-vs-tt-tnt-1024-2ep.md`
+records termination rate 0.0542 -> 0.0250, **worse at 2.00x the seed floor**, the only signal
+clearing both gates, with episod-log.md's gloss: "a second pass ... taught the model to **stop
+less**." Repetition loops are exactly *stops less*.
+
+**That hypothesis was then tested, and the data did not support it.** The failed 4-epoch run
+left six checkpoints spanning 0.74–4.00 epochs at fixed seed/corpus/context/LR/batch — an
+accidental controlled epoch sweep, free to evaluate, per the standing rule to ask whether the
+answer is already on disk. Termination came back **non-monotone**: 0.031, 0.094, 0.250, 0.062,
+0.031, 0.062. Against the 512 control (0.156), **every** pairwise comparison is NOT SIGNIFICANT
+at n=32 (|t| 0.75–1.76; binomial SE ~0.05 at these rates). Type/token ratio is flat across
+everything, control included (0.707–0.741). **The metrics I chose to test my hypothesis cannot
+tell these models apart at all** — a designed instrument that failed to discriminate, which is
+the honest result and not a detail to bury. What actually separates them is Q&A coherence,
+which I *read* rather than scored. The mechanism remains unisolated, and the 512-vs-2048
+comparison is confounded anyway (seq_len and epochs moved together). Recorded in
+`docs/measurements/ctx2048-regression-and-guard-efficacy.json` with its own limitations
+section, so the next person inherits the null rather than re-deriving it.
+
+**What made the decision anyway: questioning the premise instead of the parameter.** The
+context raise existed only to dodge the growing-conversation KV-cache crash. But the same
+change shipped a chat-template windowing guard (5-message cap). If the guard alone sufficed,
+2048 was never needed. Tested directly at **512 context — the exact crash condition**: 14
+growing turns, **zero crashes**, `prompt_tokens` plateauing at ~102 while messages sent grew to
+27, against turn-0/1/2 = 23/65/106 then **engine crash at turn 3** before. The plateau lands
+precisely on the 5-message boundary, which is the guard working and not a coincidence.
+
+So: **reverted to the proven 512 dialogue weights, kept the guard, republished** (Hub sha
+`038d6c6a`, `--verify` green on all seven checks, bundle manifest and a fresh `tt-model` pull
+both rendering `--max_model_len 512`). `train/sizes.py`, the YAML, the manifest and
+`_PUBLISHED_CONTEXT` all went back to 512 — that constant moved twice in one day without
+either value having been wrong when set, which is the argument for it existing.
+
+**Two lessons worth carrying.** *When you change one training parameter, recompute every
+derived quantity before claiming comparability* — "same steps" silently became "4x the epochs",
+and the tell was arithmetic I could have done in ten seconds at dispatch time rather than after
+two 4.5-hour runs. And *before optimising a parameter, check whether the reason for the
+parameter still exists* — two full retrains chased a context length whose entire justification
+had already been satisfied by a one-line chat template shipped in the same change.
+
 **The lesson.** A corpus generation is not implied by a model size or a training recipe --
 `train/paths.py`'s own docstring already warns about exactly this class of mistake for
 tokenizer/tokens regeneration ("retraining the tokenizer... produces numerically different

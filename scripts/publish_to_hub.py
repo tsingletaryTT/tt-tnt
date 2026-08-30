@@ -157,7 +157,7 @@ TARGETS = {
         # per-experiment directory), but it is a size-specific fixed path, not the shared
         # HF_DIR constant.
         "hf_dir": ROOT / "artifacts" / "hf-tt-tnt-1024",
-        "max_position_embeddings": 2048,
+        "max_position_embeddings": 512,
         "tie_word_embeddings": True,
         "vocab_size": 32000,
         "param_count": 122962944,
