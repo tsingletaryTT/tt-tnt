@@ -2807,6 +2807,67 @@ stale claim, and the Hub-published copy will be corrected by re-publishing once 
 `_readme` and `current.qualification` both say, in these words: treat the dialogue capability
 as **known false**, not merely unverified, until that lands.
 
+## Tool calling: the mechanism is a clean success, the voice is not (2026-08-29)
+
+**The ask.** "When someone asks me a question, I use the witty response tool. Or the absurdist
+tool. Or the factual tool. Or the misunderstood-the-question tool." Real tool calls, not a
+mode tag — tools as *formalised roles* carrying structured metadata. Voice brief: Brautigan,
+Kerouac, Ginsberg, Stein, Steve Martin, Douglas Adams, Tom Robbins, Borges, Zork, AD&D,
+interactive fiction. "We need wildcards. We need boring. We need ingenious. We need I had no
+idea it could go there."
+
+**What shipped.** `train/tool_calling.py`: four tools through the hermes protocol already wired
+into serving (`factual_response(answer, confidence)`, `witty_response(answer, technique)`,
+`absurdist_response(answer, logic)`, `misunderstood_question(interpreted_as, answer)`), 100
+hand-authored seeds in that register, plus real Q&A pairs mined from the corpus's own dialogue
+slice and mechanically expanded. `scripts/train_tool_calling.py` (SFT, 60% base-blend
+anti-forgetting), `scripts/eval_tool_calling.py` (three gates + warm-start control).
+
+**The mechanism works, measured against a control that makes the number mean something:**
+
+| gate | stage 1 | stage 2 | control (warm-start base) |
+|---|---:|---:|---:|
+| emission | 100.0% | 100.0% | **0.0%** |
+| parse | 85.9% | 82.8% | 0.0% |
+| schema-valid | 75.0% | 75.0% | 0.0% |
+| distinct tools used | 4/4 | 4/4 | 0/4 |
+
+The base never emits a tool call, so the format came from training and not the harness — the
+same control shape that made improv-stage1's 98% adherence meaningful. **Unseen questions
+scored HIGHER than seen** (78% vs 72% schema-valid), so it learned the format rather than
+memorising rows.
+
+**The voice did not arrive, and the first reason was my own design error.** Stage 1's corpus was
+100 hand-authored against 800 derived — the good material was **11%** — and the model learned
+the mechanical templates almost exclusively, quoting `derive_templated_variants` verbatim
+("Officially, … several committees are still reviewing the paperwork"; "You're welcome, that one
+was free"). Fixed by repeating the seeds 8x to parity (800/800), with a test pinning the share
+in 40–60% so it cannot drift back. That fix **worked at what it targeted**: mechanical-template
+phrases fell from **7/8 to 3/8** sampled completions, and the two most distinctive ones went to
+**zero** (n=8, so suggestive rather than conclusive).
+
+**But the wit still did not appear** — stage 2's content is incoherent rather than templated.
+"The capital of France is the capital of France." Portugal answered "Madrid." confidently. The
+one faint echo ("The sky blue is gray, it looks like it's in a maze") is closer to word salad
+than to Zork. **The honest conclusion: the tool-calling MECHANISM is a success and the CONTENT
+is bounded by the base model.** A 123M model that cannot reliably name the capital of Portugal
+cannot construct "Mount Cleverest" or "F is the capital letter of France" — those need the
+joke's mechanism understood, not imitated. This is the same shape as this project's own
+dialogue-slice finding: a small curated slice buys **form, not knowledge**, and 100 hand-written
+examples cannot lift a model into a register its base has no purchase on.
+
+**Not published, not designated.** A PARTIAL with good structure and bad content is not a
+checkpoint to promote. Kept as `artifacts/checkpoints-1024-tool-calling{,-s2}` with both
+measurements committed.
+
+**A guard caught me, correctly.** I passed `--eval-every 0` to stage 2 to save wall clock;
+`assert_eval_wired` refused to start, because holding out 100 examples the trainer would never
+evaluate means a silently empty validation curve — the exact `--eval-every` vs `--val-every`
+confusion recorded in the 2026-08-20 entry. Separately and NOT fixed: stage 1 ran with
+`--eval-every 250` and `assert_eval_wired` passed, yet `loss_curve.jsonl` contains **no eval
+rows at all** — `LossRecorder` records train only. The guard proves the trainer *would*
+evaluate; nothing yet proves the result is *recorded*. Assert on the wiring AND on the artifact.
+
 ## The 2048 context raise, reverted — and a hypothesis of mine that the data refuted (2026-08-29)
 
 The corrected `tokens-v4` retrain finished and **still** would not answer questions: greedy

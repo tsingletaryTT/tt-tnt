@@ -1,0 +1,130 @@
+{
+  "model": {
+    "model": "artifacts/hf-tt-tnt-1024-tool-calling-s2",
+    "n_total_generations": 64,
+    "emission_rate": 1.0,
+    "parse_rate": 0.828125,
+    "schema_valid_rate": 0.75,
+    "tool_distribution": {
+      "absurdist_response": 18,
+      "misunderstood_question": 12,
+      "witty_response": 5,
+      "factual_response": 18
+    },
+    "distinct_tools_used": 4,
+    "registered_tools": [
+      "absurdist_response",
+      "factual_response",
+      "misunderstood_question",
+      "witty_response"
+    ],
+    "per_question": [
+      {
+        "question": "What is the capital of France?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 7,
+        "schema_valid": 7
+      },
+      {
+        "question": "How many legs does a spider have?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 7,
+        "schema_valid": 6
+      },
+      {
+        "question": "Why is the sky blue?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 6,
+        "schema_valid": 6
+      },
+      {
+        "question": "What is the tallest mountain?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 6,
+        "schema_valid": 6
+      },
+      {
+        "question": "What is the capital of Portugal?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 8,
+        "schema_valid": 7
+      },
+      {
+        "question": "Why do rivers bend?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 6,
+        "schema_valid": 6
+      },
+      {
+        "question": "How many strings does a violin have?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 7,
+        "schema_valid": 4
+      },
+      {
+        "question": "What is the smallest bone in the body?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 6,
+        "schema_valid": 6
+      }
+    ],
+    "first_sample_per_question": [
+      {
+        "question": "What is the capital of France?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"The capital of France is the capital of France.\", \"logic\": \"confidence\": \"high\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n"
+      },
+      {
+        "question": "How many legs does a spider have?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"Officially, 12 legs have all the legs in a spider web, and the spider is not in any way a spider.\", \"logic\": \"every single one has to have a long and flexible body that is able to jump around the web\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call"
+      },
+      {
+        "question": "Why is the sky blue?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"The sky blue is gray, it looks like it's in a maze. That's the answer, I'm sure.\", \"logic\": \"a bird's nest is the answer, it seems like a nest.\", \"logic\": \"logic\": \"holesurdist_response\", \"logic\": \"holesurdist_response\", \"logic\": \"logic\": \"logic\": \"logic\":"
+      },
+      {
+        "question": "What is the tallest mountain?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"witty_response\", \"arguments\": {\"answer\": \"The Mount is in the middle of the mountain.\", \"technique\": \"reference\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool"
+      },
+      {
+        "question": "What is the capital of Portugal?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"factual_response\", \"arguments\": {\"answer\": \"Madrid.\", \"confidence\": \"high\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</"
+      },
+      {
+        "question": "Why do rivers bend?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"factual_response\", \"arguments\": {\"answer\": \"Flying to the left and right of the river to the right. This is a major change.\", \"confidence\": \"high\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</t"
+      },
+      {
+        "question": "How many strings does a violin have?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"misunderstood_question\", \"arguments\": {\"interpreted_as\": \"a slightly different version of: How many strings does a violin have?\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_c"
+      },
+      {
+        "question": "What is the smallest bone in the body?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"Officially, 1. Minced. There are many ways to understand if a bone is contained in a body. That is a good example of an outcomesible definition.\", \"logic\": \"a long, heavy, sharp, curved bone is a good example of how to define it, and can be measured in a particular manner.\", \"logic\": \"every single bone is an invertebrate, a very"
+      }
+    ]
+  }
+}
