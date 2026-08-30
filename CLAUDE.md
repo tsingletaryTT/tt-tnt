@@ -2884,11 +2884,13 @@ the model was trained to continue, and a mismatched one silently costs the entir
 while every offline check still passes. This is the same class as the errors
 `scripts/evaluate.py` exists to prevent: the failure was in the *joining*, not the measuring.
 
-**One conversion path still lacks the guard.** `convert/to_hf.py::convert_checkpoint` adds the
-chat template; `scripts/eval_improv.py::sft_checkpoint_to_hf` (the SFT path, used for every
-skits/improv/tool-calling checkpoint) does NOT — which is how the tool-calling artifact reached
-a server with no template at all and returned a bare HTTP 400. Patched by hand for this run;
-the real fix is to make both paths share one function, and it is not done.
+**The two conversion paths now share one function.** `convert/to_hf.py::convert_checkpoint`
+installed the chat template and the `tokenizer_class` correction;
+`scripts/eval_improv.py::sft_checkpoint_to_hf` (the SFT path, used for every
+skits/improv/tool-calling checkpoint) did neither — which is how the tool-calling artifact
+reached a served vLLM with no chat template at all and returned a bare HTTP 400 on every chat
+request. Extracted as `convert.to_hf.apply_tokenizer_fixups(out_dir)` and called from both,
+with a test asserting both call sites exist so they cannot drift apart again.
 
 **A guard caught me, correctly.** I passed `--eval-every 0` to stage 2 to save wall clock;
 `assert_eval_wired` refused to start, because holding out 100 examples the trainer would never
