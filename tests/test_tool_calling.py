@@ -213,10 +213,32 @@ def test_derive_templated_variants_keeps_the_real_answer_visible():
         assert "Green." in rendered_answer or "Green" in rendered_answer
 
 
+def test_build_corpus_balances_hand_authored_against_derived():
+    """Stage 1's headline failure: at the natural 1:8 ratio the model learned the mechanical
+    templates and none of the hand-authored voice (docs/measurements/tool-calling-stage1.json).
+    The default repeat must actually bring the two layers close to parity -- a default that
+    silently drifted back toward the derived layer would reproduce that failure."""
+    from train.tool_calling import DEFAULT_HAND_AUTHORED_REPEAT
+
+    corpus = build_corpus()
+    hand = sum(1 for e in corpus if e.provenance == "hand")
+    derived = sum(1 for e in corpus if e.provenance == "derived")
+    assert hand == len(hand_authored_examples()) * DEFAULT_HAND_AUTHORED_REPEAT
+    assert 0.4 <= hand / (hand + derived) <= 0.6, (
+        f"hand-authored share is {hand/(hand+derived):.1%}; stage 1 failed at 11% and the "
+        f"repeat exists to keep this near parity"
+    )
+
+
+def test_build_corpus_rejects_a_repeat_below_one():
+    with pytest.raises(ValueError, match="must be >= 1"):
+        build_corpus(hand_authored_repeat=0)
+
+
 def test_build_corpus_puts_hand_authored_examples_first():
     """A consumer that truncates (a smoke test, --limit N) must see the higher-quality
     hand-authored core, not a random mix that happens to include some of it."""
-    corpus = build_corpus(max_mined_pairs=10)
+    corpus = build_corpus(max_mined_pairs=10, hand_authored_repeat=1)
     hand_count = len(hand_authored_examples())
     assert all(e.provenance == "hand" for e in corpus[:hand_count])
     assert any(e.provenance == "derived" for e in corpus[hand_count:])

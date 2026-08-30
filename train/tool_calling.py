@@ -713,14 +713,40 @@ def derive_templated_variants(pair: MinedPair) -> List[ToolCallExample]:
     return examples
 
 
+#: How many times the hand-authored seeds are repeated relative to the derived expansion.
+#:
+#: MEASURED, not chosen for tidiness. Stage 1 trained at the natural ratio -- 100 hand-authored
+#: against 800 derived, i.e. the good material was 11% of the corpus -- and the model learned
+#: the MECHANICAL TEMPLATES almost exclusively. Its generations quote
+#: `derive_templated_variants` verbatim ("Officially, ... unofficially, several committees are
+#: still reviewing the paperwork"; "You're welcome, that one was free") and show essentially
+#: none of the hand-authored voice. See docs/measurements/tool-calling-stage1.json.
+#:
+#: 8 makes the two layers roughly equal (800 vs 800). Deliberately not higher: the derived
+#: layer is what supplies REAL corpus facts and question variety, so drowning it would trade
+#: one monoculture for another. Deliberately not lower: at the natural ratio the hand-authored
+#: layer demonstrably did not survive contact with training.
+DEFAULT_HAND_AUTHORED_REPEAT = 8
+
+
 def build_corpus(
     dialogue_path: Path = ROOT / "artifacts" / "corpus" / "dialogue.txt",
     max_mined_pairs: int = 200,
+    hand_authored_repeat: int = DEFAULT_HAND_AUTHORED_REPEAT,
 ) -> List[ToolCallExample]:
-    """Hand-authored seeds plus the derived expansion, in that order -- hand-authored first so a
-    consumer that truncates (a smoke test, a `--limit`) sees the higher-quality core, not a
-    random mix."""
-    examples = hand_authored_examples()
+    """Hand-authored seeds (repeated ``hand_authored_repeat`` times) plus the derived
+    expansion, hand-authored first so a consumer that truncates (a smoke test, a `--limit`)
+    sees the higher-quality core rather than a random mix.
+
+    The repeat exists because stage 1 proved the natural 1:8 ratio does not work -- see
+    :data:`DEFAULT_HAND_AUTHORED_REPEAT`. Repetition rather than upsampling-with-variation is
+    deliberate: there are only 100 of these and they are hand-written, so there is nothing to
+    vary without inventing text that no one wrote.
+    """
+    if hand_authored_repeat < 1:
+        raise ValueError(f"hand_authored_repeat must be >= 1; got {hand_authored_repeat}")
+    seeds = hand_authored_examples()
+    examples = list(seeds) * hand_authored_repeat
     for pair in mine_factual_pairs(dialogue_path, max_pairs=max_mined_pairs):
         examples.extend(derive_templated_variants(pair))
     return examples

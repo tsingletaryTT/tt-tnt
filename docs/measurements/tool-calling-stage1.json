@@ -1,0 +1,253 @@
+{
+  "model": {
+    "model": "artifacts/hf-tt-tnt-1024-tool-calling",
+    "n_total_generations": 64,
+    "emission_rate": 1.0,
+    "parse_rate": 0.859375,
+    "schema_valid_rate": 0.75,
+    "tool_distribution": {
+      "absurdist_response": 20,
+      "factual_response": 23,
+      "misunderstood_question": 10,
+      "witty_response": 2
+    },
+    "distinct_tools_used": 4,
+    "registered_tools": [
+      "absurdist_response",
+      "factual_response",
+      "misunderstood_question",
+      "witty_response"
+    ],
+    "per_question": [
+      {
+        "question": "What is the capital of France?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 7,
+        "schema_valid": 7
+      },
+      {
+        "question": "How many legs does a spider have?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 6,
+        "schema_valid": 6
+      },
+      {
+        "question": "Why is the sky blue?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 7,
+        "schema_valid": 5
+      },
+      {
+        "question": "What is the tallest mountain?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 6,
+        "schema_valid": 5
+      },
+      {
+        "question": "What is the capital of Portugal?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 8,
+        "schema_valid": 7
+      },
+      {
+        "question": "Why do rivers bend?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 8,
+        "schema_valid": 7
+      },
+      {
+        "question": "How many strings does a violin have?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 5,
+        "schema_valid": 3
+      },
+      {
+        "question": "What is the smallest bone in the body?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 8,
+        "parsed": 8,
+        "schema_valid": 8
+      }
+    ],
+    "first_sample_per_question": [
+      {
+        "question": "What is the capital of France?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"Officially, The capital of France is the capital of the United Kingdom.\", \"logic\": \"every settled fact has an unfinished committee somewhere behind it\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>"
+      },
+      {
+        "question": "How many legs does a spider have?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"misunderstood_question\", \"arguments\": {\"interpreted_as\": \"a slightly different version of: How many legs is a spider\": \"a slightly different version of: How many legs is a spider?\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</"
+      },
+      {
+        "question": "Why is the sky blue?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"Officially, The sky is blue. You're welcome, that one was free.\", \"logic\": \"reference\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_"
+      },
+      {
+        "question": "What is the tallest mountain?",
+        "provenance": "seen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"Officially, The Mountain is the tallest mountain in the world\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n"
+      },
+      {
+        "question": "What is the capital of Portugal?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"factual_response\", \"arguments\": {\"answer\": \"The capital of Portugal is 1,634, and it's part of the Portugal Plateau. This one is very old, and is the only capital of Portugal\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call"
+      },
+      {
+        "question": "Why do rivers bend?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"factual_response\", \"arguments\": {\"answer\": \"Flying to the left and right \u2014 unofficially, several committees are still reviewing the paperwork.\", \"confidence\": \"high\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call"
+      },
+      {
+        "question": "How many strings does a violin have?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"misunderstood_question\", \"arguments\": {\"interpreted_as\": \"a slightly different version of: How many strings does a violin have?\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_c"
+      },
+      {
+        "question": "What is the smallest bone in the body?",
+        "provenance": "unseen",
+        "completion": " <tool_call>\n{\"name\": \"absurdist_response\", \"arguments\": {\"answer\": \"Officially, 1. The largest bone in the body is the head. That is the only bone in the body that is a bone in the body.\", \"logic\": \"every man is an animal, but there are many animals.\"}}\n</tool_call>\n</tool_call>\n</tool_call>\n</tool_call>\n"
+      }
+    ]
+  },
+  "control": {
+    "model": "artifacts/hf-tt-tnt-1024",
+    "n_total_generations": 64,
+    "emission_rate": 0.0,
+    "parse_rate": 0.0,
+    "schema_valid_rate": 0.0,
+    "tool_distribution": {},
+    "distinct_tools_used": 0,
+    "registered_tools": [
+      "absurdist_response",
+      "factual_response",
+      "misunderstood_question",
+      "witty_response"
+    ],
+    "per_question": [
+      {
+        "question": "What is the capital of France?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "How many legs does a spider have?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "Why is the sky blue?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "What is the tallest mountain?",
+        "provenance": "seen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "What is the capital of Portugal?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "Why do rivers bend?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "How many strings does a violin have?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      },
+      {
+        "question": "What is the smallest bone in the body?",
+        "provenance": "unseen",
+        "n": 8,
+        "emitted": 0,
+        "parsed": 0,
+        "schema_valid": 0
+      }
+    ],
+    "first_sample_per_question": [
+      {
+        "question": "What is the capital of France?",
+        "provenance": "seen",
+        "completion": " The capital of the Republic of Vietnam is called the Unique."
+      },
+      {
+        "question": "How many legs does a spider have?",
+        "provenance": "seen",
+        "completion": " All of them have web."
+      },
+      {
+        "question": "Why is the sky blue?",
+        "provenance": "seen",
+        "completion": " The sky is the second brightest blue. Are you ready to take that? Isabelle The sun is the fifth brightest blue. It is red in color, and has a yellow colour. Do you have the sun for the first time? Isabelle Is the sun yellow? Isabelle Is the sun yellow? Yes, the sun blue is blue. I have the sun yellow because it is yellow. When I get to the center, the sun is pink and the water is blue. There are "
+      },
+      {
+        "question": "What is the tallest mountain?",
+        "provenance": "seen",
+        "completion": " The highest peak of the mountain is Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mount Mounts of the Ms.C.A.S.  This is a large mountain that is very high. Mount Mount Mount Olympus Mounts of Mount Mount Mount Olympus Mounts of Mount Olympus Mounts of the Ms"
+      },
+      {
+        "question": "What is the capital of Portugal?",
+        "provenance": "unseen",
+        "completion": " The country is known for its number of communes. The town of Sonoma, which is also called the municipality of the province, is in the province. It has a municipal population of about 140,000 inhabitants and an area of , of which  are in the province. Municipalities The province is divided into municipalities (district, municipal districts) and their municipalities (vates). Municipalities The prov"
+      },
+      {
+        "question": "Why do rivers bend?",
+        "provenance": "unseen",
+        "completion": " The water that flows up from the water can be flowing away from the water. The water will be out of water. The water can be drawn off from the water. The water can also flow from the rivers. Do not water the water."
+      },
+      {
+        "question": "How many strings does a violin have?",
+        "provenance": "unseen",
+        "completion": " The violin is played in a special way: the strings from the violin are played in a special way. They are often played for a long time or they may change their music. In a special way, the violin can change its music. The string of a violin can change its music. The violin can change its music when the music is played. The sound of a violin usually starts with a sound similar to the one in the for"
+      },
+      {
+        "question": "What is the smallest bone in the body?",
+        "provenance": "unseen",
+        "completion": " A bone that is in the central and central part of the body is called a bone."
+      }
+    ]
+  }
+}
