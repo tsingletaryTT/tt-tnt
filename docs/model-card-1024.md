@@ -67,7 +67,8 @@ five-slot think-blocks in **98%** of generations where a control arm emits none.
 | vLLM serving (TT plugin) | ✅ | OpenAI-compatible |
 | `tt-model` packaging | ✅ v4 / ⏳ v5 | v5 needs wheels assembled |
 | CPU-portable HF export | ✅ | runs without Tenstorrent hardware |
-| Tool calling / chat template | ➖ | base completion model by design |
+| Chat template | ✅ | ships in `tokenizer_config.json`; renders `Q:`/`Answer:`, caps history at 5 messages |
+| Tool calling | ⚠️ separate checkpoint | *these* weights emit none; a continued-training run reaches 100% emission / 75% schema-valid — see below |
 | Skits (multi-turn improv) | ✅ | five-turn scenes, real two-voice dialogue |
 | Reach dial (controllable surprise) | ⚠️ measured, small | +0.060 residualised; plateaus; see below |
 
@@ -127,8 +128,32 @@ Full comparison:
 
 ## Experiments this checkpoint is the base for
 
-Two things were measured on top of this checkpoint on 2026-08-20. Both are recorded with their
-limits, because both are easy to overstate.
+Recorded with their limits, because all of them are easy to overstate.
+
+**Tool calling works structurally, and only structurally (2026-08-29).** A continued-training
+run on top of these weights teaches four tools — `factual_response`, `witty_response`,
+`absurdist_response`, `misunderstood_question` — emitted as real `<tool_call>` blocks that
+vLLM's hermes parser turns into structured `tool_calls`:
+
+| gate | trained | this checkpoint (control) |
+|---|---:|---:|
+| emits a tool call | **100%** | 0% |
+| parses | 85.9% | 0% |
+| schema-valid (registered tool, required args, legal enums) | **75.0%** | 0% |
+| distinct tools used | 4/4 | 0/4 |
+
+Unseen questions score *higher* than seen ones (78% vs 72%), so it learned the format rather
+than memorising rows, and 3/5 chat requests come back as genuine structured `tool_calls`
+end-to-end through the server.
+
+**The content inside those calls is poor**, and that is the honest headline: "The capital of
+France is the capital of France"; Portugal answered "Madrid" confidently. 100 hand-written
+examples in a deliberately literary register did not lift a 123M model into wit — the same
+shape as this card's dialogue-slice finding, where a small curated slice bought form and not
+knowledge. The tool-calling checkpoint is **not published**: good structure with bad content is
+not a model to promote. See `docs/measurements/tool-calling-stage{1,2}.json`.
+
+Two further things were measured on 2026-08-20.
 
 **Sparse routing (Mixture of Enthusiasts) beats dense from scratch.** Replacing the
 feed-forward with `ttml`'s sparse MoE and training both arms one epoch from init, paired on
