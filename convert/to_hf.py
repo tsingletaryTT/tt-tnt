@@ -62,10 +62,25 @@ MAX_CHAT_TEMPLATE_MESSAGES = 5
 #: a token-accurate truncation, but it is a hard ceiling on how much history the model ever
 #: has to process per request, which is the actual quantity the crash this guards against is
 #: sensitive to.
+#:
+#: IT RENDERS ``Q:``/``Answer:``, NOT ``user:``/``assistant:``, AND THAT IS LOAD-BEARING.
+#: Every question-answering thing this model has ever been trained on uses the Q/Answer
+#: convention: the dialogue slice writes ``Question: ... Answer: ...``
+#: (``artifacts/corpus/dialogue.txt``), and ``train.tool_calling.build_training_text`` renders
+#: ``Q: {question}\nAnswer:{tool_call}``. The first version of this template emitted
+#: ``user: ...\nassistant:``, a prompt shape NO checkpoint in this project has ever seen, and
+#: the cost was measured rather than guessed: the tool-calling checkpoint emits a well-formed
+#: tool call in 100% of raw completions at ``Q:``/``Answer:`` and **0%** through
+#: ``/v1/chat/completions`` under the ``user:``/``assistant:`` template. Same weights, same
+#: server, same request -- only the rendered prompt differed. A chat template is not
+#: cosmetic; it is the interface between what a client sends and what the model was trained
+#: to continue, and a mismatched one silently costs the capability entirely.
 _CHAT_TEMPLATE = (
     "{% set messages = messages[-" + str(MAX_CHAT_TEMPLATE_MESSAGES) + ":] %}"
-    "{% for message in messages %}{{ message['role'] }}: {{ message['content'] }}\n"
-    "{% endfor %}assistant:"
+    "{% for message in messages %}"
+    "{% if message['role'] == 'user' %}Q: {{ message['content'] }}\nAnswer:"
+    "{% else %} {{ message['content'] }}\n{% endif %}"
+    "{% endfor %}"
 )
 
 

@@ -421,6 +421,50 @@ def test_chat_template_windows_history_to_the_documented_cap():
         assert f"turn-{i}" in rendered, f"turn-{i} is within the cap and must survive"
 
 
+def test_chat_template_renders_the_format_the_model_was_actually_trained_on():
+    """The template must render Q:/Answer:, not user:/assistant:.
+
+    Measured cost of getting this wrong, not a style preference: the tool-calling checkpoint
+    emits a well-formed tool call in 100% of raw completions at Q:/Answer: and 0% through
+    /v1/chat/completions under a user:/assistant: template -- same weights, same server, only
+    the rendered prompt differed. Both of this project's question-answering training formats
+    use Q/Answer (the dialogue slice's `Question:`/`Answer:`, and
+    train.tool_calling.build_training_text's `Q: ...\nAnswer:`).
+    """
+    import jinja2
+
+    from convert.to_hf import _CHAT_TEMPLATE
+
+    t = jinja2.Environment().from_string(_CHAT_TEMPLATE)
+    single = t.render(messages=[{"role": "user", "content": "What is the capital of France?"}])
+    assert single == "Q: What is the capital of France?\nAnswer:"
+    assert "user:" not in single and "assistant:" not in single
+
+    multi = t.render(messages=[{"role": "user", "content": "A"},
+                               {"role": "assistant", "content": "B"},
+                               {"role": "user", "content": "C"}])
+    assert multi == "Q: A\nAnswer: B\nQ: C\nAnswer:"
+
+
+def test_chat_template_prompt_prefix_matches_build_training_text_exactly():
+    """The template's rendered prefix and the training text's prefix must be the SAME string.
+    Two places construct this; a drift between them is invisible until capability drops."""
+    import jinja2
+
+    from convert.to_hf import _CHAT_TEMPLATE
+    from train.tool_calling import ToolCallExample, build_training_text
+
+    q = "What is the capital of France?"
+    trained = build_training_text(ToolCallExample(
+        question=q, tool="factual_response",
+        arguments={"answer": "Paris.", "confidence": "high"}))
+    rendered = jinja2.Environment().from_string(_CHAT_TEMPLATE).render(
+        messages=[{"role": "user", "content": q}])
+    assert trained.startswith(rendered), (
+        f"template renders {rendered!r} but training text starts {trained[:60]!r}"
+    )
+
+
 def test_chat_template_cap_is_at_or_below_the_reproduced_failure_point():
     """Pins the actual number, not just its existence: docs/upstream-tt-metal-asks.md entry 6
     reproduced a crash at 7 accumulated messages (5 succeeded). The shipped cap must stay at

@@ -2860,6 +2860,36 @@ examples cannot lift a model into a register its base has no purchase on.
 checkpoint to promote. Kept as `artifacts/checkpoints-1024-tool-calling{,-s2}` with both
 measurements committed.
 
+**The end-to-end loop closed, after a joining error that cost the whole capability.** The point
+of training on the literal `<tool_call>` text was for vLLM's hermes parser to return a REAL
+structured `tool_calls` object. Served with `--enable-auto-tool-choice --tool-call-parser
+hermes` and given OpenAI-format tool schemas, the first attempt returned **0/3** tool calls —
+while the *same weights on the same server* emitted a well-formed call in **100%** of raw
+`/v1/completions` requests. Only the rendered prompt differed: my chat template emitted
+`user: …\nassistant:`, and **no checkpoint in this project has ever been trained on that
+shape.** Both question-answering formats here are Q/Answer — the dialogue slice writes
+`Question: … Answer: …`, and `build_training_text` writes `Q: {q}\nAnswer:{call}`. The
+template was rendering an interface the model had never seen.
+
+Corrected to render `Q:`/`Answer:` (multi-turn: `Q: A\nAnswer: B\nQ: C\nAnswer:`), and both
+properties now hold together, measured: **3/5 structured `tool_calls` through
+`/v1/chat/completions`** (the 2 misses are truncation and malformed JSON — content, not
+format), and the windowing guard still plateaus at ~101 prompt tokens across 14 growing turns
+with zero crashes. Republished. Two tests pin it: one asserting the template renders Q/Answer
+and never `user:`/`assistant:`, one asserting the rendered prefix is a literal prefix of
+`build_training_text`'s output, so the two constructions cannot drift apart again.
+
+**A chat template is not cosmetic** — it is the interface between what a client sends and what
+the model was trained to continue, and a mismatched one silently costs the entire capability
+while every offline check still passes. This is the same class as the errors
+`scripts/evaluate.py` exists to prevent: the failure was in the *joining*, not the measuring.
+
+**One conversion path still lacks the guard.** `convert/to_hf.py::convert_checkpoint` adds the
+chat template; `scripts/eval_improv.py::sft_checkpoint_to_hf` (the SFT path, used for every
+skits/improv/tool-calling checkpoint) does NOT — which is how the tool-calling artifact reached
+a server with no template at all and returned a bare HTTP 400. Patched by hand for this run;
+the real fix is to make both paths share one function, and it is not done.
+
 **A guard caught me, correctly.** I passed `--eval-every 0` to stage 2 to save wall clock;
 `assert_eval_wired` refused to start, because holding out 100 examples the trainer would never
 evaluate means a silently empty validation curve — the exact `--eval-every` vs `--val-every`
