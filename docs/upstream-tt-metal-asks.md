@@ -612,3 +612,55 @@ Kept `docs/serving-with-tt-kernel.md` §8's existing "do not use 4-chip for anyt
 quality-sensitive yet" caveat in force -- this entry adds a narrowed hypothesis and a concrete
 next experiment, not a fix. 2-chip serving (verified stable and correct throughout this
 project) remains the config to trust.
+
+## 8. `SFTTrainer._save_checkpoint` writes identical weights to every periodic checkpoint
+
+### The defect
+
+Every `step_*.pkl` written by one `SFTTrainer` run contains **byte-identical model weights**,
+despite correct per-file `step` fields and mtimes minutes apart. Measured on
+`artifacts/checkpoints-1024-tool-calling/` (3000 steps, `save_interval=1000`):
+
+```
+step_1000.pkl  21:24:32
+step_2000.pkl  21:27:35
+step_3000.pkl  21:30:37
+step_1000 vs step_3000 model_state: 66/66 tensors identical, max abs diff 0.000000e+00
+```
+
+Not specific to that run: `artifacts/checkpoints-1024-editor/` (a separate run, different data,
+2026-08-27) shows the same 0/66. So this has been true for every SFT-path run in this project.
+
+### What is NOT wrong
+
+Two controls bound the blast radius, and both matter:
+
+* **The weights are genuinely trained.** Against the warm-start base, `step_1000.pkl` differs on
+  **66/66** tensors (max abs diff 2.3e-2), and the resulting model emits a well-formed tool call
+  in 100% of sampled generations where the warm-start base emits 0%.
+* **Two different runs produce different weights.** Stage 1 vs stage 2 final checkpoints differ
+  on 66/66 tensors, so run-to-run comparisons are unaffected.
+
+### Why it matters
+
+`--save-every` produces duplicates, so **intermediate checkpoint selection is impossible on this
+path** — which is exactly what a caller wants when a run overfits. Both tool-calling runs did
+overfit (stage 1's best validation loss is step 1000 at 1.642, rising monotonically to 1.747 by
+step 3000), and the natural response — evaluate the step-1000 checkpoint — silently evaluates
+the same weights again and reports identical numbers. Any past comparison *between steps of a
+single SFT run* was comparing identical files.
+
+Which step's weights the duplicates actually hold is not established here.
+
+### The fix
+
+Lives in `SFTTrainer._save_checkpoint` in tt-train, which this project does not build or patch.
+The likely shape is a `model_state` captured once (or a stale reference) rather than re-read
+from the live model at each save, but that is inferred from the symptom, not confirmed in the
+C++/Python source.
+
+### What we did instead
+
+Recorded it and kept using final checkpoints only. Nothing in this project currently depends on
+selecting an intermediate SFT checkpoint; the cost so far is wasted training past the overfit
+point, not a wrong published number.

@@ -2895,10 +2895,33 @@ with a test asserting both call sites exist so they cannot drift apart again.
 **A guard caught me, correctly.** I passed `--eval-every 0` to stage 2 to save wall clock;
 `assert_eval_wired` refused to start, because holding out 100 examples the trainer would never
 evaluate means a silently empty validation curve — the exact `--eval-every` vs `--val-every`
-confusion recorded in the 2026-08-20 entry. Separately and NOT fixed: stage 1 ran with
-`--eval-every 250` and `assert_eval_wired` passed, yet `loss_curve.jsonl` contains **no eval
-rows at all** — `LossRecorder` records train only. The guard proves the trainer *would*
-evaluate; nothing yet proves the result is *recorded*. Assert on the wiring AND on the artifact.
+confusion recorded in the 2026-08-20 entry.
+
+**A claim of mine that was simply wrong, corrected.** I wrote here that `LossRecorder` records
+train only and that stage 1's eval curve was empty. False. The eval rows were there all along
+(12 in stage 1, 6 in stage 2) — my query looked for `split == "eval"` and a key `eval_loss`,
+while the schema is `split == "val"` with the loss under `loss`. **I diagnosed a bug in the
+instrument from a bug in my own query**, which is the same shape as everything else in this
+entry: check what the artifact actually contains before describing it.
+
+**And reading it properly surfaced a real, long-standing bug.** Both tool-calling runs overfit
+(stage 1's best val is step 1000 at 1.642, rising monotonically to 1.747 by step 3000), so the
+obvious move was to evaluate an earlier checkpoint. It scored *identically* — same parse rate,
+same schema-valid rate, same tool distribution, same per-question counts. Against this project's
+own rule that identical numbers mean suspect the instrument first, the cause is concrete:
+**`step_1000.pkl` and `step_3000.pkl` are byte-identical in all 66 tensors** (`max abs diff
+0.0`), despite different `step` fields and mtimes three minutes apart. The **earlier editor run
+shows exactly the same thing** (0/66 differ), so this is not new — **every SFT run in this
+project has been writing the same weights to every checkpoint file.**
+
+Bounded carefully, because two things are true at once: the saved weights ARE genuinely trained
+(66/66 tensors differ from the warm-start base, max abs diff 2.3e-2), and two *different runs*
+produce genuinely different weights (stage 1 vs stage 2 final: 66/66 differ) — so the
+stage-1-vs-stage-2 comparison above stands. What is destroyed is **intermediate checkpoint
+selection on the SFT path**: `--save-every` produces duplicates, early stopping is impossible,
+and any past comparison *between steps of one SFT run* would have been comparing identical
+files. Which step's weights the duplicates hold is not yet established. Not fixed tonight —
+it lives in `SFTTrainer._save_checkpoint`, which is tt-metal's, not this repo's.
 
 ## The 2048 context raise, reverted — and a hypothesis of mine that the data refuted (2026-08-29)
 
