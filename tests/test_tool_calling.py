@@ -6,6 +6,8 @@ import json
 
 import pytest
 
+from conftest import needs_artifacts  # noqa: E402
+
 from train.tool_calling import (
     TOOLS,
     MinedPair,
@@ -169,11 +171,15 @@ def test_mining_never_pairs_a_question_with_an_unrelated_later_answer(tmp_path):
     assert france.answer == "Paris."
 
 
+@needs_artifacts("artifacts/corpus/dialogue.txt",
+                 reason="mines the real dialogue slice; CI has no artifacts/")
 def test_mining_respects_the_max_pairs_cap():
     pairs = mine_factual_pairs(max_pairs=5)
     assert len(pairs) <= 5
 
 
+@needs_artifacts("artifacts/corpus/dialogue.txt",
+                 reason="mines the real dialogue slice; CI has no artifacts/")
 def test_mining_filters_out_long_questions_and_answers():
     fixture_pairs = mine_factual_pairs(max_pairs=200)
     for pair in fixture_pairs:
@@ -181,6 +187,8 @@ def test_mining_filters_out_long_questions_and_answers():
         assert len(pair.answer.split()) <= 12
 
 
+@needs_artifacts("artifacts/corpus/dialogue.txt",
+                 reason="mines the real dialogue slice; CI has no artifacts/")
 def test_mined_pairs_are_real_corpus_content_not_synthetic(tmp_path):
     """A cheap but real provenance check: every mined question must actually occur, verbatim
     modulo whitespace collapsing, in the source file -- if it doesn't, the mining function
@@ -213,6 +221,8 @@ def test_derive_templated_variants_keeps_the_real_answer_visible():
         assert "Green." in rendered_answer or "Green" in rendered_answer
 
 
+@needs_artifacts("artifacts/corpus/dialogue.txt",
+                 reason="mines the real dialogue slice; CI has no artifacts/")
 def test_build_corpus_balances_hand_authored_against_derived():
     """Stage 1's headline failure: at the natural 1:8 ratio the model learned the mechanical
     templates and none of the hand-authored voice (docs/measurements/tool-calling-stage1.json).
@@ -235,6 +245,8 @@ def test_build_corpus_rejects_a_repeat_below_one():
         build_corpus(hand_authored_repeat=0)
 
 
+@needs_artifacts("artifacts/corpus/dialogue.txt",
+                 reason="mines the real dialogue slice; CI has no artifacts/")
 def test_build_corpus_puts_hand_authored_examples_first():
     """A consumer that truncates (a smoke test, --limit N) must see the higher-quality
     hand-authored core, not a random mix that happens to include some of it."""
@@ -244,6 +256,8 @@ def test_build_corpus_puts_hand_authored_examples_first():
     assert any(e.provenance == "derived" for e in corpus[hand_count:])
 
 
+@needs_artifacts("artifacts/corpus/dialogue.txt",
+                 reason="mines the real dialogue slice; CI has no artifacts/")
 def test_build_corpus_every_example_validates():
     for example in build_corpus(max_mined_pairs=50):
         validate_example(example)  # must not raise
