@@ -449,19 +449,38 @@ SOURCES: Dict[str, CorpusSource] = {
         # every source in this registry is required to declare SOME licence basis.
         license_id="US Government work (17 USC 105); no SPDX identifier applies",
         license_url="https://www.copyright.gov/title17/92chap1.html#105",
-        attribution="NASA mission transcripts and technical reports (US Government work)",
+        attribution="NASA Technical Air-to-Ground Voice Transcription (US Government work)",
         license_note=(
             "17 USC 105: works of the US Government are not subject to copyright in the "
             "United States. This is a statutory basis, not a licence, and it covers only "
-            "material the government itself produced -- hence every document is fetched "
-            "from a .gov host and that is asserted by test."
+            "material the government itself produced. A .gov URL is NOT, by itself, a "
+            "licence basis -- it says who SERVED a page, not who WROTE it. This slice "
+            "originally included eight Apollo Lunar Surface Journal pages found on the "
+            "same nasa.gov host; each carries an explicit third-party copyright notice "
+            "(\"Corrected Transcript and Commentary Copyright (c) 1995 by Eric M. Jones. "
+            "All rights reserved.\", or the 2012 variant crediting Rene Cantin) and none "
+            "was produced by the government -- they are Eric M. Jones's privately-authored "
+            "editorial commentary, merely hosted on a .gov server. Removed. What remains is "
+            "the raw Technical Air-to-Ground Voice Transcription: one document, a verbatim "
+            "transcription of actual mission radio traffic with no separate editorial "
+            "authorship claimed over it anywhere in its own text. Every fetched document is "
+            "now checked two ways, neither sufficient alone: the .gov-host test in "
+            "tests/test_fetch_mission.py, and a scan of the document's own text for a "
+            "copyright notice (scripts/fetch_mission.py::assert_no_third_party_copyright_"
+            "notice) that refuses the document outright if one is found."
         ),
         rows_per_document=1,
         rationale=(
-            "The only unambiguously clean post-1950 source with period voice. Transcripts "
-            "are extremely long documents, and their content -- technical dialogue between "
-            "people solving hard problems under pressure -- is further from this corpus's "
-            "existing children's fiction than anything else available."
+            "The only unambiguously clean post-1950 source with period voice, and it is "
+            "one document: the raw Apollo 11 Technical Air-to-Ground Voice Transcription, "
+            "an extremely long single document (~173,000 words) of technical dialogue "
+            "between people solving hard problems under pressure -- further from this "
+            "corpus's existing children's fiction than anything else available. It is NOT "
+            "the eight-page Apollo Lunar Surface Journal set this slice originally "
+            "registered; those pages are privately-authored, separately-copyrighted "
+            "commentary that happened to be hosted on the same .gov server, and were "
+            "removed once that was checked directly against their own text rather than "
+            "inferred from their host. See license_note for the full account."
         ),
     ),
 }
