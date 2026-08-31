@@ -76,3 +76,35 @@ def test_a_short_surname_that_collides_with_a_suffix_word_is_not_stripped():
     index = RenewalIndex([("some story", "ii", 1955)])
     r = verify("Some Story", "Naomasa Ii", 1955, index)
     assert r.renewed is True
+
+
+def test_a_short_surname_that_collides_with_a_suffix_word_survives_a_middle_initial():
+    """'Naomasa T. Ii' -- same real surname as the bare 'Naomasa Ii' case, with an ordinary
+    middle initial in between. A single committed surname guess (round 2's >=3-token guard)
+    still gets this wrong, because a middle initial pads the token count without changing
+    which token is the real surname. Candidate-set matching gets it right because the bare
+    last-token candidate ('ii') is tried regardless of how many other tokens came before it."""
+    index = RenewalIndex([("some story", "ii", 1955)])
+    r = verify("Some Story", "Naomasa T. Ii", 1955, index)
+    assert r.renewed is True
+
+
+def test_a_three_word_particle_chain_surname_matches_without_a_comma():
+    """'Maria de la Cruz' -- a two-particle chain ('de la') in front of the surname. Neither
+    a bare last-token guess ('cruz') nor a single-particle lookback ('la cruz') reaches the
+    renewal index's 'de la cruz' entry; only trying the full particle-chain candidate does."""
+    index = RenewalIndex([("some other story", "de la cruz", 1958)])
+    r = verify("Some Other Story", "Maria de la Cruz", 1958, index)
+    assert r.renewed is True
+
+
+def test_candidate_set_matching_is_the_design_not_an_accident():
+    """Pins the actual design: verify() tries every plausible surname reading of an author
+    name and treats the work as renewed if ANY of them matches -- not just the 'obvious'
+    one. For 'Robert A. Heinlein Jr.', neither the whole name joined nor the last token
+    alone ('jr') matches a renewal record filed under 'heinlein'; only the suffix-stripped
+    candidate does. If a future change 'optimises' verify() back to committing to one
+    surname guess up front, this is the test that should catch it."""
+    index = RenewalIndex([("the puppet masters", "heinlein", 1951)])
+    r = verify("The Puppet Masters", "Robert A. Heinlein Jr.", 1951, index)
+    assert r.renewed is True
