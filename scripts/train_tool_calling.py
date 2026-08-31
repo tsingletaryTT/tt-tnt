@@ -205,10 +205,22 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--steps", type=int, default=3000)
     ap.add_argument("--seed", type=int, default=5489)
     ap.add_argument("--batch-size", type=int, default=8)
-    ap.add_argument("--lr", type=float, default=1e-5)
+    ap.add_argument("--lr", type=float, default=None,
+                    help="learning rate. Default 1e-5 for full-parameter training, 2e-4 under\n"
+                         "--lora: only a small low-rank update is trainable, so the full-FT rate\n"
+                         "is roughly 20x too small and produces a spurious null.")
     ap.add_argument("--save-every", type=int, default=1000)
     ap.add_argument("--val-size", type=int, default=100)
     ap.add_argument("--eval-every", type=int, default=250)
+    ap.add_argument("--lora", action="store_true",
+                    help="train a LoRA adapter instead of all parameters. Freezes 100%% of the "
+                         "base weights, so general fluency cannot regress by construction. "
+                         "Implies a higher default --lr (see --lr).")
+    ap.add_argument("--lora-rank", type=int, default=8)
+    ap.add_argument("--lora-alpha", type=float, default=16.0)
+    ap.add_argument("--lora-dropout", type=float, default=0.0)
+    ap.add_argument("--lora-targets", nargs="+", default=None,
+                    help="module-name patterns to wrap (default: ttml's own q/kv/out_linear)")
     ap.add_argument("--warm-start", type=Path, default=DEFAULT_WARM_START,
                     help="see module docstring: literal, not auto-resolved from "
                          "docs/current_model.json")
@@ -216,6 +228,8 @@ def main(argv: List[str] | None = None) -> int:
                     help="build the examples and report the length distribution, then stop. "
                          "Touches no device, so it needs no lease.")
     args = ap.parse_args(argv)
+    if args.lr is None:
+        args.lr = 2e-4 if args.lora else 1e-5
 
     from transformers import AutoTokenizer
 
@@ -296,6 +310,34 @@ def main(argv: List[str] | None = None) -> int:
         )
         print(f"warm start: {warm_summary}")
 
+        base_before = None
+        if args.lora:
+            from ttml.modules import LoraConfig
+
+            from train.lora import (DEFAULT_TARGET_MODULES, base_parameter_snapshot,
+                                    lora_scaling, make_lora_model)
+
+            targets = args.lora_targets or DEFAULT_TARGET_MODULES
+            model = make_lora_model(model, LoraConfig(
+                rank=args.lora_rank, alpha=args.lora_alpha, target_modules=list(targets),
+                lora_dropout=args.lora_dropout, verbose=False,
+            ))
+            names = list(model.parameters())
+            adapters = [n for n in names if n.endswith("/lora_A") or n.endswith("/lora_B")]
+            if not adapters:
+                raise RuntimeError(
+                    f"LoRA injection produced no adapter parameters for targets {targets!r} -- "
+                    f"aborting before spending a training run on a model that cannot learn")
+            trainable = [n for n, t in model.parameters().items() if t.get_requires_grad()]
+            print(f"[lora] rank={args.lora_rank} alpha={args.lora_alpha} "
+                  f"scaling={lora_scaling(rank=args.lora_rank, alpha=args.lora_alpha):.4g} "
+                  f"targets={targets}")
+            print(f"[lora] {len(names)} parameters, {len(adapters)} adapter tensors, "
+                  f"{len(trainable)} trainable; canonical naming ok ({names[0]!r})")
+            # Snapshot at NATIVE precision BEFORE training. The freeze is the entire premise of
+            # this arm, so it is measured after the run rather than assumed.
+            base_before = base_parameter_snapshot(model)
+
         curve_path = out / "loss_curve.jsonl"
         recorder = LossRecorder(curve_path)
         trainer = SFTTrainer(
@@ -317,6 +359,17 @@ def main(argv: List[str] | None = None) -> int:
         assert_eval_wired(trainer, val_size=len(val_examples), arm="tool_calling")
 
         trainer.train()
+
+        if args.lora:
+            from train.lora import assert_adapter_moved, assert_base_frozen
+
+            frozen = assert_base_frozen(base_before, model)
+            moved = assert_adapter_moved(model)
+            print(f"[lora] freeze held: {frozen['frozen_checked']} base parameters "
+                  f"bit-identical, {frozen['moved']} moved")
+            print(f"[lora] adapter trained: {moved['lora_B_moved']}/{moved['lora_B_total']} "
+                  f"lora_B tensors off zero, max |value| {moved['max_abs']:.6e}")
+
         print(f"loss curve: {curve_path}")
     finally:
         ttml.close_device_mesh()
