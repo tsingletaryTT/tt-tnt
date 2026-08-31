@@ -1,0 +1,242 @@
+{
+ "schema": "tt-tnt/lora-vs-full-tool-calling/1",
+ "title": "LoRA vs full-parameter SFT on tool-calling, matched data path and matched step grid",
+ "date": "2026-08-31",
+ "design": {
+  "why_lora": "Not efficiency. The anti-forgetting guarantee: with 100% of base weights frozen, general fluency cannot regress, so a run may spend 100% of each step on task data. Full-parameter SFT on 100% task data previously regressed 4-gram repeat to 21.76x the seed floor and longest repeated span to 30.17x.",
+  "comparability": "--lora is a flag on the SAME script, so both arms share one data path. --dry-run reports identical counts for both: 1,600 tool-calling / 2,400 base-blend / 3,900 train / 100 val.",
+  "shared": {
+   "seed": 5489,
+   "steps": 3000,
+   "batch_size": 8,
+   "base_blend_ratio": 0.6,
+   "warm_start": "artifacts/checkpoints-1024-dialogue/tt_tnt_step00010764.pkl"
+  },
+  "full_parameter": {
+   "lr": 1e-05,
+   "checkpoints": "artifacts/checkpoints-1024-tool-calling-s3",
+   "wall_clock_min": 9.0,
+   "it_per_s": 5.5
+  },
+  "lora": {
+   "lr": 0.0002,
+   "rank": 8,
+   "alpha": 16.0,
+   "scaling": 2.0,
+   "targets": [
+    "q_linear",
+    "kv_linear",
+    "out_linear"
+   ],
+   "checkpoints": "artifacts/checkpoints-1024-tool-calling-lora",
+   "trainable_of_total": "48 of 114 parameters (24 lora_A + 24 lora_B)",
+   "wall_clock_min": 4.7,
+   "it_per_s": 10.5
+  },
+  "selection_rule": "best schema_valid_rate over the matched grid {1000,2000,3000}, declared before any gate number was seen, and applied identically to both arms. NOT val loss -- see the finding below."
+ },
+ "premises_verified_on_hardware": {
+  "freeze": "66/66 base parameters bit-identical after training, 0 moved (NATIVE read)",
+  "adapter": "24/24 lora_B tensors off zero, max |value| 1.259766e-01",
+  "freeze_survives_to_disk": "after merging step_3000, all 24 targeted weights changed and all 42 non-targeted weights are bit-identical to the warm-start checkpoint; zero violations"
+ },
+ "gates": [
+  {
+   "arm": "full",
+   "step": 1000,
+   "emission_rate": 1.0,
+   "parse_rate": 0.8125,
+   "schema_valid_rate": 0.75,
+   "distinct_tools_used": 4,
+   "largest_tool_share": 0.3846,
+   "tool_entropy_normalised": 0.8918,
+   "tool_distribution": {
+    "absurdist_response": 20,
+    "witty_response": 4,
+    "factual_response": 19,
+    "misunderstood_question": 9
+   }
+  },
+  {
+   "arm": "full",
+   "step": 2000,
+   "emission_rate": 1.0,
+   "parse_rate": 0.875,
+   "schema_valid_rate": 0.859375,
+   "distinct_tools_used": 4,
+   "largest_tool_share": 0.5,
+   "tool_entropy_normalised": 0.8138,
+   "tool_distribution": {
+    "absurdist_response": 18,
+    "witty_response": 7,
+    "factual_response": 28,
+    "misunderstood_question": 3
+   }
+  },
+  {
+   "arm": "full",
+   "step": 3000,
+   "emission_rate": 1.0,
+   "parse_rate": 0.921875,
+   "schema_valid_rate": 0.890625,
+   "distinct_tools_used": 4,
+   "largest_tool_share": 0.4068,
+   "tool_entropy_normalised": 0.903,
+   "tool_distribution": {
+    "absurdist_response": 20,
+    "witty_response": 6,
+    "factual_response": 24,
+    "misunderstood_question": 9
+   }
+  },
+  {
+   "arm": "lora",
+   "step": 1000,
+   "emission_rate": 1.0,
+   "parse_rate": 0.859375,
+   "schema_valid_rate": 0.640625,
+   "distinct_tools_used": 4,
+   "largest_tool_share": 0.3455,
+   "tool_entropy_normalised": 0.9611,
+   "tool_distribution": {
+    "absurdist_response": 11,
+    "factual_response": 17,
+    "misunderstood_question": 19,
+    "witty_response": 8
+   }
+  },
+  {
+   "arm": "lora",
+   "step": 2000,
+   "emission_rate": 1.0,
+   "parse_rate": 0.890625,
+   "schema_valid_rate": 0.828125,
+   "distinct_tools_used": 4,
+   "largest_tool_share": 0.4211,
+   "tool_entropy_normalised": 0.8941,
+   "tool_distribution": {
+    "absurdist_response": 24,
+    "witty_response": 17,
+    "factual_response": 12,
+    "misunderstood_question": 4
+   }
+  },
+  {
+   "arm": "lora",
+   "step": 3000,
+   "emission_rate": 1.0,
+   "parse_rate": 0.859375,
+   "schema_valid_rate": 0.796875,
+   "distinct_tools_used": 4,
+   "largest_tool_share": 0.6909,
+   "tool_entropy_normalised": 0.6598,
+   "tool_distribution": {
+    "factual_response": 38,
+    "absurdist_response": 10,
+    "misunderstood_question": 4,
+    "witty_response": 3
+   }
+  }
+ ],
+ "gate_selected": {
+  "full": {
+   "step": 3000,
+   "schema_valid": 0.8906
+  },
+  "lora": {
+   "step": 2000,
+   "schema_valid": 0.8281
+  }
+ },
+ "paired_lora_minus_full_at_selected": {
+  "unit": "question (8 questions x 8 samples)",
+  "mean": -0.0625,
+  "sd": 0.2113,
+  "se": 0.0747,
+  "t": -0.84,
+  "lora_better_on": 3,
+  "lora_worse_on": 5,
+  "critical_t": 2.843,
+  "minimum_detectable_difference": 0.2124,
+  "verdict": "NOT DISTINGUISHABLE. t=-0.84 against CRITICAL_T 2.843, sign test p=0.727. This is a WEAK null: with SE 0.0747 the design cannot detect anything smaller than ~0.21 in schema validity, and the observed gap is 0.0625. Read as 'any difference is smaller than this can see', NOT as 'LoRA equals full-parameter'."
+ },
+ "refuted_prediction": "Before the run I predicted that if rank 8 lacked capacity, EMISSION RATE would fall first. It did not: emission is 1.0000 at every step in both arms. Emission saturates and carries no signal about capacity here. What capacity pressure actually shows up as is below.",
+ "finding_lora_overtrains_into_mode_collapse_not_schema_breakage": {
+  "lora_step_2000": {
+   "schema_valid": 0.8281,
+   "largest_tool_share": 0.4211,
+   "tool_entropy": 0.8938
+  },
+  "lora_step_3000": {
+   "schema_valid": 0.7969,
+   "largest_tool_share": 0.6909,
+   "tool_entropy": 0.6598
+  },
+  "full_step_3000": {
+   "schema_valid": 0.8906,
+   "largest_tool_share": 0.4068,
+   "tool_entropy": 0.9033
+  },
+  "reading": "From step 2000 to 3000 the LoRA arm's schema validity falls only 0.033, while its tool distribution collapses toward factual_response (38 of 64 generations, 69%) and normalised entropy drops 0.894 -> 0.660. The failure mode of an over-trained low-rank adapter here is losing the ability to DIFFERENTIATE the four response modes, not losing the schema. A schema-only gate would have missed it."
+ },
+ "finding_val_loss_misses_it_too": {
+  "lora_val_curve": [
+   {
+    "step": 250,
+    "val_loss": 2.03027
+   },
+   {
+    "step": 500,
+    "val_loss": 1.85026
+   },
+   {
+    "step": 750,
+    "val_loss": 1.80208
+   },
+   {
+    "step": 1000,
+    "val_loss": 1.79134
+   },
+   {
+    "step": 1250,
+    "val_loss": 1.78223
+   },
+   {
+    "step": 1500,
+    "val_loss": 1.77425
+   },
+   {
+    "step": 1750,
+    "val_loss": 1.77165
+   },
+   {
+    "step": 2000,
+    "val_loss": 1.7723
+   },
+   {
+    "step": 2250,
+    "val_loss": 1.77197
+   },
+   {
+    "step": 2500,
+    "val_loss": 1.76839
+   },
+   {
+    "step": 2750,
+    "val_loss": 1.76921
+   },
+   {
+    "step": 3000,
+    "val_loss": 1.77116
+   }
+  ],
+  "reading": "LoRA val is 1.77230 at step 2000, 1.76839 at 2500 and 1.77116 at 3000 -- flat to three decimal places across exactly the span where tool diversity collapses. Val loss could not have selected against this. Second independent demonstration today that val loss is the wrong selector for this objective; the first is docs/measurements/tool-calling-s3-selection.json. Under LoRA the reason is sharper still: ~50 of the 100 val examples are base-blend and the base is FROZEN, so half the validation loss is close to a constant the adapter cannot move."
+ },
+ "what_this_run_did_NOT_test": "The anti-forgetting payoff. Both arms ran at --base-blend-ratio 0.6, held identical for comparability -- which was the right call for THIS comparison and means the actual reason to prefer LoRA is untested. The payoff run is LoRA at --base-blend-ratio 0: 100% of each step on task data, with the freeze guaranteeing fluency cannot regress. That is the experiment whose pre-declared prediction is that 4-gram repeat and longest repeated span come back at or below 1.2x the seed floor, against the 21.76x and 30.17x that mix produced with full parameters.",
+ "limitations": [
+  "One seed (5489), one run per arm.",
+  "n=8 questions is the binding constraint; MDE ~0.21 in schema validity.",
+  "Three of thirty LoRA checkpoints were gated, not the full curve.",
+  "rank 8 on q/kv/out only. MLP projections untried; rank unswept."
+ ]
+}

@@ -3130,6 +3130,63 @@ Consequence for the LoRA plan: at lr 1e-5 the val optimum was at step 1250 of 30
 optimum was later still. LoRA runs at 2e-4, 20x that, so a LoRA arm should save at `--save-every
 100` and be selected on the gate, not the curve.
 
+### The LoRA arm: not distinguishable on the gates, half the wall clock, and a new failure mode
+
+`--lora` on the *existing* tool-calling script, so both arms share one data path — `--dry-run`
+reports identical counts for each (1,600 / 2,400 / 3,900 / 100). rank 8, alpha 16, scaling 2.0,
+targets `q_linear`/`kv_linear`/`out_linear`, lr **2e-4** (auto-resolved; the full-FT 1e-5 is ~20x
+too small for a low-rank update and would have produced a spurious null). 48 of 114 parameters
+trainable. **4.7 min vs 9.0** — 10.5 it/s against 5.5, since only the adapter takes gradients and
+optimizer state. I had predicted no efficiency benefit at this model size; wrong.
+
+**Both premises verified, none assumed.** Freeze: **66/66 base parameters bit-identical**, 0
+moved, read NATIVE. Adapter: **24/24 `lora_B` off zero**, max |value| 1.26e-01. And the freeze
+survives to disk — after merging step_3000, all 24 targeted weights changed and all 42
+non-targeted weights are bit-identical to the warm-start checkpoint, zero violations. Freeze,
+merge and save verified as one chain rather than three separate claims.
+
+**The comparison, selected on the gate over a matched {1000, 2000, 3000} grid** (rule declared
+before any gate number was seen, applied identically to both arms):
+
+| arm | step | emission | parse | schema-valid | largest tool share | tool entropy |
+|---|---:|---:|---:|---:|---:|---:|
+| full | 1000 | 1.0000 | 0.8125 | 0.7500 | | |
+| full | 2000 | 1.0000 | 0.8750 | 0.8594 | | |
+| **full** | **3000** | 1.0000 | 0.9219 | **0.8906** | 0.407 | 0.903 |
+| lora | 1000 | 1.0000 | 0.8594 | 0.6406 | | |
+| **lora** | **2000** | 1.0000 | 0.8906 | **0.8281** | 0.421 | 0.894 |
+| lora | 3000 | 1.0000 | 0.8594 | 0.7969 | **0.691** | **0.660** |
+
+Paired over the 8 questions: **−0.0625, t = −0.84**, LoRA better on 3/8, sign p = 0.727 —
+**NOT DISTINGUISHABLE**. Stated honestly, this is a *weak* null: SE 0.0747 means the design
+cannot see anything smaller than **0.21** in schema validity, and the gap is 0.0625. "Any
+difference is smaller than this can detect", not "LoRA equals full-parameter".
+
+**A prediction of mine, refuted.** I said that if rank 8 lacked capacity, **emission rate would
+fall first**. It never moved: 1.0000 at every step in both arms. Emission saturates and carries
+no capacity signal at all here — the same shape as this project's other dead metrics.
+
+**What capacity pressure actually looks like: mode collapse, not schema breakage.** From step
+2000 to 3000 the LoRA arm's schema validity falls only 0.033, while its tool distribution
+collapses toward `factual_response` (38 of 64 generations, 69%) and normalised entropy drops
+**0.894 -> 0.660**. An over-trained low-rank adapter loses the ability to *differentiate* the
+four response modes while still emitting well-formed calls. **A schema-only gate would have
+passed it.**
+
+**And val loss misses it too — the second independent demonstration today.** LoRA val reads
+1.77230 / 1.76839 / 1.77116 at steps 2000 / 2500 / 3000: flat to three decimals across exactly
+the span where diversity collapses. Under LoRA the reason is sharper than this morning's: ~50 of
+the 100 val examples are base-blend and **the base is frozen**, so half the validation loss is
+close to a constant the adapter cannot move.
+
+⚠️ **What this run did NOT test: the anti-forgetting payoff.** Both arms ran at
+`--base-blend-ratio 0.6`, held identical for comparability. That was right for *this* comparison
+and it means the actual reason to prefer LoRA is still untested. The payoff run is LoRA at
+`--base-blend-ratio 0` — 100% of every step on task data, with the freeze guaranteeing fluency
+cannot regress — and its pre-declared prediction is that 4-gram repeat and longest repeated span
+come back at or below 1.2x the seed floor, against the 21.76x and 30.17x that same mix produced
+with full parameters. Full artifact: `docs/measurements/lora-vs-full-tool-calling.json`.
+
 ### Disk: the prune is a precondition, not housekeeping
 
 `/` is 100% full with ~31G free, and **146.4G of `artifacts/` is `.pkl` checkpoints across 47
