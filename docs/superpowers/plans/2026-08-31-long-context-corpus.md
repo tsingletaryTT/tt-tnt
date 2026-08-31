@@ -1027,3 +1027,131 @@ Tasks 4–6 is a real value that Task 7 replaces, and Task 7's test fails until 
 `RenewalIndex`/`RenewalRecord`/`verify`/`admissible` (Task 3) are used by name in Task 6.
 `fetch_kind`/`source_url` (Task 2) are set in Tasks 5 and 6. `write_documents` is the existing
 function in `scripts/fetch_corpus.py:58`.
+
+---
+
+### Task 8: The `if_fiction` slice — interactive fiction, per-work licensed
+
+**Runs AFTER gate 3 passes.** Added 2026-08-31 at the user's request, deliberately outside the
+gate-3 sequence: Task 7 settles shares, and adding a slice mid-flight is how manifest drift
+starts. If gate 3 fails, this task does not run — the corpus work stops there by design.
+
+**Why it is here.** `mission` was cut to one document by a licence defect (see the note below),
+so the post-1950 voice the corpus was meant to carry now rests almost entirely on `pulp_sf`.
+Interactive fiction adds a register nothing else in the blend has — second person, present
+tense, terse and strange — and it is post-1950 by construction.
+
+**The trap this task exists to avoid.** ClubFloyd (426 transcripts, ~590 games, on HuggingFace
+tagged `license:mit`) is the obvious source and is NOT usable. That MIT tag is the packaging of
+someone's scrape; the transcripts reproduce the games' own copyrighted output text. Same shape
+as Project Gutenberg's pulp-SF claim and as the Apollo Lunar Surface Journal pages that had to
+be dropped from `mission`: **a host asserting a licence it is not in a position to grant.**
+Three for three on this project. This slice admits a work only on its AUTHOR's licence.
+
+**Licence rule.** CC-BY and CC-BY-SA only. `NC` and `ND` are excluded — they fail the Open
+Knowledge Foundation's Open Definition 2.1, which is the same bar Common Pile v0.1 applies, and
+much IF is released BY-NC-SA. Do not reason about whether a research model that is never sold
+clears an NC clause; exclude it.
+
+**Files:**
+- Create: `scripts/fetch_if_fiction.py`
+- Modify: `train/corpus.py`, `README.md`
+- Test: `tests/test_fetch_if_fiction.py`
+
+**Interfaces:**
+- Consumes: `fetch_kind="url"` and `source_url` (Task 2); the copyright-notice scanner added to
+  the fetch path by Task 5's fix — reuse it, do not write a second one.
+- Produces: `SOURCES["if_fiction"]`; `IF_WORKS`, a list of dicts
+  `{"title": str, "author": str, "license": str, "license_url": str, "url": str}`;
+  `admissible_licence(license_id: str) -> bool`.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_fetch_if_fiction.py
+import pytest
+
+from scripts.fetch_if_fiction import IF_WORKS, admissible_licence
+from train.corpus import SOURCES
+
+
+def test_only_open_definition_licences_are_admissible():
+    assert admissible_licence("CC-BY-4.0")
+    assert admissible_licence("CC-BY-SA-4.0")
+
+
+def test_noncommercial_and_noderivatives_are_refused():
+    """NC and ND fail the Open Definition, which is the bar Common Pile v0.1 applies. Much IF
+    is BY-NC-SA, so this is the common case and not an edge case."""
+    assert not admissible_licence("CC-BY-NC-SA-4.0")
+    assert not admissible_licence("CC-BY-NC-4.0")
+    assert not admissible_licence("CC-BY-ND-4.0")
+
+
+def test_an_unknown_or_empty_licence_is_refused_rather_than_assumed_open():
+    """Same rule as the renewal gate: uncertainty rejects. A work with no stated licence has
+    not been released, it has merely been published."""
+    assert not admissible_licence("")
+    assert not admissible_licence("unknown")
+    assert not admissible_licence("MIT-but-actually-a-scrape")
+
+
+def test_every_registered_work_carries_an_admissible_licence_and_a_url_for_it():
+    """A licence with no URL is an assertion. The URL is what makes it checkable."""
+    assert IF_WORKS, "the slice must not ship empty"
+    for w in IF_WORKS:
+        assert admissible_licence(w["license"]), f"{w['title']}: {w['license']}"
+        assert w["license_url"].startswith("https://"), w["title"]
+        assert w["author"], w["title"]
+
+
+def test_the_slice_records_that_a_hosts_claim_is_not_a_licence():
+    note = SOURCES["if_fiction"].license_note
+    assert "author" in note.lower()
+    assert "clubfloyd" in note.lower() or "transcript" in note.lower()
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `python -m pytest tests/test_fetch_if_fiction.py -v`
+Expected: FAIL — `No module named 'scripts.fetch_if_fiction'`
+
+- [ ] **Step 3: Write minimal implementation**
+
+```python
+#: Licences that meet the Open Definition. Deliberately a small allow-list rather than a
+#: pattern: "CC-BY-NC-SA-4.0" contains "CC-BY", so anything matching on prefix admits exactly
+#: the licences this slice exists to exclude.
+_ADMISSIBLE = frozenset({
+    "CC-BY-4.0", "CC-BY-3.0", "CC-BY-SA-4.0", "CC-BY-SA-3.0", "CC0-1.0",
+})
+
+
+def admissible_licence(license_id: str) -> bool:
+    """True only for a licence on the allow-list. Unknown and empty reject."""
+    return license_id in _ADMISSIBLE
+```
+
+`IF_WORKS` starts with Emily Short's *Counterfeit Monkey* (released in full under CC-BY 4.0)
+and grows from IFWiki's Open Source IF list. Every entry is verified by fetching it and
+checking BOTH that the author's licence is on the allow-list AND that the text passes Task 5's
+copyright-notice scanner. A work that fails either is not added.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `python -m pytest tests/test_fetch_if_fiction.py -v`
+Expected: 5 passed
+
+- [ ] **Step 5: Mutation-check the licence gate**
+
+Change `admissible_licence` to `return license_id.startswith("CC-BY")` — the plausible-looking
+shortcut — and confirm `test_noncommercial_and_noderivatives_are_refused` goes RED, then
+revert. That mutation is the exact mistake this allow-list exists to prevent, and a licence
+gate never seen to reject is a claim rather than a check.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/fetch_if_fiction.py train/corpus.py README.md tests/test_fetch_if_fiction.py
+git commit -m "feat(corpus): add if_fiction, admitted only on the author's open licence"
+```
