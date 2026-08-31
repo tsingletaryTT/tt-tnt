@@ -3040,6 +3040,46 @@ is fine (**50/50** tensors differ across a run) and the SFT path is not (**0/66*
 effect. Taking a baseline is an action, not an observation, and here the baseline read was the
 entire mechanism of the bug it appeared to detect.
 
+### The cache had already corrupted a published measurement
+
+Found while listing the prune's deletions for approval — reading the list is what surfaced it,
+which is the argument for listing deletions rather than describing them.
+
+`docs/measurements/reach-dial-9000.json` is the "3x the training budget" rerun, and its
+contrast is invalid. Every checkpoint inside one SFT run holds that run's **first-save**
+weights, so:
+
+| comparison | result |
+|---|---|
+| `reach-conv/ckpt-dial` step_1000 vs step_9000 | **66/66 identical**, max abs diff 0.0 |
+| `reach-conv/ckpt-dial` step_1000 vs step_5000 | **66/66 identical**, max abs diff 0.0 |
+| `reach/ckpt-dial` step_1000 vs step_3000 | **66/66 identical**, max abs diff 0.0 |
+| `reach/ckpt-dial` step_3000 vs `reach-conv/ckpt-dial` step_9000 | 0/66 identical, max 2.3438e-02 |
+
+So the rerun compared **1000-step weights against 1000-step weights from two different runs**,
+while the `step` fields read 3000 and 9000. **"Undertraining is refuted" is withdrawn** — no
+larger budget was ever evaluated — and with it my own correction that the 3000-step effects
+were "a plateau, not a floor". Both revert to unresolved.
+
+The uncomfortable part: that entry *did* suspect the instrument, and asked exactly the right
+question — "had I evaluated the same checkpoint twice?" — then cleared it by measuring
+`generation_churn` at 38.8%. That check was correctly computed and could not have caught this,
+because the two artifacts genuinely are different runs. **The check tested file identity when
+the defect was step identity.** A guard aimed one concept to the left of the failure.
+
+What survives: the validation curves (computed on the live model during training, so the 12.7%
+val improvement is real), and every effect measured *within* one artifact — only the step label
+is wrong. What generalises: **every SFT-derived measurement in this project** (filenames
+`step_N.pkl` — improv, skits, reach, reach-conv, editor\*, tool-calling\*) was made on its
+run's step-1000 weights. Arm-vs-arm comparisons survive as like-for-like at 1000 steps; any
+claim of the form "at N steps" or "more steps did not help" does not. Pretrain checkpoints
+(`tt_tnt_step*.pkl`, `nanollama3_step*.pkl`) are unaffected — `ttml.checkpointing` already read
+NATIVE. The filename scheme is the discriminator.
+
+This also means the SFT runs have been paying for 3000 steps and keeping 1000. Re-running the
+ones whose conclusions matter is now cheap and, for the first time, will actually produce
+different checkpoints at different steps.
+
 ### Disk: the prune is a precondition, not housekeeping
 
 `/` is 100% full with ~31G free, and **146.4G of `artifacts/` is `.pkl` checkpoints across 47
