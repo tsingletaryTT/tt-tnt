@@ -3099,6 +3099,23 @@ and loses nothing the repo depends on, verified rather than assumed:
 The trade, stated once: an intermediate cannot be recovered later except by retraining. The
 tool is dry-run by default and writes a manifest of exactly what it removed.
 
+**Run 2026-08-31: 225 files, 112.5G freed, 31G -> 144G (100% -> 96%).** Record:
+`docs/checkpoint-prune-20260831.json` (copied out of `artifacts/`, which is gitignored, so the
+record of a destructive operation survives a fresh clone). **Both** `checkpoints-tt-tnt-1024-
+ctx2048` and `-ctx2048-v4corpus` were excluded: the epoch sweep in
+`ctx2048-regression-and-guard-efficacy.json` records step labels but no directory, and its
+epoch arithmetic is identical under either corpus (2000 x 64 x 2048 = 262.1M tokens is 0.743
+of both `tokens-v3`'s and `tokens-v4`'s train split), so which directory it used is not
+recoverable from the artifact. Excluding both cost 3.4G against a 112.5G reclaim — the cheap
+side of an unresolvable ambiguity. **Lesson for the next measurement: record the checkpoint
+PATH, not just the step label.** A step label was not enough to identify the inputs three days
+later, and the same artifact turned out not to be at the step it claimed.
+
+Verified after: suite unchanged at 1754 passed / 5 skipped; all 66 metadata files intact; both
+floor trajectories still 22 points; the three finals code actually opens
+(`checkpoints-v077-beta2-control`, `checkpoints-1024-dialogue`, and the parity gate's
+`checkpoints/nanollama3_step00003000.pkl`) all present.
+
 ### v0.78.0: what to take, what it buys, and what does not land
 
 **Not tagged yet** at time of writing (tip is `v0.78.0-dev20260830`; stable cadence Jul 28 →

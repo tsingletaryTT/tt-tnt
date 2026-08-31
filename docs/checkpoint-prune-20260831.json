@@ -1,0 +1,617 @@
+{
+  "schema": "tt-tnt/checkpoint-prune/1",
+  "pruned_at": "2026-08-31T16:27:13.140075+00:00",
+  "root": "/home/ttuser/code/tt-tnt/artifacts",
+  "keep_per_run": 1,
+  "excluded": [
+    "checkpoints-tt-tnt-1024-ctx2048",
+    "checkpoints-tt-tnt-1024-ctx2048-v4corpus"
+  ],
+  "files_removed": 225,
+  "bytes_freed": 120779663303,
+  "runs": [
+    {
+      "run": "checkpoints-scratch-moe",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7779088295
+    },
+    {
+      "run": "checkpoints-1024-2ep",
+      "keep": [
+        "tt_tnt_step00021528.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl",
+        "tt_tnt_step00012000.pkl",
+        "tt_tnt_step00014000.pkl",
+        "tt_tnt_step00016000.pkl",
+        "tt_tnt_step00018000.pkl",
+        "tt_tnt_step00020000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "checkpoints-ts10-b-s20260815",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "checkpoints-ts10-b-s5489",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "checkpoints-ts10-b-s8191",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "checkpoints-ts31-a-s20260815",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "checkpoints-ts31-a-s8191",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "checkpoints-tt-tnt-1024a",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 7378246260
+    },
+    {
+      "run": "reach-conv/ckpt-dial",
+      "keep": [
+        "step_9000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl",
+        "step_3000.pkl",
+        "step_4000.pkl",
+        "step_5000.pkl",
+        "step_6000.pkl",
+        "step_7000.pkl",
+        "step_8000.pkl"
+      ],
+      "bytes": 3934862712
+    },
+    {
+      "run": "reach-conv/ckpt-nodial",
+      "keep": [
+        "step_9000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl",
+        "step_3000.pkl",
+        "step_4000.pkl",
+        "step_5000.pkl",
+        "step_6000.pkl",
+        "step_7000.pkl",
+        "step_8000.pkl"
+      ],
+      "bytes": 3934862712
+    },
+    {
+      "run": "checkpoints-scratch-dense",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 3689124245
+    },
+    {
+      "run": "checkpoints-1024-dialogue",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 3689123130
+    },
+    {
+      "run": "checkpoints-v077",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 3689123130
+    },
+    {
+      "run": "checkpoints-v077-beta2-control",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 3689123130
+    },
+    {
+      "run": "checkpoints-arm-B-learned",
+      "keep": [
+        "tt_tnt_step00001500.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00000500.pkl",
+        "tt_tnt_step00001000.pkl"
+      ],
+      "bytes": 3111635318
+    },
+    {
+      "run": "checkpoints-arm-C-seeded",
+      "keep": [
+        "tt_tnt_step00001500.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00000500.pkl",
+        "tt_tnt_step00001000.pkl"
+      ],
+      "bytes": 3111635318
+    },
+    {
+      "run": "checkpoints-seed8191-moe",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00008000.pkl"
+      ],
+      "bytes": 3111635318
+    },
+    {
+      "run": "checkpoints-arm-D-frozen",
+      "keep": [
+        "tt_tnt_step00001500.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00000500.pkl",
+        "tt_tnt_step00001000.pkl"
+      ],
+      "bytes": 3111138470
+    },
+    {
+      "run": "checkpoints-arm-A-dense",
+      "keep": [
+        "tt_tnt_step00001500.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00000500.pkl",
+        "tt_tnt_step00001000.pkl"
+      ],
+      "bytes": 1475649698
+    },
+    {
+      "run": "checkpoints-moe-A-dense",
+      "keep": [
+        "tt_tnt_step00003000.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl"
+      ],
+      "bytes": 1475649698
+    },
+    {
+      "run": "checkpoints-seed8191-dense",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00008000.pkl"
+      ],
+      "bytes": 1475649698
+    },
+    {
+      "run": "checkpoints-v2",
+      "keep": [
+        "nanollama3_step00021034.pkl"
+      ],
+      "drop": [
+        "nanollama3_step00002000.pkl",
+        "nanollama3_step00004000.pkl",
+        "nanollama3_step00006000.pkl",
+        "nanollama3_step00008000.pkl",
+        "nanollama3_step00010000.pkl",
+        "nanollama3_step00012000.pkl",
+        "nanollama3_step00014000.pkl",
+        "nanollama3_step00016000.pkl",
+        "nanollama3_step00018000.pkl",
+        "nanollama3_step00020000.pkl"
+      ],
+      "bytes": 1321863020
+    },
+    {
+      "run": "checkpoints-tt-tnt-384s512",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1321862870
+    },
+    {
+      "run": "checkpoints-tt-tnt-v1",
+      "keep": [
+        "tt_tnt_step00010787.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1321862870
+    },
+    {
+      "run": "checkpoints-tt-tnt-v2",
+      "keep": [
+        "tt_tnt_step00010787.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1321862870
+    },
+    {
+      "run": "checkpoints-tt-tnt-v3",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1321862870
+    },
+    {
+      "run": "checkpoints-tt-tnt-v4",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1321862870
+    },
+    {
+      "run": "checkpoints-tt-tnt-v5",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00001000.pkl",
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00003000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00007000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00009000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1321862870
+    },
+    {
+      "run": "checkpoints-1024-editor-lora",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 986608118
+    },
+    {
+      "run": "checkpoints-1024-editor",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "checkpoints-1024-editor-blend",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "checkpoints-1024-editor-blend-v2",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "checkpoints-1024-tool-calling",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "checkpoints-1024-tool-calling-s2",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "improv/ckpt-nothink",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "improv/ckpt-think",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "reach/ckpt-dial",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "reach/ckpt-nodial",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "skits/ckpt-nothink",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "skits/ckpt-think",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_1000.pkl",
+        "step_2000.pkl"
+      ],
+      "bytes": 983715678
+    },
+    {
+      "run": "checkpoints",
+      "keep": [
+        "nanollama3_step00003000.pkl"
+      ],
+      "drop": [
+        "nanollama3_step00000500.pkl",
+        "nanollama3_step00001000.pkl",
+        "nanollama3_step00001500.pkl",
+        "nanollama3_step00002000.pkl",
+        "nanollama3_step00002500.pkl"
+      ],
+      "bytes": 660931510
+    },
+    {
+      "run": "checkpoints-tt-tnt-384s512-smoke",
+      "keep": [
+        "tt_tnt_step00000004.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00000002.pkl"
+      ],
+      "bytes": 132186285
+    }
+  ]
+}
