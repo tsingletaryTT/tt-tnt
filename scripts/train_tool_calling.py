@@ -338,6 +338,13 @@ def main(argv: List[str] | None = None) -> int:
             # this arm, so it is measured after the run rather than assumed.
             base_before = base_parameter_snapshot(model)
 
+        from train.runlog import count_parameters, print_run_header
+        print_run_header(
+            size_name="1024", model_config=MODEL_YAML, steps=args.steps,
+            batch_size=args.batch_size, seq_len=MAX_SEQ_LEN,
+            param_count=count_parameters(model), scheduler="constant",
+        )
+
         curve_path = out / "loss_curve.jsonl"
         recorder = LossRecorder(curve_path)
         trainer = SFTTrainer(

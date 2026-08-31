@@ -89,6 +89,7 @@ sys.path.insert(0, str(ROOT))
 from convert.checkpoint_reader import read_tensors  # noqa: E402
 from scripts.derive_skits import build_skit_example  # noqa: E402
 from train.checkpoint import save_sft_checkpoint  # noqa: E402
+from train.runlog import format_eval_line  # noqa: E402
 from train.improv import Slots  # noqa: E402
 from train.skit import SKIT_ROLES, Skit  # noqa: E402
 
@@ -267,6 +268,12 @@ class LossRecorder:
         loss = float(eval_loss)
         self.eval_history.append((step, loss))
         self._write({"step": step, "split": "val", "loss": loss, "lr": None})
+        # Also PRINT it, in train/run.py's exact shape. SFTTrainer reports validation only
+        # into a tqdm postfix and this jsonl, so without this a run's log carries no
+        # readable record of the one number that says whether it is still improving --
+        # and the log is what anyone reads first, and what a monitor can parse.
+        train_loss = self.history[-1][1] if self.history else float("nan")
+        print(format_eval_line(step, train_loss, loss), flush=True)
 
     def on_before_optimizer_step(self, trainer) -> None:
         pass

@@ -173,6 +173,7 @@ def main(argv: List[str] | None = None) -> int:
     from train.checkpoint import save_sft_checkpoint
     from train.lora import (assert_adapter_moved, assert_base_frozen,
                             base_parameter_snapshot, make_lora_model)
+    from train.runlog import count_parameters, print_run_header
     from ttml.trainers import SFTConfig, SFTTrainer
 
     # (1, 1) ONLY -- matches every other training script in this project; LoRA changes
@@ -245,6 +246,16 @@ def main(argv: List[str] | None = None) -> int:
         )
         assert_stochastic_rounding(trainer, "editor-lora")
         assert_eval_wired(trainer, val_size=val_size, arm="editor-lora")
+
+        # State the run's shape before training it. See train/runlog.py: the SFT entry
+        # points printed almost none of this, so their logs held three thousand
+        # progress-bar frames and no record of WHAT was trained.
+        print_run_header(
+            size_name="1024", model_config=MODEL_YAML, steps=args.steps,
+            batch_size=args.batch_size, seq_len=MAX_SEQ_LEN,
+            param_count=count_parameters(lora_model),
+            scheduler="constant",
+        )
 
         # The freeze is the whole premise of this arm: with 100% of base weights frozen,
         # general fluency CANNOT regress, which is why this script trains on 100% task data
