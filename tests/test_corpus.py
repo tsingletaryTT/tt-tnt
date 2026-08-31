@@ -27,6 +27,17 @@ def test_every_source_has_a_known_slice(name):
 @pytest.mark.parametrize("name", ALL)
 def test_every_source_has_a_resolvable_fetch_spec(name):
     src = SOURCES[name]
+    if src.fetch_kind == "url":
+        # A url-kind source pins by being a fixed URL rather than a dataset revision --
+        # "mission" is fetched from several such URLs (scripts/fetch_mission.py's
+        # MISSION_DOCUMENTS), of which source_url is one representative anchor, not the
+        # whole fetch spec. The resolvability requirement this test enforces still holds:
+        # a real, https, non-empty URL rather than a placeholder.
+        assert src.source_url, f"{name}: fetch_kind='url' with no source_url"
+        assert src.source_url.startswith("https://"), (
+            f"{name}: source_url '{src.source_url}' is not https"
+        )
+        return
     assert src.hf_repo, f"{name}: no hf_repo"
     assert src.hf_revision, f"{name}: no pinned revision — fetches must be reproducible"
     # Reject branch refs like "main", "master", "HEAD" — must be a pinned commit sha

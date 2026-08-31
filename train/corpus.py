@@ -429,6 +429,41 @@ SOURCES: Dict[str, CorpusSource] = {
             "cannot learn to use distant context. This slice exists for LENGTH, not voice."
         ),
     ),
+    "mission": CorpusSource(
+        name="mission",
+        slice="agentic",
+        target_share=0.0,   # set by the re-settle in Task 7
+        hf_repo="", hf_revision="",
+        fetch_kind="url",
+        # A single representative anchor for the "resolvable fetch spec" test below --
+        # the real fetch spec for this source is the (label, url) list in
+        # scripts/fetch_mission.py::MISSION_DOCUMENTS, since this is the one source in the
+        # registry made of several independently-fetched documents rather than one
+        # dataset or one file.
+        source_url=(
+            "https://www.nasa.gov/wp-content/uploads/static/history//alsj/a11/"
+            "a11transcript_tec.html"
+        ),
+        # No SPDX identifier exists for "US Government work" -- it is a statutory basis,
+        # not a licence -- so this is a short descriptive string instead, non-empty because
+        # every source in this registry is required to declare SOME licence basis.
+        license_id="US Government work (17 USC 105); no SPDX identifier applies",
+        license_url="https://www.copyright.gov/title17/92chap1.html#105",
+        attribution="NASA mission transcripts and technical reports (US Government work)",
+        license_note=(
+            "17 USC 105: works of the US Government are not subject to copyright in the "
+            "United States. This is a statutory basis, not a licence, and it covers only "
+            "material the government itself produced -- hence every document is fetched "
+            "from a .gov host and that is asserted by test."
+        ),
+        rows_per_document=1,
+        rationale=(
+            "The only unambiguously clean post-1950 source with period voice. Transcripts "
+            "are extremely long documents, and their content -- technical dialogue between "
+            "people solving hard problems under pressure -- is further from this corpus's "
+            "existing children's fiction than anything else available."
+        ),
+    ),
 }
 
 

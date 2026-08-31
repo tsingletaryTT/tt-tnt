@@ -11,7 +11,16 @@ def _src(**kw):
 
 
 def test_fetch_kind_defaults_to_hf_so_every_existing_source_is_unchanged():
-    assert all(s.fetch_kind == "hf" for s in SOURCES.values())
+    """Written when ``fetch_kind`` was added and every registered source was still an HF
+    dataset -- it asserted that adding the field changed nothing for them. Task 5 of the
+    2026-08-31 long-context-corpus plan registered ``mission``, the first (and, by design,
+    only) source that is genuinely NOT a HuggingFace dataset -- NASA pages fetched by
+    ``scripts/fetch_mission.py``. That one exclusion is the point of this task, not a
+    regression of the property this test checks for every other source.
+    """
+    assert all(
+        s.fetch_kind == "hf" for name, s in SOURCES.items() if name != "mission"
+    )
 
 
 def test_a_url_source_carries_its_url():

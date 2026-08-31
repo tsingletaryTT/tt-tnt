@@ -696,6 +696,28 @@ this project does not redistribute the corpus; it is fetched from the Hugging Fa
 pinned revision above. `target_share` is `0.0` at registration — the share is set once the
 blend is re-settled to include it (see `docs/corpus_blend.md`).
 
+Long-context corpus — NASA mission transcripts. An eleventh source, `mission`
+(`scripts/fetch_mission.py::MISSION_DOCUMENTS`; see `train/corpus.py`), the only
+unambiguously clean post-1950 source with genuine period voice: fiction from 1964 onward is
+still under copyright, but works of the United States Government are not copyrightable in
+the first place. **17 USC 105** puts them outside copyright in the United States as a matter
+of statute — this is a *statutory basis*, not a licence, and there is no SPDX identifier for
+it; `train/corpus.py`'s `license_id` for this source says so in words rather than naming one
+that doesn't exist. That basis holds only for material the government itself produced, which
+is why every document is fetched from a `.nasa.gov` host and `tests/test_fetch_mission.py`
+asserts that every registered URL is. The slice is nine individually-verified NASA History
+Office pages from the Apollo 11 mission — the Technical Air-to-Ground Voice Transcription and
+eight companion Apollo Lunar Surface Journal pages (landing, first step, EVA mobility,
+closeout, EVA prep, post-EVA, launch, and the contingency-sample account) — roughly 292,000
+words of real air-to-ground technical dialogue and mission narrative, chosen for being
+*extremely long single documents*: the corpus's median document is 113 tokens, and a
+transcript this long is the opposite failure mode. Mission-elapsed-time stamps
+("00 00 01 02") are kept as real document content, not stripped as markup; only the HTML tags
+wrapping the page are removed. As with every other source here, this project does not
+redistribute the text; it is fetched at request time from the live NASA pages listed above.
+`target_share` is `0.0` at registration — the share is set once the blend is re-settled to
+include it (see `docs/corpus_blend.md`).
+
 Architectural inspiration — Mini-LLM. The lesson arc credits
 [Mini-LLM by Ashx098](https://github.com/Ashx098/Mini-LLM) for its component choices — RoPE,
 RMSNorm, SwiGLU, GQA, subword BPE. That repository **declares no license**, so no rights are
