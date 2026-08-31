@@ -47,3 +47,22 @@ def test_every_record_carries_its_evidence_string():
     """A verdict with no evidence is unauditable, and this gate exists to be audited."""
     r = verify("Second Variety", "Philip K. Dick", 1953, _index())
     assert r.evidence and "1953" in r.evidence
+
+
+def test_a_suffix_with_no_comma_does_not_swallow_the_surname():
+    """'Robert A. Heinlein Jr.' must still match a renewal record filed under 'Heinlein' --
+    the old surname-is-last-token rule would extract 'Jr' instead and silently admit a
+    work that was genuinely renewed (the dangerous false-negative direction)."""
+    r = verify("The Puppet Masters", "Robert A. Heinlein Jr.", 1951, _index())
+    assert r.renewed is True
+
+
+def test_a_multiword_particle_surname_normalises_the_same_with_or_without_a_comma():
+    """'L. Sprague de Camp' and 'de Camp, L. Sprague' must resolve to the same surname --
+    the old rule would take only the last token ('Camp') from the no-comma form, which
+    diverges from the comma form ('de Camp') and would miss a real index entry."""
+    index = RenewalIndex([("lest darkness fall", "de camp", 1941)])
+    r_no_comma = verify("Lest Darkness Fall", "L. Sprague de Camp", 1941, index)
+    r_comma = verify("Lest Darkness Fall", "de Camp, L. Sprague", 1941, index)
+    assert r_no_comma.renewed is True
+    assert r_comma.renewed is True

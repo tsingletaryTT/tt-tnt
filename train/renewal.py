@@ -29,6 +29,17 @@ RENEWAL_WINDOW = (1929, 1963)
 
 _ARTICLES = ("the ", "a ", "an ")
 
+#: Generational/honorific suffixes that are NOT part of a surname, stripped before the
+#: surname is taken from a no-comma name. Case-insensitive, with or without a trailing period
+#: (checked after lowercasing and stripping trailing dots).
+_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "phd", "md"}
+
+#: Lowercase name particles that stay attached to the FOLLOWING word when taking a surname
+#: from a no-comma name (e.g. "L. Sprague de Camp" -> surname "de Camp", not "Camp"). Only a
+#: single particle immediately before the final word is handled -- see the known-limitation
+#: note on _norm_author for multi-particle surnames this does not cover.
+_PARTICLES = {"de", "van", "von", "du", "della", "la", "le"}
+
 
 def _norm_title(s: str) -> str:
     s = re.sub(r"[^a-z0-9 ]+", " ", s.lower())
@@ -39,10 +50,49 @@ def _norm_title(s: str) -> str:
     return s
 
 
+def _strip_suffix_tokens(tokens):
+    """Drop trailing generational/honorific tokens (Jr., III, PhD, ...) from a name's tokens."""
+    tokens = list(tokens)
+    while tokens:
+        bare = tokens[-1].strip(".").lower()
+        if bare in _SUFFIXES:
+            tokens = tokens[:-1]
+        else:
+            break
+    return tokens
+
+
 def _norm_author(s: str) -> str:
-    """Surname only, lowercased. Handles both 'Robert A. Heinlein' and 'Heinlein, Robert A.'"""
+    """Surname only, lowercased. Handles both 'Robert A. Heinlein' and 'Heinlein, Robert A.'
+
+    Two false-negative shapes matter here more than usual: this index decides whether a work
+    is treated as free to use, and a surname that fails to match an index entry for a work
+    that WAS actually renewed silently admits copyrighted fiction. Both are handled:
+
+    - A trailing suffix with no comma ("Robert A. Heinlein Jr.") is stripped BEFORE the
+      surname is taken, so it does not get mistaken for the surname itself.
+    - A single lowercase particle immediately before the final word ("L. Sprague de Camp")
+      is kept attached to it, so the surname is "de Camp" and not just "Camp".
+
+    KNOWN LIMITATION, not cleanly handled: a MULTI-WORD particle chain with no comma (e.g.
+    "Ludwig van der Berg", "de la Cruz" split across three tokens) only has its immediate
+    single particle recovered -- "der"/"la" are not in `_PARTICLES` as chain continuations,
+    so a two-particle surname written without a comma can still resolve to the wrong (too
+    short) surname. This is the same false-negative direction as the bug this function fixes,
+    just not fully closed by it; the comma form ("van der Berg, Ludwig") is unaffected, since
+    it takes everything before the comma verbatim rather than guessing from token position.
+    """
     s = s.strip()
-    surname = s.split(",")[0] if "," in s else s.split()[-1] if s.split() else s
+    if "," in s:
+        surname = s.split(",")[0]
+    else:
+        tokens = _strip_suffix_tokens(s.split())
+        if not tokens:
+            surname = s
+        elif len(tokens) >= 2 and tokens[-2].strip(".").lower() in _PARTICLES:
+            surname = " ".join(tokens[-2:])
+        else:
+            surname = tokens[-1]
     return re.sub(r"[^a-z]+", "", surname.lower())
 
 
