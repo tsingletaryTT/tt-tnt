@@ -684,6 +684,18 @@ weights trained on share-alike data constitute a "Data Derivative" (CDLA-Sharing
 publishing weights trained with this code should reach their own conclusion rather than
 inheriting ours.
 
+Long-context corpus — FineWeb-Edu. A tenth source, `longform`
+([`HuggingFaceFW/fineweb-edu`](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu),
+`sample-10BT` config, pinned revision `87f0914` — see `train/corpus.py`), registered to fix a
+real gap: the corpus's median document is 113 tokens and only 1.08% reach 2048, so a
+2048-token training window holds roughly 18 unrelated documents and the model cannot learn to
+use distant context. It is licensed **ODC-By 1.0**, which covers the *database* FineWeb-Edu
+assembles — the underlying web pages it draws from carry their own, separate rights, and
+FineWeb-Edu is itself a filtered Common Crawl derivative. As with every other source here,
+this project does not redistribute the corpus; it is fetched from the Hugging Face Hub at the
+pinned revision above. `target_share` is `0.0` at registration — the share is set once the
+blend is re-settled to include it (see `docs/corpus_blend.md`).
+
 Architectural inspiration — Mini-LLM. The lesson arc credits
 [Mini-LLM by Ashx098](https://github.com/Ashx098/Mini-LLM) for its component choices — RoPE,
 RMSNorm, SwiGLU, GQA, subword BPE. That repository **declares no license**, so no rights are

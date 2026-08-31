@@ -407,6 +407,28 @@ SOURCES: Dict[str, CorpusSource] = {
                   "tokens (+14 — this slice is seven documents), needing 3.4759x. The "
                   "ceiling moves to 0.5754%, so the headroom is unchanged at 0.075 points.",
     ),
+    "longform": CorpusSource(
+        name="longform",
+        slice="spine",
+        target_share=0.0,   # set by the re-settle in Task 7
+        hf_repo="HuggingFaceFW/fineweb-edu",
+        hf_revision="87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+        hf_config="sample-10BT",
+        license_id="ODC-By-1.0",
+        license_url="https://opendatacommons.org/licenses/by/1-0/",
+        attribution="FineWeb-Edu (HuggingFaceFW), ODC-By 1.0",
+        license_note=(
+            "ODC-By covers the DATABASE. The underlying web pages carry their own rights; "
+            "FineWeb-Edu is a filtered Common Crawl derivative and this project does not "
+            "redistribute it."
+        ),
+        rows_per_document=1,
+        rationale=(
+            "Bulk long documents. The corpus's median document is 113 tokens and only 1.08% "
+            "reach 2048, so a 2048-token window holds ~18 unrelated documents and the model "
+            "cannot learn to use distant context. This slice exists for LENGTH, not voice."
+        ),
+    ),
 }
 
 

@@ -127,9 +127,19 @@ def test_format_share_leaves_whole_percentages_whole():
 
 
 def test_no_registered_share_renders_as_zero():
-    """A slice that reads as 0% reads as "contributes nothing"."""
+    """A slice that reads as 0% reads as "contributes nothing".
+
+    The guard is against a NONZERO share that rounds away to nothing (``flavour``'s original
+    2.00% bug this test was written for). A source whose ``target_share`` is *exactly* 0.0 is
+    a different case: a deliberately unsettled placeholder for a source newly registered but
+    not yet given a real share (``longform``, staged by the 2026-08-31 long-context-corpus
+    plan's Task 4, awaiting Task 7's re-settle). That state is meant to read as "0%" -- it
+    IS zero -- so it is excluded here rather than made to pass some other way.
+    """
     from train.corpus import SOURCES, format_share
     for name, src in SOURCES.items():
+        if src.target_share == 0.0:
+            continue
         assert format_share(src.target_share) != "0%", name
 
 
@@ -180,3 +190,17 @@ def test_no_rationale_claims_an_upsample_the_registry_does_not_declare():
                 f"{name}'s rationale claims upsample={claimed}, registry declares "
                 f"{src.upsample}"
             )
+
+
+def test_longform_is_registered_with_an_open_licence_and_a_pinned_revision():
+    s = SOURCES["longform"]
+    assert s.fetch_kind == "hf"
+    assert s.hf_revision, "an unpinned fetch is not reproducible"
+    assert s.license_id, "a source with no licence id cannot be rendered into the model card"
+
+
+def test_longform_exists_for_document_LENGTH_and_says_so():
+    """A rationale that does not state why the source is here is prose, not provenance --
+    and this repo has a gate that fails when a rationale goes stale."""
+    r = SOURCES["longform"].rationale.lower()
+    assert "long" in r and ("2048" in r or "document" in r)
