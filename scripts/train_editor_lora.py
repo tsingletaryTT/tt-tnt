@@ -168,22 +168,12 @@ def main(argv: List[str] | None = None) -> int:
 
     import ttml  # noqa: F401 -- opens the UMD cluster; MUST run under a gozer lease
     from ttml.datasets import InMemoryDataloader, sft_collate_fn
-    from ttml.modules import LoraConfig, LoraModel
+    from ttml.modules import LoraConfig
+
+    from train.checkpoint import save_sft_checkpoint
+    from train.lora import (assert_adapter_moved, assert_base_frozen,
+                            base_parameter_snapshot, make_lora_model)
     from ttml.trainers import SFTConfig, SFTTrainer
-
-    class TtTntLoraModel(LoraModel):
-        """`LoraModel` with `.parameters()` delegated to the wrapped model's own
-        canonical naming. `LoraModel` itself does not override `.parameters()`, so
-        calling it directly walks the C++-registered tree from the WRAPPER's own root
-        (observed empirically: `LoraModel/model/blocks/N/...`) instead of the
-        canonical `llama/llama_block_N/...` this project's checkpoint format, optimizer
-        construction, and HF conversion all expect -- confirmed by printing both before
-        writing this class, not assumed. Same fix shape as `train.model.TtTntLlama`'s
-        own override, for the same underlying reason.
-        """
-
-        def parameters(self):
-            return self.model.parameters()
 
     # (1, 1) ONLY -- matches every other training script in this project; LoRA changes
     # nothing about mesh requirements.
@@ -221,7 +211,7 @@ def main(argv: List[str] | None = None) -> int:
             rank=args.rank, alpha=args.alpha, target_modules=LORA_TARGET_MODULES,
             lora_dropout=args.lora_dropout, verbose=True,
         )
-        lora_model = TtTntLoraModel(model, lora_config)
+        lora_model = make_lora_model(model, lora_config)
 
         all_names = list(lora_model.parameters().keys())
         trainable_names = [n for n, t in lora_model.parameters().items() if t.get_requires_grad()]
@@ -244,51 +234,30 @@ def main(argv: List[str] | None = None) -> int:
                              log_interval=1, max_grad_norm=1.0),
             optimizer={"type": "AdamW", "lr": args.lr, "weight_decay": 0.0,
                        "stochastic_rounding": True},
+            # Without this the default saver reads each bf16 parameter at FULL precision and
+            # is handed AutocastTensor's stale fp32 cache, so every checkpoint after the
+            # first is a byte-identical duplicate. See train.checkpoint.
+            checkpoint_saver=save_sft_checkpoint,
             callbacks=[recorder],
         )
         assert_stochastic_rounding(trainer, "editor-lora")
         assert_eval_wired(trainer, val_size=val_size, arm="editor-lora")
 
-        # lora_B initialises to all-zeros (ttml.modules.lora._create_lora_B), so this is a
-        # real health check, not a formality: if training silently did nothing, every
-        # lora_B tensor would still read back as exactly zero.
-        import numpy as np
-
-        def _read_native(t):
-            """Read a parameter bypassing AutocastTensor's lazy FULL-precision cache.
-
-            A bare `t.to_numpy()` defaults to FULL. On a bf16 parameter that typecasts once
-            and caches, so taking a BASELINE with it is what makes the follow-up read stale --
-            the check would report "moved 0" no matter what training did. NATIVE always reads
-            the stored value. This is the same read `ttml.checkpointing` and
-            `ttml.sharding.Sharding.gather` use, for the same reason.
-            """
-            import ttml
-            return np.asarray(
-                t.to_numpy(precision=ttml.autograd.PreferredPrecision.NATIVE),
-                dtype=np.float32,
-            )
-
-        lora_b_before = {
-            n: _read_native(t) for n, t in lora_model.parameters().items()
-            if n.endswith("/lora_B")
-        }
-        assert all(np.all(v == 0) for v in lora_b_before.values()), (
-            "expected every lora_B to start at zero (ttml's own init convention) -- "
-            "if this fails, the 'lora_B moved' check below would be meaningless"
-        )
+        # The freeze is the whole premise of this arm: with 100% of base weights frozen,
+        # general fluency CANNOT regress, which is why this script trains on 100% task data
+        # with no base-blend counterweight. Snapshot at NATIVE precision -- a FULL read is
+        # served from AutocastTensor's cache and would report a perfect freeze and a
+        # motionless adapter whether or not either were true.
+        base_before = base_parameter_snapshot(lora_model)
 
         trainer.train()
 
-        lora_b_after = {n: _read_native(t) for n, t in lora_model.parameters().items()
-                         if n.endswith("/lora_B")}
-        moved = sum(1 for n in lora_b_after if not np.all(lora_b_after[n] == 0))
-        print(f"[editor-lora] lora_B tensors moved from zero: {moved}/{len(lora_b_after)}")
-        if moved == 0:
-            raise RuntimeError(
-                "training completed but every lora_B tensor is still exactly zero -- "
-                "this run learned nothing"
-            )
+        frozen = assert_base_frozen(base_before, lora_model)
+        moved = assert_adapter_moved(lora_model)
+        print(f"[editor-lora] freeze held: {frozen['frozen_checked']} base parameters "
+              f"bit-identical, {frozen['moved']} moved")
+        print(f"[editor-lora] adapter trained: {moved['lora_B_moved']}/{moved['lora_B_total']} "
+              f"lora_B tensors off zero, max |value| {moved['max_abs']:.6e}")
 
         print(f"training complete -> {out}")
     finally:
