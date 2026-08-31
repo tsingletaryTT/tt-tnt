@@ -1,0 +1,446 @@
+{
+ "kind": "tt-tnt/evaluation/1",
+ "mode": "comparison",
+ "started_utc": "2026-08-31T21:56:24+00:00",
+ "baseline": {
+  "kind": "tt-tnt/evaluation/1",
+  "mode": "single",
+  "started_utc": "2026-08-31T21:52:10+00:00",
+  "model": {
+   "path": "artifacts/hf-tt-tnt-1024",
+   "label": "tt-tnt-1024",
+   "max_position_embeddings": 512,
+   "training_window": 512,
+   "hidden_size": 1024,
+   "num_hidden_layers": 8,
+   "checkpoint_dir": null
+  },
+  "comparability": {
+   "eval_window": 512,
+   "model_max_position_embeddings": 512,
+   "training_window": 512,
+   "tokens": {
+    "path": "artifacts/tokens-v3/val_ids.npy",
+    "size_bytes": 156768736,
+    "n_tokens": 39192152
+   },
+   "prompt_set": "b",
+   "num_samples": 32,
+   "n_windows": 256,
+   "seed": 0
+  },
+  "window_loss": 2.7726293141245186,
+  "instruments": [
+   {
+    "name": "behaviour",
+    "argv": [
+     "/home/ttuser/.tenstorrent-venv/bin/python",
+     "/home/ttuser/code/tt-tnt/scripts/score_behaviour.py",
+     "--hf-model",
+     "artifacts/hf-tt-tnt-1024",
+     "--label",
+     "tt-tnt-1024",
+     "--prompt-set",
+     "b",
+     "--num-samples",
+     "32",
+     "--max-new-tokens",
+     "60",
+     "--seed",
+     "0",
+     "--out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/behaviour-setB.md",
+     "--json-out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/behaviour-setB.json"
+    ],
+    "json": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/behaviour-setB.json",
+    "markdown": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/behaviour-setB.md",
+    "status": "ok"
+   },
+   {
+    "name": "context",
+    "argv": [
+     "/home/ttuser/.tenstorrent-venv/bin/python",
+     "/home/ttuser/code/tt-tnt/scripts/probe_context_use.py",
+     "--hf-model",
+     "artifacts/hf-tt-tnt-1024",
+     "--tokens",
+     "/home/ttuser/code/tt-tnt/artifacts/tokens-v3/val_ids.npy",
+     "--seq-len",
+     "512",
+     "--n-windows",
+     "256",
+     "--seed",
+     "0",
+     "--out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/context-use.md",
+     "--json-out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/context-use.json"
+    ],
+    "json": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/context-use.json",
+    "markdown": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-tt-tnt-1024/context-use.md",
+    "status": "ok"
+   }
+  ],
+  "designation": {
+   "label": "tt-tnt-1024",
+   "hf_model": "/home/ttuser/code/tt-tnt/artifacts/hf-tt-tnt-1024",
+   "reason": "The 512-context dialogue-slice weights (10,764 steps, one epoch over tokens-v4), now shipping a chat template baked into tokenizer_config.json that caps rendered conversation history at the last 5 messages. This pairing is the point: the guard -- not a larger context -- is what prevents the growing-conversation KV-cache crash that is a generic tt-metal/vLLM defect (reproduced identically on stock meta-llama/Llama-3.2-1B-Instruct; docs/upstream-tt-metal-asks.md entry 6). Measured directly at 512 context, the exact crash condition: 14 growing turns, zero crashes, prompt_tokens plateauing at ~102 while messages sent grew to 27, against a hard engine crash at turn 3 before the guard existed. These weights answer questions in form and sometimes in fact ('The color of the sky is blue' outright; 'The city of Turin is the capital of the Province of Turin' -- grammatical, on-topic, factually off), where every 2048-context checkpoint trained returned circular or looping non-answers.",
+   "qualification": "Not unqualified. These are the SAME weights this project designated on 2026-08-18, with a chat template added -- no training improved them, and their known regression stands: 4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and the spider-legs question still returns a repetition loop. What changed on 2026-08-29 is that a 2048-context replacement was trained, published, measured to be WORSE at question answering, and reverted -- so this designation is a restoration, not an advance. The reason 2048 degraded Q&A was NOT isolated: the epoch-inflation hypothesis (steps held at 10,764 while seq_len quadrupled, taking epochs 1.00 -> 4.00) was tested by a six-checkpoint epoch sweep and NOT supported -- termination came back non-monotone and every comparison against this checkpoint was NOT SIGNIFICANT at n=32, and the metrics chosen carried no signal at all. The discriminating evidence is Q&A coherence, which was READ rather than scored, and the 512-vs-2048 comparison is confounded by epochs and sequence length moving together. Anyone re-raising the context should treat the mechanism as open and should not assume fewer epochs fixes it. Separately: this is a 512-window model, so its loss is not comparable to tt-tnt-v3's 2048-window figure -- evaluate() windows at cfg.seq_len, and comparing across windows is the error this file exists to prevent.",
+   "evidence": [
+    "docs/measurements/ctx2048-regression-and-guard-efficacy.json",
+    "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+    "docs/upstream-tt-metal-asks.md",
+    "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
+    "train/configs/model/tt-tnt-1024.yaml",
+    "tests/test_to_hf.py"
+   ],
+   "designated": "2026-08-29",
+   "source": "docs/current_model.json"
+  }
+ },
+ "candidate": {
+  "kind": "tt-tnt/evaluation/1",
+  "mode": "single",
+  "started_utc": "2026-08-31T21:56:24+00:00",
+  "model": {
+   "path": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/hf-editor-lora",
+   "label": "editor-lora",
+   "max_position_embeddings": 512,
+   "training_window": 512,
+   "hidden_size": 1024,
+   "num_hidden_layers": 8,
+   "checkpoint_dir": null
+  },
+  "comparability": {
+   "eval_window": 512,
+   "model_max_position_embeddings": 512,
+   "training_window": 512,
+   "tokens": {
+    "path": "artifacts/tokens-v3/val_ids.npy",
+    "size_bytes": 156768736,
+    "n_tokens": 39192152
+   },
+   "prompt_set": "b",
+   "num_samples": 32,
+   "n_windows": 256,
+   "seed": 0
+  },
+  "window_loss": 2.745923906027801,
+  "instruments": [
+   {
+    "name": "behaviour",
+    "argv": [
+     "/home/ttuser/.tenstorrent-venv/bin/python",
+     "/home/ttuser/code/tt-tnt/scripts/score_behaviour.py",
+     "--hf-model",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/hf-editor-lora",
+     "--label",
+     "editor-lora",
+     "--prompt-set",
+     "b",
+     "--num-samples",
+     "32",
+     "--max-new-tokens",
+     "60",
+     "--seed",
+     "0",
+     "--out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/behaviour-setB.md",
+     "--json-out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/behaviour-setB.json"
+    ],
+    "json": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/behaviour-setB.json",
+    "markdown": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/behaviour-setB.md",
+    "status": "ok"
+   },
+   {
+    "name": "context",
+    "argv": [
+     "/home/ttuser/.tenstorrent-venv/bin/python",
+     "/home/ttuser/code/tt-tnt/scripts/probe_context_use.py",
+     "--hf-model",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/hf-editor-lora",
+     "--tokens",
+     "/home/ttuser/code/tt-tnt/artifacts/tokens-v3/val_ids.npy",
+     "--seq-len",
+     "512",
+     "--n-windows",
+     "256",
+     "--seed",
+     "0",
+     "--out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/context-use.md",
+     "--json-out",
+     "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/context-use.json"
+    ],
+    "json": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/context-use.json",
+    "markdown": "/tmp/claude-1000/-home-ttuser-code-tt-tnt/a414e421-a374-4c1c-8579-085ff33a8879/scratchpad/eval-lora/evaluation-editor-lora/context-use.md",
+    "status": "ok"
+   }
+  ],
+  "designation": {
+   "label": "tt-tnt-1024",
+   "hf_model": "/home/ttuser/code/tt-tnt/artifacts/hf-tt-tnt-1024",
+   "reason": "The 512-context dialogue-slice weights (10,764 steps, one epoch over tokens-v4), now shipping a chat template baked into tokenizer_config.json that caps rendered conversation history at the last 5 messages. This pairing is the point: the guard -- not a larger context -- is what prevents the growing-conversation KV-cache crash that is a generic tt-metal/vLLM defect (reproduced identically on stock meta-llama/Llama-3.2-1B-Instruct; docs/upstream-tt-metal-asks.md entry 6). Measured directly at 512 context, the exact crash condition: 14 growing turns, zero crashes, prompt_tokens plateauing at ~102 while messages sent grew to 27, against a hard engine crash at turn 3 before the guard existed. These weights answer questions in form and sometimes in fact ('The color of the sky is blue' outright; 'The city of Turin is the capital of the Province of Turin' -- grammatical, on-topic, factually off), where every 2048-context checkpoint trained returned circular or looping non-answers.",
+   "qualification": "Not unqualified. These are the SAME weights this project designated on 2026-08-18, with a chat template added -- no training improved them, and their known regression stands: 4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and the spider-legs question still returns a repetition loop. What changed on 2026-08-29 is that a 2048-context replacement was trained, published, measured to be WORSE at question answering, and reverted -- so this designation is a restoration, not an advance. The reason 2048 degraded Q&A was NOT isolated: the epoch-inflation hypothesis (steps held at 10,764 while seq_len quadrupled, taking epochs 1.00 -> 4.00) was tested by a six-checkpoint epoch sweep and NOT supported -- termination came back non-monotone and every comparison against this checkpoint was NOT SIGNIFICANT at n=32, and the metrics chosen carried no signal at all. The discriminating evidence is Q&A coherence, which was READ rather than scored, and the 512-vs-2048 comparison is confounded by epochs and sequence length moving together. Anyone re-raising the context should treat the mechanism as open and should not assume fewer epochs fixes it. Separately: this is a 512-window model, so its loss is not comparable to tt-tnt-v3's 2048-window figure -- evaluate() windows at cfg.seq_len, and comparing across windows is the error this file exists to prevent.",
+   "evidence": [
+    "docs/measurements/ctx2048-regression-and-guard-efficacy.json",
+    "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+    "docs/upstream-tt-metal-asks.md",
+    "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
+    "train/configs/model/tt-tnt-1024.yaml",
+    "tests/test_to_hf.py"
+   ],
+   "designated": "2026-08-29",
+   "source": "docs/current_model.json"
+  }
+ },
+ "eval_window": 512,
+ "seed_floor": {
+  "provenance": "derived-live",
+  "behaviour": {
+   "collapse_rate": 0.05416666666666667,
+   "frame_collapse_rate": 0.003472222222222222,
+   "lexical_collapse_rate": 0.05625,
+   "termination_rate": 0.014583333333333334,
+   "repeat_rate": 0.0022186568206833106,
+   "longest_repeat": 0.05763888888888889,
+   "tinystories_margin": 0.07454077771002197,
+   "register_tinystories_share": 0.03680555555555556,
+   "engagement": 0.006623677248677251,
+   "n_tokens": 0.3277777777777778
+  },
+  "behaviour_source": "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+  "behaviour_prompt_set": "b",
+  "loss_sd": 0.1944021805232848,
+  "loss_mean": 0.041335227272727225,
+  "loss_sign": {
+   "n": 22,
+   "n_negative": 8,
+   "n_positive": 14,
+   "n_zero": 0,
+   "p_two_sided": 0.28627872467041016
+  },
+  "loss_window": null,
+  "loss_sources": [
+   "artifacts/checkpoints-tt-tnt-v3/val_losses.jsonl",
+   "artifacts/checkpoints-tt-tnt-v5/val_losses.jsonl"
+  ],
+  "notes": []
+ },
+ "seed_floor_problems": [],
+ "floor_ratio_threshold": 1.2,
+ "matched_window_loss_delta": -0.02670540809671751,
+ "behaviour": [
+  {
+   "signal": "collapse_rate",
+   "title": "genre collapse rate (any marker)",
+   "better": "lower",
+   "baseline": 0.06458333333333334,
+   "candidate": 0.07152777777777777,
+   "delta": 0.006944444444444444,
+   "ci95": [
+    -0.015069856686067761,
+    0.02895874557495665
+   ],
+   "min_detectable": 0.022014301130512205,
+   "ci_verdict": "no change",
+   "seed_floor": 0.05416666666666667,
+   "floor_ratio": 0.1282051282051282,
+   "label": "NOT INTERPRETABLE"
+  },
+  {
+   "signal": "frame_collapse_rate",
+   "title": "\u2014 story-frame collapse",
+   "better": "lower",
+   "baseline": 0.011805555555555555,
+   "candidate": 0.006944444444444444,
+   "delta": -0.004861111111111111,
+   "ci95": [
+    -0.009995093890659154,
+    0.00027287166843693086
+   ],
+   "min_detectable": 0.005133982779548042,
+   "ci_verdict": "no change",
+   "seed_floor": 0.003472222222222222,
+   "floor_ratio": 1.4000000000000001,
+   "label": "below paired detection"
+  },
+  {
+   "signal": "lexical_collapse_rate",
+   "title": "\u2014 lexical-habit collapse",
+   "better": "lower",
+   "baseline": 0.05625,
+   "candidate": 0.06805555555555555,
+   "delta": 0.011805555555555555,
+   "ci95": [
+    -0.010157044017865772,
+    0.03376815512897688
+   ],
+   "min_detectable": 0.021962599573421327,
+   "ci_verdict": "no change",
+   "seed_floor": 0.05625,
+   "floor_ratio": 0.20987654320987653,
+   "label": "NOT INTERPRETABLE"
+  },
+  {
+   "signal": "termination_rate",
+   "title": "termination rate (</s>)",
+   "better": "higher",
+   "baseline": 0.04652777777777778,
+   "candidate": 0.027083333333333334,
+   "delta": -0.019444444444444445,
+   "ci95": [
+    -0.03721013241061495,
+    -0.0016787564782739413
+   ],
+   "min_detectable": 0.017765687966170503,
+   "ci_verdict": "worse",
+   "seed_floor": 0.014583333333333334,
+   "floor_ratio": 1.3333333333333333,
+   "label": "worse"
+  },
+  {
+   "signal": "repeat_rate",
+   "title": "4-gram repeat rate",
+   "better": "lower",
+   "baseline": 0.03658425358311578,
+   "candidate": 0.0775494135861662,
+   "delta": 0.04096516000305042,
+   "ci95": [
+    0.02538180253220483,
+    0.05654851747389601
+   ],
+   "min_detectable": 0.015583357470845589,
+   "ci_verdict": "worse",
+   "seed_floor": 0.0022186568206833106,
+   "floor_ratio": 18.463946123237665,
+   "label": "worse"
+  },
+  {
+   "signal": "longest_repeat",
+   "title": "longest repeated span (words)",
+   "better": "lower",
+   "baseline": 3.7472222222222222,
+   "candidate": 5.307638888888889,
+   "delta": 1.5604166666666666,
+   "ci95": [
+    0.9775139259683265,
+    2.1433194073650066
+   ],
+   "min_detectable": 0.58290274069834,
+   "ci_verdict": "worse",
+   "seed_floor": 0.05763888888888889,
+   "floor_ratio": 27.072289156626503,
+   "label": "worse"
+  },
+  {
+   "signal": "tinystories_margin",
+   "title": "tinystories margin (nats/word)",
+   "better": "lower",
+   "baseline": -0.5542566700030361,
+   "candidate": -0.43548060672709593,
+   "delta": 0.11877606327594023,
+   "ci95": [
+    0.07511178156439906,
+    0.1624403449874814
+   ],
+   "min_detectable": 0.04366428171154117,
+   "ci_verdict": "worse",
+   "seed_floor": 0.07454077771002197,
+   "floor_ratio": 1.5934374033230785,
+   "label": "worse"
+  },
+  {
+   "signal": "register_tinystories_share",
+   "title": "nearest source == tinystories",
+   "better": "lower",
+   "baseline": 0.18680555555555556,
+   "candidate": 0.2548611111111111,
+   "delta": 0.06805555555555555,
+   "ci95": [
+    0.037817270450691345,
+    0.09829384066041975
+   ],
+   "min_detectable": 0.030238285104864208,
+   "ci_verdict": "worse",
+   "seed_floor": 0.03680555555555556,
+   "floor_ratio": 1.8490566037735847,
+   "label": "worse"
+  },
+  {
+   "signal": "engagement",
+   "title": "prompt engagement",
+   "better": "higher",
+   "baseline": 0.21730213844797178,
+   "candidate": 0.22064539241622572,
+   "delta": 0.00334325396825397,
+   "ci95": [
+    -0.014484823467548088,
+    0.02117133140405603
+   ],
+   "min_detectable": 0.01782807743580206,
+   "ci_verdict": "no change",
+   "seed_floor": 0.006623677248677251,
+   "floor_ratio": 0.5047428856714928,
+   "label": "NOT INTERPRETABLE"
+  },
+  {
+   "signal": "n_tokens",
+   "title": "generated tokens before </s>",
+   "better": null,
+   "baseline": 58.85347222222222,
+   "candidate": 59.300694444444446,
+   "delta": 0.44722222222222224,
+   "ci95": [
+    -0.02600191216786568,
+    0.9204463566123102
+   ],
+   "min_detectable": 0.4732241343900879,
+   "ci_verdict": "n/a",
+   "seed_floor": 0.3277777777777778,
+   "floor_ratio": 1.364406779661017,
+   "label": "n/a"
+  }
+ ],
+ "trajectory": null,
+ "trajectory_refusal": "skipped by --skip-trajectory; no training-time loss comparison is reported",
+ "prediction_refuted_2026_08_31": {
+  "prediction": "Declared before the run: with 100% of base weights frozen, LoRA trained on 100% task data would NOT reproduce full-parameter SFT's repetition regression -- 4-gram repeat and longest repeated span would come back at or below 1.2x the seed floor, against 21.76x and 30.17x for the same mix with full parameters.",
+  "outcome": "REFUTED. 18.46x and 27.07x -- the same regression, marginally smaller.",
+  "matched_comparison": {
+   "mix": "identical: editor pairs + poetry + skits, 86,029 examples, no base-blend slice",
+   "warm_start": "artifacts/checkpoints-1024-dialogue/tt_tnt_step00010764.pkl, both arms",
+   "baseline_values_agree": "0.0366 / 3.7472 / 0.0465 in both reports, so the two are directly comparable rather than merely similar",
+   "4gram_repeat": {
+    "full_parameter": "0.0849 (21.76x)",
+    "lora": "0.0775 (18.46x)"
+   },
+   "longest_repeated_span": {
+    "full_parameter": "5.4861 (30.17x)",
+    "lora": "5.3076 (27.07x)"
+   },
+   "termination_rate": {
+    "full_parameter": "0.0153 (2.14x)",
+    "lora": "0.0271 (1.33x)"
+   },
+   "tinystories_margin": {
+    "full_parameter": "0.64x NOT INTERPRETABLE",
+    "lora": "1.59x WORSE"
+   },
+   "nearest_is_tinystories": {
+    "full_parameter": "0.28x NOT INTERPRETABLE",
+    "lora": "1.85x WORSE"
+   }
+  },
+  "why_the_prediction_was_wrong": "The reasoning was 'the base weights cannot move, so behaviour cannot regress'. That is a non-sequitur, and the freeze is not what failed -- it held exactly as designed, 66/66 base parameters bit-identical after training, verified at NATIVE precision. What is served is not the base model: LoraLinear computes W + (alpha/rank)*(B@A), so the EFFECTIVE weights differ from W wherever an adapter was injected. Freezing W constrains the RANK of the update, not its effect. A rank-8 update applied to q/kv/out_linear across all 8 blocks is entirely capable of teaching the model to repeat itself, and did.",
+  "what_lora_did_buy": "Slightly less of the same damage on repetition (18.46x vs 21.76x, 27.07x vs 30.17x) and termination (1.33x vs 2.14x), at the cost of register: it turned two signals the full-parameter arm left NOT INTERPRETABLE into real regressions (tinystories margin 1.59x, nearest-source 1.85x). Matched-window loss moved -0.0267, with no seed floor for that instrument, so it is reported and not interpreted. Read plainly: LoRA is not an anti-forgetting mechanism here, it is a differently-shaped fine-tune.",
+  "what_still_stands": "The base-blend counterweight remains the only intervention measured to fix this regression (editor run 3: termination NOT INTERPRETABLE at 0.10x, 4-gram repeat BETTER at 3.00x). It costs 60% of every step and it works; the freeze is free and does not.",
+  "limitations": [
+   "One seed, one run per arm.",
+   "step_3000 selected as the final checkpoint, matching the full-parameter arm's step_3000. Validation was still falling monotonically at 3000, so this run was undertrained for its own objective -- an earlier or later checkpoint was not evaluated.",
+   "Rank 8 on q/kv/out_linear only. A smaller rank, or targeting fewer modules, constrains the update further and was not tried; the prediction may hold at some rank, and this run does not locate it."
+  ]
+ }
+}

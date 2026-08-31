@@ -3187,6 +3187,56 @@ cannot regress — and its pre-declared prediction is that 4-gram repeat and lon
 come back at or below 1.2x the seed floor, against the 21.76x and 30.17x that same mix produced
 with full parameters. Full artifact: `docs/measurements/lora-vs-full-tool-calling.json`.
 
+### The anti-forgetting prediction, refuted — a frozen base is not a frozen model
+
+Ran the payoff experiment the LoRA work existed for: the editor mix at **100% task data**
+(86,029 examples, no base-blend slice) under LoRA, against the full-parameter run of the
+same mix. Same warm start, same baseline, and the two reports agree on every baseline value
+(0.0366 / 3.7472 / 0.0465), so this is a matched comparison rather than a similar one.
+
+**The prediction, declared before the run:** with 100% of base weights frozen, the repetition
+regression would not appear — 4-gram repeat and longest repeated span at or below 1.2x the
+seed floor, against 21.76x and 30.17x with full parameters.
+
+| signal | baseline | full-parameter | LoRA |
+|---|---:|---:|---:|
+| 4-gram repeat | 0.0366 | 0.0849 — **21.76x worse** | 0.0775 — **18.46x worse** |
+| longest repeated span | 3.7472 | 5.4861 — **30.17x worse** | 5.3076 — **27.07x worse** |
+| termination rate | 0.0465 | 0.0153 — 2.14x worse | 0.0271 — 1.33x worse |
+| tinystories margin | −0.5543 | 0.64x NOT INTERPRETABLE | **1.59x worse** |
+| nearest == tinystories | 0.1868 | 0.28x NOT INTERPRETABLE | **1.85x worse** |
+
+**REFUTED, and the freeze is not what failed.** It held exactly as designed — 66/66 base
+parameters bit-identical after training, read at NATIVE precision. The error is in the
+inference I built on it: *"the base weights cannot move, so behaviour cannot regress"* is a
+non-sequitur. **What is served is not the base model.** `LoraLinear` computes
+`W + (alpha/rank)·(B@A)`, so the effective weights differ from `W` wherever an adapter was
+injected. Freezing `W` constrains the **rank** of the update, not its effect — and a rank-8
+update to `q/kv/out_linear` across all 8 blocks is entirely capable of teaching the model to
+repeat itself. It did.
+
+**What LoRA actually bought:** slightly less of the same damage (18.46x vs 21.76x, 27.07x vs
+30.17x; termination 1.33x vs 2.14x) at the cost of register, turning two signals the
+full-parameter arm left NOT INTERPRETABLE into real regressions. Matched-window loss moved
+−0.0267, with no seed floor for that instrument, so it is reported and not interpreted. Read
+plainly: **LoRA is not an anti-forgetting mechanism here, it is a differently-shaped
+fine-tune.**
+
+**What still stands.** The base-blend counterweight remains the only intervention measured to
+fix this regression (editor run 3: termination NOT INTERPRETABLE at 0.10x, 4-gram repeat
+*better* at 3.00x). It costs 60% of every step and it works; the freeze is free and does not.
+
+⚠️ One seed, one run per arm, rank 8 on three projections. Validation was still falling
+monotonically at step 3000, so this run was undertrained for its own objective and no other
+checkpoint was gated. A smaller rank constrains the update further and was not tried — the
+prediction may hold at *some* rank, and this run does not locate it. Full artifact:
+`docs/measurements/evaluation-tt-tnt-1024-vs-editor-lora.json`.
+
+**The lesson, which generalises past LoRA:** a guarantee about the *parameters* is not a
+guarantee about the *function*. I spent a day building the mechanism, verified the freeze
+three ways, and the one thing I never checked was whether freezing the base implied anything
+about the output. It does not.
+
 ### Disk: the prune is a precondition, not housekeeping
 
 `/` is 100% full with ~31G free, and **146.4G of `artifacts/` is `.pkl` checkpoints across 47
