@@ -1,0 +1,122 @@
+{
+ "schema": "tt-tnt/tool-calling-checkpoint-selection/1",
+ "title": "tool-calling SFT re-run with the fixed checkpoint saver -- and what selection actually says",
+ "date": "2026-08-31",
+ "why": "Every prior SFT run wrote identical weights to every checkpoint (upstream-asks entry 8), so best-checkpoint selection was impossible. This is the first SFT run in this project whose checkpoints differ, and the first time the selection question can be asked at all.",
+ "run": {
+  "checkpoints": "artifacts/checkpoints-1024-tool-calling-s3",
+  "seed": 5489,
+  "steps": 3000,
+  "save_every": 250,
+  "eval_every": 250,
+  "lr": 1e-05,
+  "batch_size": 8,
+  "base_blend_ratio": 0.6,
+  "n_checkpoints": 12,
+  "note": "identical to the published stage-2 configuration except save/eval density and the saver"
+ },
+ "checkpoints_genuinely_differ": [
+  "step_250 vs step_500:   0/66 identical, max abs diff 1.562500e-02",
+  "step_1250 vs step_3000: 0/66 identical, max abs diff 3.906250e-02",
+  "step_250 vs step_3000:  0/66 identical, max abs diff 4.687500e-02",
+  "divergence grows with step distance; prior runs were 66/66 identical at max abs diff 0.0"
+ ],
+ "val_curve": [
+  {
+   "step": 250,
+   "val_loss": 1.8050130208333333
+  },
+  {
+   "step": 500,
+   "val_loss": 1.7535807291666667
+  },
+  {
+   "step": 750,
+   "val_loss": 1.7425130208333333
+  },
+  {
+   "step": 1000,
+   "val_loss": 1.7340494791666667
+  },
+  {
+   "step": 1250,
+   "val_loss": 1.73193359375
+  },
+  {
+   "step": 1500,
+   "val_loss": 1.7332356770833333
+  },
+  {
+   "step": 1750,
+   "val_loss": 1.7330729166666667
+  },
+  {
+   "step": 2000,
+   "val_loss": 1.7350260416666667
+  },
+  {
+   "step": 2250,
+   "val_loss": 1.7379557291666667
+  },
+  {
+   "step": 2500,
+   "val_loss": 1.7408854166666667
+  },
+  {
+   "step": 2750,
+   "val_loss": 1.7488606770833333
+  },
+  {
+   "step": 3000,
+   "val_loss": 1.74853515625
+  }
+ ],
+ "best_val": {
+  "step": 1250,
+  "val_loss": 1.73193359375
+ },
+ "gates": {
+  "step_1250": {
+   "emission_rate": 1.0,
+   "parse_rate": 0.78125,
+   "schema_valid_rate": 0.734375,
+   "distinct_tools_used": 4,
+   "n_total_generations": 64
+  },
+  "step_3000": {
+   "emission_rate": 1.0,
+   "parse_rate": 0.921875,
+   "schema_valid_rate": 0.890625,
+   "distinct_tools_used": 4,
+   "n_total_generations": 64
+  }
+ },
+ "paired_schema_valid_3000_minus_1250": {
+  "unit": "question (8 questions x 8 samples; the completion is NOT the exchangeable unit)",
+  "mean": 0.1562,
+  "sd": 0.1736,
+  "se": 0.0614,
+  "t": 2.55,
+  "better_on": 6,
+  "worse_on": 1,
+  "tied": 1,
+  "sign_test_two_sided_p": 0.125,
+  "critical_t": 2.843,
+  "verdict": "SUGGESTIVE, NOT SIGNIFICANT -- t=2.55 is below this eval's declared CRITICAL_T of 2.843 and the sign test gives p=0.125. n=8 questions is underpowered. What is NOT in doubt is the DIRECTION: the best-val checkpoint is not better, and is most likely worse, on the task gates."
+ },
+ "finding_validation_loss_is_the_wrong_selection_criterion": "Val loss bottoms at step 1250 and rises to 3000, while schema validity RISES over the same span (0.7344 -> 0.8906) and parse rate with it (0.7812 -> 0.9219). The mechanism is in the split, not the model: stratified_split holds out an even share per category and there are exactly two categories (tool_calling, base_blend), so ~50 of the 100 val examples are base-blend. Half the validation loss is plain language modelling with no bearing on tool-call format adherence, so minimising it optimises partly for the wrong thing. Selection for this objective should use the task gate on dense checkpoints -- which this saver fix makes possible for the first time -- not the val curve.",
+ "correction_to_the_overfitting_claim": "CLAUDE.md previously recorded that 'both tool-calling runs overfit' because val rose monotonically after step 1000, and treated evaluating an earlier checkpoint as the natural remedy. Rising val did not mean the task got worse here; it got better. 'Overfit' was inferred from a proxy that does not track the objective.",
+ "quantified_cost_of_the_saver_bug": {
+  "published_stage1_schema_valid": 0.75,
+  "published_stage2_schema_valid": 0.75,
+  "s3_step_1250_schema_valid": 0.734375,
+  "s3_step_3000_schema_valid": 0.890625,
+  "reading": "The published runs shipped their step-1000 weights whatever the filename said, and scored 0.75. This run's step_1250 -- the nearest comparable weights -- scores 0.7344, and its real step_3000 scores 0.8906. The within-run comparison is paired and the cross-run one is not (different run instances), but both point the same way: the saver bug was discarding the last two-thirds of every SFT run. Suggestive, and one seed; a seed replicate is what would settle the size of it."
+ },
+ "limitations": [
+  "One seed (5489), one run per arm. No seed replicate.",
+  "n=8 questions is the binding constraint on power, not the 8 samples per question.",
+  "The cross-run comparison against the published stage-1/stage-2 numbers is unpaired.",
+  "Only two checkpoints of the twelve were evaluated on the gates (best-val and final); the full 12-point gate curve was not measured."
+ ]
+}

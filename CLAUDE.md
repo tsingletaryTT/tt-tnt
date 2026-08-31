@@ -3080,6 +3080,56 @@ This also means the SFT runs have been paying for 3000 steps and keeping 1000. R
 ones whose conclusions matter is now cheap and, for the first time, will actually produce
 different checkpoints at different steps.
 
+### The tool-calling re-run: checkpoints differ, and val loss turns out to be the wrong selector
+
+Re-ran tool-calling SFT on the fixed saver — `artifacts/checkpoints-1024-tool-calling-s3`, seed
+5489, 3000 steps, `--save-every 250 --eval-every 250`, 12 checkpoints, ~9 min on one chip.
+Identical to the published stage-2 configuration except the saver and the save/eval density.
+
+**The checkpoints are real.** step_250 vs step_500 differ on 66/66 tensors (max 1.5625e-02),
+step_1250 vs step_3000 on 66/66 (3.9063e-02), step_250 vs step_3000 on 66/66 (4.6875e-02) —
+divergence growing with step distance, against every prior SFT run's 66/66 *identical* at 0.0.
+First run in this project whose checkpoints are what their filenames claim.
+
+**And selection immediately said something I did not expect.** Val bottoms at **step 1250**
+(1.73193) and rises to 1.74854 by 3000 — but the task gates move the *other* way:
+
+| | emission | parse | schema-valid |
+|---|---:|---:|---:|
+| published stage 1 (really step-1000 weights) | 1.0000 | 0.8594 | 0.7500 |
+| published stage 2 (really step-1000 weights) | 1.0000 | 0.8281 | 0.7500 |
+| s3 `step_1250` (best val) | 1.0000 | 0.7812 | 0.7344 |
+| s3 `step_3000` (worst val) | 1.0000 | **0.9219** | **0.8906** |
+
+Paired over the 8 questions — the exchangeable unit is the question, not the completion —
+schema validity is **+0.156, sd 0.174, SE 0.061, t = +2.55**, better on 6/8, worse on 1, tied 1,
+exact two-sided sign test **p = 0.125**. That is **below this eval's own declared
+`CRITICAL_T = 2.843`**, so: suggestive, not significant, n=8 questions underpowered. What is not
+in doubt is the direction — the best-val checkpoint is not better, and is probably worse.
+
+**The mechanism is in the split, not the model.** `stratified_split` holds out an even share per
+category and there are exactly **two** categories (tool_calling, base_blend), so ~50 of the 100
+val examples are base-blend. **Half the validation loss is plain language modelling with no
+bearing on tool-call adherence**, so minimising it optimises partly for the wrong thing.
+Selection for this objective belongs on the task gate over dense checkpoints — newly possible —
+not on the val curve.
+
+**A correction that follows.** This file previously recorded that "both tool-calling runs
+overfit" because val rose monotonically after step 1000, and treated evaluating an earlier
+checkpoint as the obvious remedy. Rising val did not mean the task got worse; it got better.
+**"Overfit" was inferred from a proxy that does not track the objective** — the same shape as
+today's other errors, one level up: not a stale read, but a stale *criterion*.
+
+**What the saver bug plausibly cost.** The published runs shipped step-1000 weights and scored
+0.75 schema-valid; this run's `step_1250` scores 0.7344 and its real `step_3000` scores 0.8906.
+The within-run comparison is paired, the cross-run one is not, but both point the same way: the
+bug was discarding the last two-thirds of every SFT run. One seed — a replicate is what would
+size it. Full artifact: `docs/measurements/tool-calling-s3-selection.json`.
+
+Consequence for the LoRA plan: at lr 1e-5 the val optimum was at step 1250 of 3000 and the gate
+optimum was later still. LoRA runs at 2e-4, 20x that, so a LoRA arm should save at `--save-every
+100` and be selected on the gate, not the curve.
+
 ### Disk: the prune is a precondition, not housekeeping
 
 `/` is 100% full with ~31G free, and **146.4G of `artifacts/` is `.pkl` checkpoints across 47
