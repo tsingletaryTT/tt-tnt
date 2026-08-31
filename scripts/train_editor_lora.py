@@ -209,7 +209,10 @@ def main(argv: List[str] | None = None) -> int:
 
         lora_config = LoraConfig(
             rank=args.rank, alpha=args.alpha, target_modules=LORA_TARGET_MODULES,
-            lora_dropout=args.lora_dropout, verbose=True,
+            # verbose=False: ttml's verbose injection prints one line per wrapped parameter
+            # (48 of them here), which buries this script's own summary line. That summary,
+            # the freeze check and the adapter check are the output worth reading.
+            lora_dropout=args.lora_dropout, verbose=False,
         )
         lora_model = make_lora_model(model, lora_config)
 

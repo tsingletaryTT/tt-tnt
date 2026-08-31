@@ -1,0 +1,56 @@
+project: tt-tnt
+theme: tt-brand
+
+defaults:
+  cols: 210
+  rows: 52
+  # Real telemetry, not the host fallback: this scene's whole claim is that the numbers on
+  # the right are caused by the training on the left. `hybrid` is sysfs real-time plus
+  # background tt-smi enrichment -- read-only, and the backend tt-demo-maker's own hardware
+  # demos use for exactly this shape of shot.
+  backend: "--backend hybrid"
+  outputs: [cast, mp4, gif]
+  # An animated TUI at agg defaults produces a 15-25 MB GIF for 20 seconds; this scene is
+  # minutes long. fps_cap 10 + font_size 12 is the manifest's own documented remedy, and
+  # speed 8 turns a full training run into a watchable loop. The .cast keeps real time.
+  # Take 2 landed at 19.6 MB: the left pane now scrolls every frame, so almost nothing
+  # dedupes between frames and the manifest's documented 10/12 remedy is not enough on
+  # its own. speed 16 over a 540s run is still ~34s of GIF, which is a watchable loop.
+  render: { fps_cap: 8, font_size: 10, speed: 16 }
+
+scenes:
+  - id: editor-lora
+    title: "LoRA fine-tuning on Blackhole: 48 of 114 parameters, and the board knows it"
+    layout: split
+    # asciinema, not VHS. VHS replays a scripted sequence at times it chooses, which is right
+    # for a deterministic CLI walkthrough and wrong here: the right pane is live hardware
+    # telemetry reacting to the left pane's real workload, so the recording has to preserve
+    # true wall-clock timing or the causation it claims to show is manufactured. `layout:
+    # split` already resolves to asciinema under the auto rule; stated explicitly so a later
+    # edit cannot silently flip it.
+    engine: asciinema
+    split_ratio: 52
+    # The run is ~3000 steps at ~10 it/s plus warm start and twelve validation passes.
+    # Recorded long enough to contain the whole thing including the post-training freeze
+    # verification -- `tt-demo compress` trims idle and `render.speed` handles the rest.
+    duration: 540s
+    left:
+      # NOT the trainer directly. tt-toplike's Training view attaches by resolving
+      # /proc/<pid>/fd/1, so the trainer's stdout has to be a regular FILE or the view can
+      # only report "stdout is not redirected". The first take proved this the expensive
+      # way: nine minutes of an empty panel saying exactly that. The wrapper redirects to a
+      # file, tails it into this pane, and kills its own process group so the take does not
+      # leave a run holding chips.
+      run: "bash demo/run-training.sh demo/train.log 3000"
+      # Start the clock once the model is on the device and stepping -- warm start and
+      # kernel compilation against an idle board is the least interesting footage.
+      wait_for: "SFTTrainer:"
+    right:
+      run: "tt-toplike {backend} --mode training -i 100 -q"
+    caption: >-
+      A LoRA adapter trains on one leased Blackhole p300c -- 48 of 114 parameters trainable,
+      100% of the base weights frozen. The training view on the right shows the reaction
+      localised to the leased board: devices 0 and 1 ramp 17W to 64W and 13W to 235W with
+      clocks going 800 to 1350 MHz, while devices 2 and 3 sit at 800 MHz throughout. Two
+      boards react and two do not, which is what makes the causation visible rather than
+      asserted.
