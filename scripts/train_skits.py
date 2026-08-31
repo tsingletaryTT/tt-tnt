@@ -88,6 +88,7 @@ sys.path.insert(0, str(ROOT))
 
 from convert.checkpoint_reader import read_tensors  # noqa: E402
 from scripts.derive_skits import build_skit_example  # noqa: E402
+from train.checkpoint import save_sft_checkpoint  # noqa: E402
 from train.improv import Slots  # noqa: E402
 from train.skit import SKIT_ROLES, Skit  # noqa: E402
 
@@ -616,6 +617,10 @@ def main(argv: List[str] | None = None) -> int:
                              max_grad_norm=1.0),
             optimizer={"type": "AdamW", "lr": args.lr, "weight_decay": 0.01,
                        "stochastic_rounding": True},
+            # Without this the default saver reads each bf16 parameter at FULL precision
+            # and is handed AutocastTensor's stale fp32 cache, so every checkpoint after
+            # the first is a byte-identical duplicate. See train.checkpoint.
+            checkpoint_saver=save_sft_checkpoint,
             callbacks=[recorder],
         )
         assert_stochastic_rounding(trainer, args.arm)

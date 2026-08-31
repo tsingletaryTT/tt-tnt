@@ -533,3 +533,177 @@ def test_a_format_2_header_missing_provenance_is_rejected():
 def test_extra_still_cannot_shadow_the_new_required_fields():
     with pytest.raises(ValueError, match="seed"):
         build_header(2000, **_v2_kwargs(), extra={"seed": 999})
+
+
+# ---------------------------------------------------------------------------
+# The SFT saver: reading a bf16 parameter without precision=NATIVE reads a cache
+# ---------------------------------------------------------------------------
+# Added 2026-08-31. Every SFT run this project has done (skits, improv, editor,
+# tool-calling) wrote the SAME weights to every `step_*.pkl`: measured directly,
+# step_1000.pkl and step_3000.pkl of artifacts/checkpoints-1024-tool-calling are
+# identical in all 66 tensors (max abs diff 0.0), while the pretrain path's own
+# checkpoints differ in 50/50. Only the `step` field differs, which is why the
+# files' md5s differ and the duplication went unnoticed.
+#
+# Root cause is tt-metal's own documented TODO in
+# tt-train/sources/ttml/autograd/autocast_tensor.cpp:
+#
+#     TODO: Lazy precision caching can leave the FULL/FLOAT32 view stale
+#     after in-place updates that mutate only the BF16 tensor (e.g. optimizer
+#     step).  Tracking: #41657
+#
+# Our parameters are bf16, so AutocastTensor holds them in the half slot and
+# leaves the full slot empty. AdamW mutates the bf16 tensor in place and never
+# calls set_tensor(), so nothing invalidates. SFTTrainer._save_checkpoint reads
+# `tensor.to_numpy(FLOAT32, composer=...)` with no `precision=`, which defaults
+# to FULL: the first save typecasts bf16 -> fp32 and CACHES it, and every later
+# save is handed that cache back. ttml's every other serialization site already
+# reads NATIVE for exactly this reason (checkpointing.py:38, sharding.py:78,90).
+
+
+class _FakeCachingTensor:
+    """A bf16 parameter that reproduces AutocastTensor's lazy FULL-precision cache.
+
+    ``mutate`` stands for the optimizer's in-place device update. A FULL read
+    (``to_numpy``'s default precision) fills the cache once and returns it forever
+    after; a NATIVE read always sees the live values. A saver that reads FULL is
+    therefore incapable of observing any training that happened after its first save.
+    """
+
+    def __init__(self, values):
+        import numpy as np
+
+        self._live = np.asarray(values, dtype=np.float32)
+        self._full_cache = None
+
+    def mutate(self, values):
+        import numpy as np
+
+        self._live = np.asarray(values, dtype=np.float32)
+
+    def get_value(self, _precision=None):
+        return _FakeValue(_FakeTopology(None, None, ()))
+
+    def to_numpy(self, _dtype=None, composer=None, precision=None):
+        if precision == "NATIVE":
+            return self._live.copy()
+        if self._full_cache is None:
+            self._full_cache = self._live.copy()
+        return self._full_cache.copy()
+
+
+class _FakeParam:
+    def __init__(self, tensor):
+        self.tensor = tensor
+
+
+def _install_native_read_fakes(monkeypatch, tensors):
+    """ttml fakes whose Sharding.gather routes through to_numpy(precision=NATIVE),
+    exactly as ttml.sharding.Sharding.gather does on a single device."""
+    import sys
+    import types
+
+    class _Sharding:
+        def __init__(self, _t):
+            pass
+
+        @classmethod
+        def from_tensor(cls, t):
+            return cls(t)
+
+        is_fully_replicated = True
+
+        def gather(self, tensor):
+            return tensor.to_numpy(None, precision="NATIVE")
+
+    sharding_mod = types.ModuleType("ttml.sharding")
+    sharding_mod.Sharding = _Sharding
+
+    ttml_mod = types.ModuleType("ttml")
+    ttml_mod.autograd = types.SimpleNamespace(
+        PreferredPrecision=types.SimpleNamespace(NATIVE="NATIVE"),
+    )
+    ttml_mod.sharding = sharding_mod
+    monkeypatch.setitem(sys.modules, "ttml", ttml_mod)
+    monkeypatch.setitem(sys.modules, "ttml.sharding", sharding_mod)
+
+
+class _FakeTrainer:
+    def __init__(self, params, step):
+        self._params = params
+        self.step = step
+
+    def parameters(self):
+        return self._params
+
+
+def _trainer_with(params, step):
+    model = _FakeTrainer(params, step)
+    return type("T", (), {"model": model, "step": step})()
+
+
+def test_sft_saver_sees_weights_that_changed_after_the_first_save(monkeypatch, tmp_path):
+    """Two saves either side of an in-place update must not be identical.
+
+    This is the bug itself: with a FULL read the second save returns the first
+    save's cached values, so every checkpoint after the first is a duplicate and
+    best-checkpoint selection is impossible.
+    """
+    import pickle
+
+    import numpy as np
+
+    from train.checkpoint import save_sft_checkpoint
+
+    tensor = _FakeCachingTensor([1.0, 2.0, 3.0])
+    params = {"llama/fc/weight": _FakeParam(tensor)}
+    _install_native_read_fakes(monkeypatch, params)
+
+    first = tmp_path / "step_1000.pkl"
+    save_sft_checkpoint(_trainer_with(params, 1000), first)
+
+    tensor.mutate([4.0, 5.0, 6.0])  # the optimizer steps
+
+    second = tmp_path / "step_2000.pkl"
+    save_sft_checkpoint(_trainer_with(params, 2000), second)
+
+    a = pickle.load(first.open("rb"))
+    b = pickle.load(second.open("rb"))
+    assert a["step"] == 1000 and b["step"] == 2000
+    np.testing.assert_array_equal(a["model_state"]["llama/fc/weight"], [1.0, 2.0, 3.0])
+    np.testing.assert_array_equal(b["model_state"]["llama/fc/weight"], [4.0, 5.0, 6.0])
+
+
+def test_sft_saver_writes_the_format_the_hf_converter_reads(monkeypatch, tmp_path):
+    """``{"step", "model_state"}`` with float32 arrays — what sft_checkpoint_to_hf expects."""
+    import pickle
+
+    import numpy as np
+
+    from train.checkpoint import save_sft_checkpoint
+
+    params = {"llama/fc/weight": _FakeParam(_FakeCachingTensor([1.0, 2.0]))}
+    _install_native_read_fakes(monkeypatch, params)
+
+    path = tmp_path / "step_10.pkl"
+    save_sft_checkpoint(_trainer_with(params, 10), path)
+
+    payload = pickle.load(path.open("rb"))
+    assert set(payload) == {"step", "model_state"}
+    assert payload["model_state"]["llama/fc/weight"].dtype == np.float32
+
+
+def test_sft_saver_refuses_a_sharded_parameter_rather_than_writing_replicas(monkeypatch, tmp_path):
+    """Under DDP a parameter is (falsely) marked Shard(0) — gathering it would concatenate
+    four replicas into one file. That case has its own fix (``replicated_for_save``); this
+    saver must say so instead of silently writing a 4x model."""
+    import sys
+
+    from train.checkpoint import save_sft_checkpoint
+
+    params = {"llama/fc/weight": _FakeParam(_FakeCachingTensor([1.0]))}
+    _install_native_read_fakes(monkeypatch, params)
+    sys.modules["ttml.sharding"].Sharding.is_fully_replicated = False
+
+    with pytest.raises(RuntimeError, match="replicated_for_save"):
+        save_sft_checkpoint(_trainer_with(params, 10), tmp_path / "step_10.pkl")

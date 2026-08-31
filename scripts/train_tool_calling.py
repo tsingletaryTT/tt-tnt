@@ -50,6 +50,7 @@ from scripts.train_skits import (  # noqa: E402
     assert_eval_wired,
     assert_stochastic_rounding,
 )
+from train.checkpoint import save_sft_checkpoint  # noqa: E402
 from train.tool_calling import (  # noqa: E402
     ToolCallExample,
     build_corpus,
@@ -306,6 +307,10 @@ def main(argv: List[str] | None = None) -> int:
                              log_interval=1, max_grad_norm=1.0),
             optimizer={"type": "AdamW", "lr": args.lr, "weight_decay": 0.01,
                        "stochastic_rounding": True},
+            # Without this the default saver reads each bf16 parameter at FULL precision
+            # and is handed AutocastTensor's stale fp32 cache, so every checkpoint after
+            # the first is a byte-identical duplicate. See train.checkpoint.
+            checkpoint_saver=save_sft_checkpoint,
             callbacks=[recorder],
         )
         assert_stochastic_rounding(trainer, "tool_calling")

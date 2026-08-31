@@ -2,18 +2,30 @@
 # scripts/train_editor_lora.py
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
-"""BLOCKED (2026-08-27): do not run `main()` for real training yet.
+"""BLOCKED-CONCLUSION WITHDRAWN (2026-08-31): the "0/24 moved" diagnostic was confounded.
 
-Five independent, hardware-verified diagnostics (see `docs/upstream-tt-metal-asks.md` entry 5
-and CLAUDE.md) isolated a real upstream bug: `ttml`'s `SFTTrainer(..., peft_config=LoraConfig(...))`
-path -- the exact, documented, un-customized usage from `tt-train/docs/SFT_TRAINER.md` -- computes
-correct LoRA gradients (confirmed nonzero immediately before `optimizer.step()`) but never applies
-them (`lora_B`'s value is bit-identical before and after `.step()`). This is not fixable from this
-repo -- it is inside `AdamW::step()`'s C++ implementation, which we do not build or patch. A real
-3000-step run against this mechanism would have applied zero update the entire time; do not run
-one until the upstream fix lands. The code below (data loading, category building, stratified
-split, the naming-delegation fix for checkpoint compatibility) is unaffected by the defect and
-needs no rework once it is fixed -- only the training loop's actual parameter updates are broken.
+This file previously declared LoRA blocked by a bug inside `AdamW::step()`. That conclusion
+rested on before/after comparisons of `lora_B`'s VALUE, and those comparisons were measuring
+the instrument. `_create_lora_B` builds the tensor as `ttnn.DataType.BFLOAT16`
+(`ttml/modules/lora.py:69`), so `AutocastTensor` stores it in the half-precision slot and
+leaves the full-precision slot empty. `t.to_numpy()` takes the binding's default precision,
+`FULL`: the `lora_b_before` read TYPECASTS bf16 -> fp32 and CACHES the all-zeros result, and
+because the optimizer mutates the bf16 tensor in place without calling `set_tensor()`, nothing
+invalidates that cache -- so `lora_b_after`'s read is handed the same all-zeros array back.
+`moved == 0/24` was therefore guaranteed by the baseline read itself, whether or not training
+worked. tt-metal documents the hazard in `autograd/autocast_tensor.cpp` ("Lazy precision
+caching can leave the FULL/FLOAT32 view stale after in-place updates that mutate only the BF16
+tensor (e.g. optimizer step). Tracking: #41657"), and it is the same root cause as the
+SFT duplicate-checkpoint bug fixed in `train.checkpoint.save_sft_checkpoint`.
+
+The diagnostics that measured GRADIENTS (1-3) stand: gradients are computed and are nonzero.
+Only the value-comparison diagnostics (4, 5) are withdrawn. The reads below now pass
+`precision=NATIVE`, which bypasses the cache.
+
+**This does not yet prove LoRA works** -- it removes the evidence that it does not. The
+outstanding check is a short hardware run confirming `lora_B` moves off zero under a NATIVE
+read. Do not treat LoRA as available until that has been seen. See
+`docs/upstream-tt-metal-asks.md` entry 5.
 
 The editor objective, via LoRA instead of full-parameter continued training.
 
@@ -241,8 +253,24 @@ def main(argv: List[str] | None = None) -> int:
         # real health check, not a formality: if training silently did nothing, every
         # lora_B tensor would still read back as exactly zero.
         import numpy as np
+
+        def _read_native(t):
+            """Read a parameter bypassing AutocastTensor's lazy FULL-precision cache.
+
+            A bare `t.to_numpy()` defaults to FULL. On a bf16 parameter that typecasts once
+            and caches, so taking a BASELINE with it is what makes the follow-up read stale --
+            the check would report "moved 0" no matter what training did. NATIVE always reads
+            the stored value. This is the same read `ttml.checkpointing` and
+            `ttml.sharding.Sharding.gather` use, for the same reason.
+            """
+            import ttml
+            return np.asarray(
+                t.to_numpy(precision=ttml.autograd.PreferredPrecision.NATIVE),
+                dtype=np.float32,
+            )
+
         lora_b_before = {
-            n: t.to_numpy().copy() for n, t in lora_model.parameters().items()
+            n: _read_native(t) for n, t in lora_model.parameters().items()
             if n.endswith("/lora_B")
         }
         assert all(np.all(v == 0) for v in lora_b_before.values()), (
@@ -252,7 +280,7 @@ def main(argv: List[str] | None = None) -> int:
 
         trainer.train()
 
-        lora_b_after = {n: t.to_numpy() for n, t in lora_model.parameters().items()
+        lora_b_after = {n: _read_native(t) for n, t in lora_model.parameters().items()
                          if n.endswith("/lora_B")}
         moved = sum(1 for n in lora_b_after if not np.all(lora_b_after[n] == 0))
         print(f"[editor-lora] lora_B tensors moved from zero: {moved}/{len(lora_b_after)}")

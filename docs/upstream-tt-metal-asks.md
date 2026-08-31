@@ -372,68 +372,73 @@ rather than a distinction without a difference.
 
 ---
 
-## 5. `SFTTrainer`'s `peft_config`/`AdamW` path computes correct LoRA gradients but never applies them
+## 5. WITHDRAWN — `SFTTrainer` + LoRA is not broken; our diagnostic was
 
-Status: open, blocking. No workaround exists from our side — this is inside `AdamW::step()`,
-which our repo does not build or patch. Found 2026-08-27 while designing a LoRA-based approach
-to the editor objective (`scripts/train_editor_lora.py`); see CLAUDE.md's matching entry for the
-project-side account.
+Status: **withdrawn 2026-08-31**. This entry previously reported that ttml's
+`SFTTrainer(..., peft_config=LoraConfig(...))` path computed correct LoRA gradients but never
+applied them, and called it blocking with no workaround. That conclusion was wrong. AdamW
+updates `lora_B` correctly; the diagnostic that said otherwise was measuring its own baseline
+read. Kept rather than deleted because the retraction is the useful artifact.
 
-### The defect
+### What the measurement actually was
 
-`SFTTrainer(model=model, peft_config=LoraConfig(...), ...)` — the exact, documented usage from
-`tt-train/docs/SFT_TRAINER.md`'s own LoRA section, no custom code — trains for real steps,
-reports a normal-looking loss curve, and never moves a single `lora_A`/`lora_B` tensor from its
-initial value. This was isolated to `AdamW.step()` itself through five independent, increasingly
-narrow experiments, each confirmed on real hardware before ruling it out:
+`lora_B` is created `ttnn.DataType.BFLOAT16` (`ttml/modules/lora.py:69` — confirmed on hardware,
+`lora_B stored dtype: DataType.BFLOAT16`). `AutocastTensor` therefore stores it in the
+half-precision slot and leaves the full-precision slot empty. `Tensor.to_numpy()` takes the
+binding's default precision, `PreferredPrecision::FULL`, which on first call typecasts
+bf16 -> fp32 and **caches** the result in `m_full_precision_tensor`. AdamW then mutates the bf16
+tensor in place and never calls `set_tensor()`, so nothing invalidates the cache, and every later
+FULL read is handed the first read's array back. tt-metal documents the hazard in
+`tt-train/sources/ttml/autograd/autocast_tensor.cpp`:
 
-| test | result |
+```
+// TODO: Lazy precision caching can leave the FULL/FLOAT32 view stale
+// after in-place updates that mutate only the BF16 tensor (e.g. optimizer step).
+// Revisit cache invalidation/refresh strategy so both views stay coherent.
+// Tracking: #41657
+```
+
+Both withdrawn rows of the old table ("`lora_B`'s value is bit-identical before and after
+`.step()`", "`max|delta| == 0.0`") compared a FULL read taken *before* training against a FULL
+read taken after. **Taking the baseline is what guaranteed the result.** The check reported
+"moved 0/24" whether or not training worked, and the C++ hypothesis about `AdamW`'s per-name
+moment-buffer lookup was built on top of it.
+
+### The measurement that settles it
+
+One Blackhole p300c, `tt-tnt-1024` (123M params, 8 blocks), `LoraConfig(rank=8, alpha=16,
+target_modules=["q_linear","kv_linear","out_linear"])`, warm-started from a real checkpoint,
+8 SFT steps at lr 1e-3. Three reads of **the same 24 `lora_B` tensors in the same session**:
+
+| read | result |
 |---|---|
-| ttml's own core autograd: frozen input activation, trainable weight, one `linear` + `backward()` | weight gradient correctly nonzero (0.0339) — ttml's autograd is not the problem |
-| standalone `LoraLinear` (no model, no trainer), one forward + `backward()` | `lora_B` gradient correctly nonzero (0.0427); `lora_A` gradient correctly zero (expected: `lora_B` inits to all-zeros, so `d(loss)/d(lora_A)` is mathematically zero until `lora_B` moves) |
-| real warm-started model, `LoraModel`-injected, manual forward + `backward()` (no `SFTTrainer`) | `lora_B` gradient correctly nonzero (0.0015); confirms injection genuinely reaches the real forward pass (`type(blocks[2].attention.q_linear) == LoraLinear`, and it is the *same* Python object `.parameters()` returns) |
-| manual `zero_grad → forward → backward → clip_grad_norm → optimizer.step()`, replicating `SFTTrainer`'s own sequence by hand | gradient present and nonzero (0.0010) immediately before `.step()`; **`lora_B`'s value is bit-identical before and after** `.step()` |
-| `SFTTrainer(..., peft_config=LoraConfig(...))` — the native, undocumented-workaround path, no custom wrapper class at all | same result: `max|delta| == 0.0` after a real training step |
+| NATIVE (`precision=PreferredPrecision.NATIVE`) | **24/24 moved off zero**, max \|delta\| 8.117676e-03 |
+| FULL, with a FULL baseline taken before training | **0/24 moved** — reproduces the original finding exactly |
+| the FULL baseline itself | all-zero, i.e. the cache was populated with zeros and returned forever after |
 
-The last two rows are decisive: gradient computation is correct at every point up to and
-including immediately before `AdamW.step()` is called, and the parameter is provably unchanged
-immediately after. `sft_trainer.py`'s own source (`_save_checkpoint`'s docstring) already flags
-this area as unfinished: *"When a `peft_config` is used and the model is wrapped in `LoraModel`,
-the default saver currently saves all parameters (base + LoRA)... TODO: filter... to save only
-LoRA adapter parameters"* — evidence that PEFT support in this `SFTTrainer`/`AdamW` combination
-has not been exercised end-to-end before.
+The NATIVE and FULL numbers come from the same tensors microseconds apart, so the difference is
+the read, not the training.
 
-The leading (unconfirmed) hypothesis, from reading `optimizers/adamw.cpp`: `AdamW`'s constructor
-populates `m_exp_avg`/`m_exp_avg_sq` only for parameter names with `requires_grad()==true` **at
-construction time**, and `step()` looks each parameter's moment buffers up **by name** in those
-maps. If the name-to-tensor association `AdamW` captured at construction (from one call to
-`model.parameters()`) does not, for a freshly-`LoraModel`-injected parameter, correctly persist
-through to the live tensor `backward()` actually accumulates into on a later call, `step()`'s
-per-name lookup could silently apply zero effective update — but this was not confirmed at the
-C++ source level; it is a plausible mechanism consistent with every symptom observed, not a
-proven root cause.
+### What still stands from the original entry
 
-### The measurement
+The three gradient rows. Gradients are computed and are nonzero at every level (core autograd,
+standalone `LoraLinear`, and the real injected model). Those were never affected — they measured
+gradients, not values.
 
-All five rows above, one Blackhole p300c, `tt-tnt-1024` (123M params, 8 blocks), `LoraConfig(rank=8,
-alpha=16.0, target_modules=["q_linear","kv_linear","out_linear"])`, warm-started from a real
-checkpoint. Every intermediate script is a throwaway diagnostic, not committed to this repo.
+### Consequence
 
-### The fix
+LoRA is **available** on this stack. `scripts/train_editor_lora.py` is no longer blocked; its
+before/after reads now pass `precision=NATIVE`. This matters beyond LoRA itself: freezing 100% of
+base weights is the structural answer to the anti-forgetting problem that
+`scripts/train_editor.py` had to counterweight with a 60% base-blend slice.
 
-Needs tt-train maintainer attention inside `AdamW`'s C++ implementation (or wherever the
-name-to-tensor binding between `LoraModel`-injected parameters and the optimizer's per-parameter
-state is established) — outside what this repo can patch or work around.
+### The one real (and much smaller) upstream observation
 
-### What we did instead
-
-Did not run the real training job. A 3000-step run against a mechanism already proven, on real
-hardware, to apply zero update to any LoRA parameter would have been pure waste — the five
-diagnostics above are individually cheap (seconds to low minutes each) precisely so a
-multi-thousand-step run never has to be gambled on an untested assumption. `scripts/
-train_editor_lora.py` is kept in the repo, documented as blocked, ready to resume once this is
-fixed upstream — the data-loading, category-building, and stratified-split logic it reuses from
-`scripts/train_editor.py` are unaffected by this defect and need no rework.
+`AutocastTensor`'s lazy cache is a live footgun for any caller reading a bf16 parameter after an
+optimizer step, and upstream already tracks it (#41657). Every serialization site inside ttml
+already works around it by reading NATIVE (`ttml/checkpointing.py:38`, `ttml/sharding.py:78,90`)
+— but `SFTTrainer._save_checkpoint` does not, which is entry 8 below. We have not filed
+anything; this is a local record.
 
 ## 6. Sequential prefill's KV-cache state does not reset between independent requests in a growing multi-turn conversation
 
@@ -650,17 +655,79 @@ step 3000), and the natural response — evaluate the step-1000 checkpoint — s
 the same weights again and reports identical numbers. Any past comparison *between steps of a
 single SFT run* was comparing identical files.
 
-Which step's weights the duplicates actually hold is not established here.
+The duplicates hold the weights **as of the first save**, for the reason below.
 
-### The fix
+### Root cause (2026-08-31) — a stale precision cache, not a stale reference
 
-Lives in `SFTTrainer._save_checkpoint` in tt-train, which this project does not build or patch.
-The likely shape is a `model_state` captured once (or a stale reference) rather than re-read
-from the live model at each save, but that is inferred from the symptom, not confirmed in the
-C++/Python source.
+The earlier guess in this entry ("a `model_state` captured once, or a stale reference") was
+wrong. The saver re-reads the live model every time; what is stale is the *read*.
+
+`_save_checkpoint` reads each parameter as
+
+```python
+param_np = tensor.to_numpy(ttnn.DataType.FLOAT32, composer=self._loss_composer)
+```
+
+with no `precision=`, so it takes the binding's default, `PreferredPrecision::FULL`. Our
+parameters are bfloat16, so `AutocastTensor` stores them in the half-precision slot and leaves
+the full-precision slot empty (`autograd/autocast_tensor.cpp`, `set_tensor`). AdamW mutates the
+bf16 tensor **in place** and never calls `set_tensor()`, so nothing invalidates anything. The
+first FULL read typecasts bf16 -> fp32 and **caches** the result in `m_full_precision_tensor`;
+every later read finds `has_full()` true and is handed that same array back. tt-metal documents
+the hazard in that file:
+
+```
+// TODO: Lazy precision caching can leave the FULL/FLOAT32 view stale
+// after in-place updates that mutate only the BF16 tensor (e.g. optimizer step).
+// Revisit cache invalidation/refresh strategy so both views stay coherent.
+// Tracking: #41657
+```
+
+This also explains why the **pretrain** path is unaffected (50/50 tensors differ over a
+comparable span): `ttml/checkpointing.py:38` already reads
+`get_value(PreferredPrecision.NATIVE)`. So does `ttml/sharding.py:78,90`. `SFTTrainer` is the
+one serialization site in ttml that did not adopt the convention its siblings use.
+
+Same root cause as the withdrawn entry 5 — the LoRA "blocked" finding was the same cache, read
+through `to_numpy()` in a before/after value comparison.
+
+### Proof, with a negative control
+
+One Blackhole p300c, two arms in a single session, identical but for the saver, model rebuilt and
+warm-started per arm so the two `AutocastTensor` caches are independent; `max_steps=4`,
+`save_interval=2`:
+
+| arm | step_2 vs step_4 |
+|---|---|
+| A, `SFTTrainer`'s default saver | **66/66 identical**, max abs diff 0.000000e+00 |
+| B, `train.checkpoint.save_sft_checkpoint` | **0/66 identical**, 66/66 differ, max abs diff 1.562500e-02 |
+
+Arm A is the control: it reproduces the defect in the same run that shows the fix working, so
+"the fix works" does not rest on a comparison against a different session.
+
+### The fix upstream
+
+One argument in `sft_trainer.py`'s default saver:
+
+```diff
+-        param_np = tensor.to_numpy(ttnn.DataType.FLOAT32, composer=self._loss_composer)
++        param_np = tensor.to_numpy(ttnn.DataType.FLOAT32, composer=self._loss_composer,
++                                   precision=ttml.autograd.PreferredPrecision.NATIVE)
+```
+
+NATIVE returns the stored dtype, so the fp32 cast moves to the host — which is where
+`Sharding.gather`'s callers already do it. Still present in `v0.77.0` and unchanged through
+`v0.78.0-dev20260830`; `sft_trainer.py` has no commits in that range.
 
 ### What we did instead
 
-Recorded it and kept using final checkpoints only. Nothing in this project currently depends on
-selecting an intermediate SFT checkpoint; the cost so far is wasted training past the overfit
-point, not a wrong published number.
+`train.checkpoint.save_sft_checkpoint`, passed as `SFTTrainer(..., checkpoint_saver=...)` by all
+three SFT entry points (`train_skits.py`, `train_editor.py`, `train_tool_calling.py`). The
+`checkpoint_saver` hook is upstream's own documented extension point, so this needs no tt-metal
+edit. It reads through `ttml.sharding.Sharding.gather` — ttml's own NATIVE read — rather than
+reimplementing precision handling, and refuses a sharded parameter rather than silently
+concatenating replicas into an oversized tensor (multi-device SFT saving would need
+`replicated_for_save()`, which this saver does not apply).
+
+Checkpoints written **before 2026-08-31 remain duplicates**; the fix does not repair them. Any
+intermediate SFT checkpoint on disk should be assumed to hold its run's first-save weights.

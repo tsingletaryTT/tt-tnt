@@ -522,3 +522,74 @@ def peek(path: Path) -> Dict[str, Any]:
     header = read_header(str(path))
     validate_header(header)
     return header
+
+
+# ---------------------------------------------------------------------------
+# The SFT path: SFTTrainer's default saver reads a stale precision cache
+# ---------------------------------------------------------------------------
+
+
+def save_sft_checkpoint(trainer, path: Path) -> None:
+    """Write an ``SFTTrainer`` checkpoint, reading each parameter at NATIVE precision.
+
+    Pass as ``SFTTrainer(..., checkpoint_saver=save_sft_checkpoint)``. The signature is
+    the hook's: ``(trainer, path)``.
+
+    **Why this exists.** ``SFTTrainer._save_checkpoint``'s default saver reads every
+    parameter with ``tensor.to_numpy(ttnn.DataType.FLOAT32, composer=...)`` and passes no
+    ``precision=``, so it takes the binding's default, ``PreferredPrecision::FULL``. Our
+    parameters are bfloat16, so ``AutocastTensor`` stores them in its half-precision slot
+    and leaves the full-precision slot empty (``autograd/autocast_tensor.cpp``
+    ``set_tensor``). AdamW then mutates the bf16 tensor **in place** and never calls
+    ``set_tensor``, so nothing invalidates anything. The first FULL read typecasts
+    bf16 -> fp32 and *caches* the result in ``m_full_precision_tensor``; every later FULL
+    read finds ``has_full()`` true and is handed that same cached array back. tt-metal
+    documents the hazard in that file:
+
+        TODO: Lazy precision caching can leave the FULL/FLOAT32 view stale after
+        in-place updates that mutate only the BF16 tensor (e.g. optimizer step).
+        Tracking: #41657
+
+    Measured consequence, before this fix: ``artifacts/checkpoints-1024-tool-calling``'s
+    ``step_1000.pkl`` and ``step_3000.pkl`` are identical in **all 66 tensors** (max abs
+    diff 0.0) — the step-1000 weights, written three times. Only the ``step`` field
+    differs, so the files' checksums differ and nothing looked wrong. The pretrain path
+    is unaffected (0/50 identical over the same span) because ``ttml.checkpointing``
+    already reads NATIVE.
+
+    ``ttml.sharding.Sharding.gather`` is that NATIVE read, and is what ttml's own
+    checkpointing uses — we call it rather than reimplementing the precision handling.
+    It returns the tensor in its stored dtype; the ``{"step", "model_state"}`` format
+    ``scripts/eval_improv.sft_checkpoint_to_hf`` consumes wants float32, so the cast to
+    float32 happens here, on the host, after the value has been read.
+
+    Sharded parameters are refused rather than gathered. Under DDP a parameter is
+    (falsely) marked ``Shard(0)`` while its data is genuinely replicated — see
+    :func:`replicated_for_save` — and gathering one would concatenate every replica into
+    a single oversized tensor. That is a different defect with a different fix, and this
+    saver has never been exercised against it, so it fails loudly instead.
+    """
+    import pickle
+
+    import numpy as np
+
+    import ttml  # noqa: F401  (imported for its side effect of exposing ttml.sharding)
+    from ttml.sharding import Sharding
+
+    state: Dict[str, Any] = {}
+    for name, param in trainer.model.parameters().items():
+        tensor = param.tensor if hasattr(param, "tensor") else param
+        sharding = Sharding.from_tensor(tensor)
+        if not sharding.is_fully_replicated:
+            raise RuntimeError(
+                f"save_sft_checkpoint: parameter {name!r} is sharded across the mesh. "
+                "Gathering it here would concatenate its replicas into one oversized "
+                "tensor. Multi-device SFT saving needs replicated_for_save() (see the "
+                "DDP checkpointing fix), which this saver does not apply."
+            )
+        state[name] = np.asarray(sharding.gather(tensor), dtype=np.float32)
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as fh:
+        pickle.dump({"step": trainer.step, "model_state": state}, fh)
