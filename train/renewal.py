@@ -51,9 +51,18 @@ def _norm_title(s: str) -> str:
 
 
 def _strip_suffix_tokens(tokens):
-    """Drop trailing generational/honorific tokens (Jr., III, PhD, ...) from a name's tokens."""
+    """Drop trailing generational/honorific tokens (Jr., III, PhD, ...) from a name's tokens.
+
+    Only strips while doing so leaves at least two tokens behind. A bare suffix WORD can
+    also be someone's actual surname ("Naomasa Ii" -- "Ii" is a real Japanese surname, and
+    happens to collide with the "II" suffix token) -- with only two tokens to begin with,
+    stripping the second would misidentify the surname as the given name instead, which is
+    the same dangerous false-negative direction as the bug this function exists to fix. A
+    three-or-more-token name ("Robert A. Heinlein Jr.") still has a given name plus surname
+    left over after stripping, so it is unambiguous and stripping proceeds.
+    """
     tokens = list(tokens)
-    while tokens:
+    while len(tokens) >= 3:
         bare = tokens[-1].strip(".").lower()
         if bare in _SUFFIXES:
             tokens = tokens[:-1]
@@ -70,17 +79,35 @@ def _norm_author(s: str) -> str:
     that WAS actually renewed silently admits copyrighted fiction. Both are handled:
 
     - A trailing suffix with no comma ("Robert A. Heinlein Jr.") is stripped BEFORE the
-      surname is taken, so it does not get mistaken for the surname itself.
+      surname is taken, so it does not get mistaken for the surname itself -- but ONLY when
+      at least two tokens remain afterwards, so a genuine two-token name whose surname
+      happens to collide with a suffix word ("Naomasa Ii") is left alone (see
+      `_strip_suffix_tokens`).
     - A single lowercase particle immediately before the final word ("L. Sprague de Camp")
       is kept attached to it, so the surname is "de Camp" and not just "Camp".
 
-    KNOWN LIMITATION, not cleanly handled: a MULTI-WORD particle chain with no comma (e.g.
-    "Ludwig van der Berg", "de la Cruz" split across three tokens) only has its immediate
-    single particle recovered -- "der"/"la" are not in `_PARTICLES` as chain continuations,
-    so a two-particle surname written without a comma can still resolve to the wrong (too
-    short) surname. This is the same false-negative direction as the bug this function fixes,
-    just not fully closed by it; the comma form ("van der Berg, Ludwig") is unaffected, since
-    it takes everything before the comma verbatim rather than guessing from token position.
+    KNOWN LIMITATIONS, not cleanly handled:
+
+    - A MULTI-WORD particle chain with no comma (e.g. "Ludwig van der Berg", "de la Cruz"
+      split across three tokens) only has its immediate single particle recovered --
+      "der"/"la" are not in `_PARTICLES` as chain continuations, so a two-particle surname
+      written without a comma can still resolve to the wrong (too short) surname. This is the
+      same false-negative direction as the bug this function fixes, just not fully closed by
+      it; the comma form ("van der Berg, Ludwig") is unaffected, since it takes everything
+      before the comma verbatim rather than guessing from token position.
+    - A two-token no-comma name whose GIVEN name (not surname) collides with a suffix word --
+      e.g. a hypothetical "Jr Smith" -- would keep "Jr" as a token and, having no particle
+      before it either, resolve to surname "Smith" correctly; but a two-token name where the
+      SURNAME is the one that would have been stripped ("Naomasa Ii") is exactly what the
+      >=3-token guard above protects. The residual gap is the opposite: a name with a suffix
+      as its middle token in a 3+-token no-comma name where the true surname is genuinely a
+      suffix word one position further in (e.g. a constructed "A B Ii Jr" reading as
+      given="A B", surname="Ii", generational="Jr") would still have "Ii" stripped as a
+      second suffix pass, since nothing here distinguishes "a suffix word that is also
+      someone's real surname" from "a suffix word that is genuinely a suffix" once 3+ tokens
+      are present. This is believed rare enough not to warrant a name-frequency lookup, which
+      would need data this module does not have; flagged here rather than silently assumed
+      away.
     """
     s = s.strip()
     if "," in s:

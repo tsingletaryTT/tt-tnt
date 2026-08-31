@@ -66,3 +66,13 @@ def test_a_multiword_particle_surname_normalises_the_same_with_or_without_a_comm
     r_comma = verify("Lest Darkness Fall", "de Camp, L. Sprague", 1941, index)
     assert r_no_comma.renewed is True
     assert r_comma.renewed is True
+
+
+def test_a_short_surname_that_collides_with_a_suffix_word_is_not_stripped():
+    """'Naomasa Ii' -- 'Ii' is a real (Japanese) surname, not a 'II' generational suffix.
+    Stripping it on a bare two-token name would misidentify the surname as the given name,
+    the same dangerous false-negative direction as the Jr./de-Camp bugs fixed above. The
+    guard: only strip a suffix token when doing so still leaves at least two tokens."""
+    index = RenewalIndex([("some story", "ii", 1955)])
+    r = verify("Some Story", "Naomasa Ii", 1955, index)
+    assert r.renewed is True
