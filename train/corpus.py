@@ -44,6 +44,14 @@ class CorpusSource:
     hf_revision: str
     hf_config: Optional[str] = None
     hf_split: str = "train"
+    #: How this source is fetched. "hf" is a HuggingFace dataset (the original and still the
+    #: common case); "url" is a direct download, needed for sources that are files on a web
+    #: host rather than a dataset -- NASA's mission transcripts are the motivating case.
+    #: Adding a kind must never weaken the pinning rule: an "hf" source still requires a
+    #: revision, and a "url" source pins by being a fixed URL to an archived document.
+    fetch_kind: str = "hf"
+    #: For fetch_kind="url": where to get it. Empty for "hf".
+    source_url: str = ""
 
     # -- licensing ----------------------------------------------------------------
     #: SPDX identifier where one exists, else a short stable string.
@@ -87,6 +95,21 @@ class CorpusSource:
     rows_per_document: int = 1
     #: Why this source exists, in one line. Shown by ``describe()``.
     rationale: str = ""
+
+    def __post_init__(self) -> None:
+        if self.fetch_kind not in ("hf", "url"):
+            raise ValueError(
+                f"{self.name}: fetch_kind must be 'hf' or 'url', got {self.fetch_kind!r}. "
+                f"A typo here fetches nothing, and an empty slice is indistinguishable from "
+                f"a source that legitimately had no rows."
+            )
+        if self.fetch_kind == "url" and not self.source_url:
+            raise ValueError(f"{self.name}: fetch_kind='url' needs a source_url")
+        if self.fetch_kind == "hf" and self.hf_repo and not self.hf_revision:
+            raise ValueError(
+                f"{self.name}: hf_repo without hf_revision -- an unpinned fetch is not "
+                f"reproducible, and shipping an exact recipe is the point"
+            )
 
     def describe(self) -> str:
         sel = []
