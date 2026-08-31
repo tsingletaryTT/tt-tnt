@@ -29,9 +29,15 @@ short one.
 
 | statistic | value |
 |---|---|
-| mean document length | 1,031 tokens |
-| **median** | **113 tokens** |
-| p75 / p90 / p95 | 224 / 405 / 610 |
+| mean document length | 1,030 tokens |
+| **median** | **112 tokens** |
+| p75 / p90 / p95 | 223 / 404 / 609 |
+
+A document's length **excludes** its terminating `</s>`. An earlier draft of this table was
+one token higher throughout because the measurement counted the separator as content; the
+figures above are the corrected ones, and `scripts/measure_document_lengths.py` pins the
+convention by test. The ratio the gate actually uses is unaffected — 1.08% of documents reach
+2048 tokens under either convention.
 | documents ≥ 512 tokens | 6.88% |
 | documents ≥ 1024 tokens | 2.17% |
 | documents ≥ 2048 tokens | 1.08% |
