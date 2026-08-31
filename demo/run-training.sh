@@ -38,29 +38,18 @@ gozer run --chips 1 --who "claude:editor-lora-demo" \
     >>"$LOG" 2>&1 &
 TRAIN_PID=$!
 
-# THE NEWLINE HEARTBEAT — why the Training view was blank for five minutes.
-#
-# tt-toplike's tailer accepts a chunk only if it ends with '\n' and otherwise leaves it for
-# the next poll (monitor.rs:206). ttml's SFTTrainer reports loss SOLELY as tqdm bar postfix,
-# and tqdm redraws with carriage returns, so between the startup lines and the final summary
-# this log contains no newline at all for ~300 seconds. The tailer therefore buffers the
-# entire run and flushes it in one burst at the end -- which is why take 2's loss "mountains"
-# appeared only in the last frames, and why MODEL/tokens/topology (all parsed from log lines)
-# stayed unknown while the LIVE block froze after startup.
-#
-# The upstream code means to handle this: the '\r'-splitting immediately below that guard
-# exists, by its own comment, so "a tqdm-only trainer yields nothing until the run ends". The
-# newline requirement above it reintroduces exactly that. Appending an empty line every few
-# seconds terminates the pending chunk, so the tailer emits the accumulated bar frames and
-# the view advances in real time. It adds blank lines to the log and changes nothing about
-# the run.
-( while kill -0 "$TRAIN_PID" 2>/dev/null; do printf '\n' >>"$LOG"; sleep 3; done ) &
-HEARTBEAT_PID=$!
+# NO NEWLINE HEARTBEAT ANY MORE. Until tt-toplike 6dcb9999 its tailer accepted a chunk only
+# if it ended with '\n' (monitor.rs:206), and ttml's SFTTrainer reports loss SOLELY as tqdm
+# bar postfix -- so this log carried no newline for ~300 seconds and the Training view
+# buffered the whole run, flushing it in one burst at the end. This script used to append an
+# empty line every 3s to force the flush. The fix landed upstream instead: a '\r' ends a
+# progress frame as definitively as a '\n' ends a line, so completed frames are emitted as
+# they arrive. The workaround is gone deliberately, so a recording made with it is a real
+# test of that fix rather than a demonstration of the workaround.
 
 TAIL_PID=""
 cleanup() {
     [ -n "$TAIL_PID" ] && kill "$TAIL_PID" 2>/dev/null
-    [ -n "${HEARTBEAT_PID:-}" ] && kill "$HEARTBEAT_PID" 2>/dev/null
     # TERM gozer first and give it a moment to release its lease. Killing the process group
     # outright (take 1) leaves the lease STALE on a shared box -- recoverable with
     # `gozer reconcile`, but every take shouldn't need one.
