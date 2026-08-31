@@ -98,12 +98,17 @@ def assert_no_third_party_copyright_notice(text: str, label: str) -> None:
     """Refuse ``text`` if it carries an explicit copyright notice.
 
     This is deliberately a SEPARATE check from the .gov-host test in
-    ``tests/test_fetch_mission.py``, not a replacement for it: the host test is necessary
-    (17 USC 105 only ever applies to something the government produced) but not sufficient
-    (a .gov server can and does host privately-authored, separately-copyrighted material).
-    Do not delete the host test on the theory that this one makes it redundant -- a document
-    could in principle carry no notice at all yet still not be a government work, and the
-    host test is what stands watch over that case.
+    ``tests/test_fetch_mission.py``, not a replacement for it -- but be precise about what
+    the two checks together actually cover, because overstating it is the exact mistake that
+    let the Apollo Lunar Surface Journal pages in the first time. The host test catches a
+    document served from off a .gov domain. This function catches a document that carries an
+    explicit notice, regardless of host. NEITHER catches, and NOTHING in this codebase
+    catches, a document that is on a .gov host, carries no notice of any kind, and is
+    nevertheless third-party-authored rather than a genuine US Government work -- the ALSJ
+    pages were only caught because they happened to carry a notice; a document identical in
+    every respect except for having omitted one would sail through both checks. That residual
+    case is NOT automated. Before adding a URL to MISSION_DOCUMENTS, a person must actually
+    look at who wrote it -- the host and the absence of a notice are evidence, not proof.
     """
     lowered = text.lower()
     for marker in _COPYRIGHT_MARKERS:
