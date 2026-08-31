@@ -33,7 +33,10 @@ scenes:
     # The run is ~3000 steps at ~10 it/s plus warm start and twelve validation passes.
     # Recorded long enough to contain the whole thing including the post-training freeze
     # verification -- `tt-demo compress` trims idle and `render.speed` handles the rest.
-    duration: 540s
+    # Take 3 finished training at 358s of a 540s take, so a third of the shot was
+    # SCANNING FOR TRAINING. 400s keeps the whole run plus a short settle -- the power
+    # falling back to idle is worth having, an empty scanner is not.
+    duration: 400s
     left:
       # NOT the trainer directly. tt-toplike's Training view attaches by resolving
       # /proc/<pid>/fd/1, so the trainer's stdout has to be a regular FILE or the view can
