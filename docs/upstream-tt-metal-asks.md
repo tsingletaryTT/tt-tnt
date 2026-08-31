@@ -611,6 +611,69 @@ all-reduce/all-gather boundary would confirm it and point at the exact op to pat
 own model code, not tt-metal, if the fix is a topology/config choice rather than a tt-metal
 bug) or file upstream (if it is).
 
+### A stronger, testable competing hypothesis (2026-08-31): on-device sampling, not fabric
+
+An upstream fix landing in `v0.78.0` describes our symptom far more closely than the routing
+hypothesis above, and — unlike it — names a mechanism that is demonstrably present in our own
+serving path.
+
+`352245bc0d` (2026-08-20), *"[Bug fix] GPT-OSS: minimal fix for garbage output on multi-device
+Blackhole (#52176)"*, root-causes this:
+
+> On-device sampling intermittently returned an **out-of-range token ID** on multi-device
+> Blackhole while a decode trace was live. […] The logits are correct at every step — only the
+> sampling output is corrupt. One bad token fed back gives an out-of-range embedding lookup
+> that poisons the context, which is why it presented as gradual degradation.
+
+with `host_argmax=200008` against `device_sampled=3214098612` (uninitialized memory read as
+`uint32`). The cause is that decode-trace setup runs on the *first decode step*, by which point
+the prefill trace is already live, so two allocations land behind a live trace: the decode
+trace's persistent inputs — `device_inputs[0]`, which **is** the sampling op's output buffer
+threaded as `tt_out_tok` into `ttnn.sampling(..., output_tensor=tt_out_tok)` — and the sampling
+pipeline's pre-compile inside `capture_trace(..., skip_precompile=False)`.
+
+**Why this is our path and not someone else's demo.** Both anchors are in shared code we run:
+`models/common/sampling/tt_sampling.py:901-909` is the `ttnn.sampling(..., output_tensor=
+tt_out_tok)` call, and `models/tt_transformers/tt/generator.py:1452,1473` thread
+`skip_precompile` into `capture_trace`. The fix's 633 changed lines are in
+`models/tt_transformers/tt/generator.py` — the generator our adapter registers into — not in
+`models/demos/gpt_oss/`.
+
+**What it explains that the fabric hypothesis does not.** It is specific to *multi-device*
+(matching 4-chip bad / 2-chip clean), it corrupts the **token** while leaving logits correct,
+and it degrades gradually via context poisoning rather than crashing — which is precisely the
+"fluent, then invents a word, then drifts" shape observed.
+
+**Where the match is imperfect, stated rather than glossed.** GPT-OSS saw an *out-of-range* id
+(3.2e9 against vocab 201088). Our symptom was invented-but-plausible words (`Tryburg`,
+`Alexandary`), which are valid subword concatenations — i.e. in-range ids that were the wrong
+choice. Both follow from the same defect: an output buffer allocated behind a live trace holds
+whatever was there, which is garbage (out-of-range, as GPT-OSS saw) if the memory was never
+written and a *stale previous token* (in-range, plausible, wrong) if it was. At vocab 32000 an
+out-of-range id would most likely have crashed the embedding lookup rather than degrading text,
+so the stale-buffer reading is the one consistent with what we saw. That is a coherent account,
+not a confirmed one.
+
+### The decisive test, which is now cheap
+
+The component-level PCC comparison described below is no longer the first thing to try. The
+upstream diagnostic is far cheaper and discriminates directly: **read logits to host and compare
+host argmax against the device-sampled token, per decode step.** Agreement at step 0 followed by
+divergence once the decode trace is live confirms this hypothesis; agreement throughout refutes
+it and sends the investigation back to the fabric layer.
+
+Two further predictions worth checking because they are nearly free, and because each would
+falsify the hypothesis if it failed:
+
+* the defect should be **independent of fabric mode** — it should reproduce on 4 chips under
+  `FABRIC_1D` as well as `FABRIC_2D_TORUS_XY`, since nothing about it involves routing;
+* it should also affect **greedy decoding**, which goes through the same `tt_out_tok` buffer via
+  `ttnn.argmax(..., output_tensor=tt_out_tok)` (`tt_sampling.py:741-744`).
+
+And the direct test: **re-run `docs/serving-with-tt-kernel.md` §8's A/B on `v0.78.0`.** If
+4-chip output becomes indistinguishable from 2-chip with no other change, the fabric hypothesis
+above is refuted and this entry closes.
+
 ### What we did instead
 
 Kept `docs/serving-with-tt-kernel.md` §8's existing "do not use 4-chip for anything

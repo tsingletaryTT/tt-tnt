@@ -2984,3 +2984,118 @@ a prior run's recipe, without checking whether the checkpoint actually being ext
 moved to a newer one. The check that catches it is cheap and CPU-only -- decode a handful of
 prompts the model was previously known to answer, greedy, before trusting a training run's
 loss curve to mean the capability came along for free.
+
+## 2026-08-31 — one stale cache behind three findings, and the v0.78.0 adoption plan
+
+Prompt: analyse the model's state against recent work, the latest tt-model-manager, and the
+tt-metal releasing today; propose five things to rescue it. Then: "start with 5 and 3" — the
+disk/checkpoint-hygiene item and the release item.
+
+### The state of the model, in one number
+
+`docs/measurements/external-*.json` already had it: **1.458 bits/byte on WikiText against
+GPT-2's 0.977**, at 123.0M parameters versus 124.4M. Same size, and MMLU/ARC-Challenge sit at
+or below chance. The cause is not architecture — it is **352.7M training tokens for 123M
+parameters, 2.87 tokens/param against Chinchilla's 20**. Compute is not the constraint (4-chip
+DDP measured 169.4k tok/s, so 2.5B tokens is ~4h and 10B is ~16h); the corpus is: the nine
+sources hold **651.5M unique tokens and 447.9M of that is TinyStories**. Every fine-tune this
+project has run has been polishing a base that has not read enough. Recorded here because it
+reframes the backlog, not because it was acted on today.
+
+### One root cause, three findings
+
+`SFTTrainer._save_checkpoint` reads each parameter with `to_numpy(FLOAT32, composer=...)` and
+no `precision=`, taking the binding's `FULL` default. Our parameters are bf16, so
+`AutocastTensor` keeps them in the half slot and leaves the full slot empty; AdamW mutates that
+tensor **in place** and never calls `set_tensor()`, so the first FULL read's bf16→fp32 typecast
+is **cached and returned forever after**. tt-metal names the hazard in
+`autograd/autocast_tensor.cpp` (#41657). Every other serialization site in ttml already reads
+`NATIVE` — `checkpointing.py:38`, `sharding.py:78,90` — which is exactly why the pretrain path
+is fine (**50/50** tensors differ across a run) and the SFT path is not (**0/66**).
+
+1. **The duplicate-checkpoint bug is fixed.** `train.checkpoint.save_sft_checkpoint`, passed via
+   upstream's own `checkpoint_saver` hook, so no tt-metal edit. It reads through
+   `ttml.sharding.Sharding.gather` (ttml's NATIVE read) rather than reimplementing precision
+   handling, and refuses a sharded parameter instead of concatenating replicas. Wired into all
+   three SFT entry points. Proven on hardware **with a negative control in the same session**,
+   model rebuilt per arm so the caches are independent: default saver **66/66 identical**
+   (max diff 0.0), ours **0/66 identical** (max diff 1.5625e-02). The unit test is
+   mutation-checked — reverting the read to FULL turns it red.
+2. **The LoRA blocker was the instrument, and is withdrawn.** `docs/upstream-tt-metal-asks.md`
+   entry 5 reported that AdamW computed correct LoRA gradients but never applied them. That
+   rested on comparing a `to_numpy()` read taken *before* training against one taken after —
+   and `lora_B` is created BFLOAT16 (`ttml/modules/lora.py:69`), so **taking the baseline is
+   what guaranteed the result**. Re-measured on the same 24 tensors in one session: NATIVE
+   **24/24 moved** (max |Δ| 8.117676e-03), FULL **0/24**. LoRA works. The three gradient
+   diagnostics stand; only the two value comparisons are withdrawn. This matters beyond LoRA:
+   freezing 100% of base weights is the *structural* answer to the anti-forgetting problem
+   `scripts/train_editor.py` had to counterweight with a 60% base-blend slice.
+3. **What it cost while live.** Intermediate checkpoint selection on the SFT path. Both
+   tool-calling runs overfit (best val at step 1000, rising to step 3000) and evaluating the
+   earlier checkpoint returned identical numbers, because it held identical weights. Any past
+   comparison *between steps of one SFT run* compared identical files. **Checkpoints written
+   before today remain duplicates — the fix does not repair them.**
+
+**The lesson, which this project has now hit in both directions:** a read can have a side
+effect. Taking a baseline is an action, not an observation, and here the baseline read was the
+entire mechanism of the bug it appeared to detect.
+
+### Disk: the prune is a precondition, not housekeeping
+
+`/` is 100% full with ~31G free, and **146.4G of `artifacts/` is `.pkl` checkpoints across 47
+run directories**. Keeping only the final checkpoint per run reclaims **119.4G** (31G → 150G)
+and loses nothing the repo depends on, verified rather than assumed:
+
+* **Trajectories and the seed-noise floor read `val_losses.jsonl`, never weights**
+  (`scripts/evaluate.py:120-121`). `scripts/prune_checkpoints.py` touches nothing but `.pkl`.
+* Published measurements are already in `docs/measurements/`; nothing under `docs/` is touched.
+* **No code references an intermediate checkpoint.** The only `.pkl` paths in
+  `tests/`/`scripts/`/`train/`/`convert/` are finals; every other match is a `tmp_path` fixture
+  or a comment. `latest_checkpoint()` and `test_numpy_parity` both select the highest step,
+  which is what is kept — spot-checked per directory (`checkpoints` keeps the exact file the
+  parity gate picks; `reach-conv` keeps the step_9000 that `reach-dial-9000.json` cites).
+* For SFT runs the intermediates were duplicate bytes anyway, per the bug above.
+
+The trade, stated once: an intermediate cannot be recovered later except by retraining. The
+tool is dry-run by default and writes a manifest of exactly what it removed.
+
+### v0.78.0: what to take, what it buys, and what does not land
+
+**Not tagged yet** at time of writing (tip is `v0.78.0-dev20260830`; stable cadence Jul 28 →
+Aug 5 → Aug 18). 485 commits since `v0.77.0`, 23 in `tt-train`, 9 in `models/tt_transformers`.
+
+**The prize is `352245bc0d`** — "GPT-OSS: minimal fix for garbage output on multi-device
+Blackhole (#52176)". On-device sampling intermittently returned an out-of-range token id on
+multi-device Blackhole while a decode trace was live (logits correct at every step; only the
+sampled token corrupt; one bad token poisons the context, presenting as gradual degradation),
+because decode-trace inputs and the sampling pre-compile were allocated behind a live prefill
+trace. **This is our code path, not a demo's**: `tt_sampling.py:901-909` is the
+`ttnn.sampling(..., output_tensor=tt_out_tok)` call, `generator.py:1452,1473` thread
+`skip_precompile`, and 633 of the fix's changed lines are in
+`models/tt_transformers/tt/generator.py`. It is a much stronger candidate for our 4-chip
+`FABRIC_2D_TORUS_XY` quality regression than the fabric-routing hypothesis in
+`docs/upstream-tt-metal-asks.md` entry 7 — recorded there with the ways the match is imperfect
+(GPT-OSS saw an out-of-range id; we saw plausible invented words, which is the *stale-buffer*
+rather than *never-written* reading of the same defect) and with the cheap decisive test:
+compare host argmax against the device-sampled token per decode step.
+
+**Also worth having:** `ade9c254f2` "[tt-train] Fix sdpa_fw mask=None hang, WH scale truncation,
+sdpa_bw validation gaps" — which touches the exact `mask=None` path our 1.41x training speedup
+rides on, so its five correctness checks must be re-run rather than assumed. Plus tt-train
+kernel fixes in ops every step goes through (cross-entropy target page overrun, `layernorm_bw`
+dx double-subtract, AdamW state-restore beta ordering, `moe_group` NOC race).
+
+**What does NOT land, so don't hope:** `nb_models.cpp` still binds the attention mask
+non-optional (entry 1 open), and `sft_trainer.py` has **no commits at all** in the range — the
+duplicate-checkpoint bug and the precision cache are both still there upstream, which is why
+we fixed them on our side.
+
+**Adoption must not be a flag day, and today it would be one.** `~/tt-metal-src-vllm-home` is a
+**symlink to `~/tt-metal`**, so serving and training share one v0.77.0 build and an in-place
+upgrade moves both at once. The reversible path uses tt-model-manager's instance registry
+(`00dba42`), which already holds two entries (`metal-0.75-vllm` at ttnn 0.75.0, `metal-src-vllm`
+at 0.77.0): build v0.78.0 into a **separate tree**, register it as a third instance, and point
+serving at it while `~/tt-metal` stays at 0.77.0 for training. Rollback is then a selection
+change, not a rebuild. Our manifests already declare `platform.ttnn: ">=0.65,<0.80"`, so 0.78.0
+is in range with no manifest edit. A second tree plus build costs ~14G — **which the prune above
+has to happen first to afford.**
