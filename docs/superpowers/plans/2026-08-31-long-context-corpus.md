@@ -1155,3 +1155,104 @@ gate never seen to reject is a claim rather than a check.
 git add scripts/fetch_if_fiction.py train/corpus.py README.md tests/test_fetch_if_fiction.py
 git commit -m "feat(corpus): add if_fiction, admitted only on the author's open licence"
 ```
+
+---
+
+## REVISION 2026-08-31 — supersedes Task 7's Step 1, and adds Task 9
+
+See the spec's "CORRECTION" section for the measurement that forced this. In short: the four
+public-domain book slices already in the corpus run 56k–97k tokens median with **100%** of their
+tokens in documents ≥2048, while `longform` is 582 tokens median and 43.7%. The corpus does not
+lack long documents; it under-weights the ones it has. `tinystories` is 31% of the blend at 198
+tokens median and 0% above threshold.
+
+### Task 7, Step 1 — REPLACEMENT test
+
+The original test asserted `longform + mission + pulp_sf >= 0.40`. That is now wrong: those are
+not the slices that can supply long documents. Use instead:
+
+```python
+# append to tests/test_corpus.py
+#: Measured 2026-08-31 (scripts/measure_document_lengths.py over artifacts/corpus/*.txt):
+#: every one of these is a slice of whole books, 56k-97k tokens median, 100% of their tokens
+#: in documents >= 2048. They are the only sources that can carry gate 3.
+BOOK_SOURCES = ("folklore", "spine", "weird", "gutenberg_children", "grimoire")
+
+
+def test_the_book_slices_hold_the_share_gate_3_needs():
+    """Gate 3 needs >=40% of TOKENS in documents >=2048. Only whole-book sources supply those:
+    longform manages 43.7% of its own tokens, wikipedia_simple 22.3%, poetry and tinystories
+    0.0%. If the book slices are small, the gate cannot pass however the rest is arranged."""
+    books = sum(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)
+    assert books >= 0.40, f"book slices hold {books:.1%}, need >=40%"
+
+
+def test_tinystories_is_no_longer_the_largest_slice():
+    """It was 31% at 198 tokens median and 0% above threshold -- the single biggest obstacle to
+    the gate. This does not mandate a particular value, only that it stopped dominating."""
+    ts = SOURCES["tinystories"].target_share
+    assert ts <= max(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)
+```
+
+Task 7's remaining steps are unchanged: re-settle proportionally, honour `measure_corpus.py`'s
+exit code (reduce a share, never raise the cap), rebuild, tokenize to `artifacts/tokens-v5`,
+then run gate 3 and STOP if it fails.
+
+**Two stale citations to correct in the same commit**, both mine: `longform`'s `rationale` and
+`README.md` still say the median document is "113 tokens"; the corrected figure is **112** (the
+earlier number counted the terminating separator as content). And the spec and this plan
+describe `mission` as "Apollo/Gemini transcripts" plural when it is now one document. This repo
+has a gate for stale citations; it should not be the thing that catches our own text.
+
+---
+
+### Task 9: The `grimoire` slice — pre-1929 occult and esoteric books
+
+**Runs after Task 7's gate 3 passes**, alongside Task 8.
+
+**Why.** `weird` is the smallest slice in the corpus — 55 books, ~7M tokens — and is exactly the
+register wanted. Its documents are 85,025 tokens median with 100% above threshold, so it is also
+the best material in the corpus for gate 3. Growing it serves both goals at once, which nothing
+else in this plan does.
+
+**Licence basis.** Pre-1929 US publication, public domain. This is the one basis that has not
+failed today: Project Gutenberg's pulp-SF *post-1929* claim is documented as unreliable, but its
+pre-1929 holdings are not in dispute — the dispute is entirely about works published after the
+1929 boundary. Restrict to pre-1929 imprints and the question does not arise.
+
+**Files:**
+- Modify: `train/corpus.py` (add `grimoire` to `SOURCES`), `README.md`
+- Test: `tests/test_corpus.py`
+
+**Interfaces:**
+- Consumes: the existing Gutenberg batch fetch (`scripts/fetch_corpus.py::fetch_gutenberg_batch`)
+  and `CorpusSource.bookshelves` / `authors` selection — this slice needs NO new fetch code.
+- Produces: `SOURCES["grimoire"]`.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_grimoire_is_a_pre_1929_public_domain_book_source():
+    s = SOURCES["grimoire"]
+    assert s.fetch_kind == "hf", "reuses the existing Gutenberg batch fetch"
+    assert s.hf_revision, "an unpinned fetch is not reproducible"
+    assert s.bookshelves or s.authors, "must select, not take the whole of Gutenberg"
+
+
+def test_grimoire_states_the_pre_1929_basis_rather_than_a_bare_public_domain_claim():
+    """'Public domain' with no boundary is the claim that failed on the pulp-SF material. The
+    note must say WHY these are public domain, not that they are."""
+    note = SOURCES["grimoire"].license_note.lower()
+    assert "1929" in note
+```
+
+- [ ] **Step 2: Run to verify it fails** — `python -m pytest tests/test_corpus.py -k grimoire -v`
+- [ ] **Step 3: Register the source**, selecting on Gutenberg bookshelves for the occult and
+  esoteric, with `rows_per_document=1` (a Gutenberg row is a whole book) and a `license_note`
+  stating the pre-1929 boundary and why it, unlike the post-1929 claim, is not disputed.
+- [ ] **Step 4: Run to verify it passes**, plus the whole of `tests/test_corpus.py`.
+- [ ] **Step 5: Measure what it actually yields** with
+  `python scripts/measure_document_lengths.py` against the prepared slice, and record the median
+  and the ≥2048 fraction in the report. A slice that does not clear 2048 is not doing its job and
+  should be reported as such rather than registered on faith.
+- [ ] **Step 6: Commit** with the README provenance entry in the same change.
