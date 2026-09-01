@@ -1,13 +1,14 @@
 {
+  "schema_version": "5",
   "name": "tt-tnt",
+  "tt_metal_version": "v0.77.0",
+  "arch": "blackhole",
+  "device_count": 1,
+  "producer": {
+    "tt_kernel_version": "0.1.0",
+    "created_at": "2026-09-01T00:00:00Z"
+  },
   "description": "A ~22M-parameter Llama-3-style model trained from scratch on Tenstorrent Blackhole with ttml, served through the Tenstorrent vLLM plugin. Demonstration of an end-to-end TT-native pipeline, not a capable general model.",
-  "platform": {
-    "ttnn": ">=0.65,<0.80"
-  },
-  "runtime": {
-    "kind": "vllm"
-  },
-  "target": "p150",
   "mesh": {
     "devices": 1,
     "topology": "1x1"

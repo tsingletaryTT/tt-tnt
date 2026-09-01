@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
 
-"""Self-consistency gates for the v4 manifests in ``manifests/``.
+"""Self-consistency gates for the v5 manifests in ``manifests/``.
 
 WHY THESE EXIST
 ---------------
@@ -85,23 +85,53 @@ def test_manifest_directory_is_not_empty():
 
 
 @pytest.mark.parametrize("path", _manifests(), ids=lambda p: p.stem)
-def test_manifest_is_valid_v4(path):
-    """Parses as a v4 unified manifest once tt-kernel's push-time fields are supplied."""
-    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
-    from tt_kernel.manifest import Manifest
+def test_manifest_is_accepted_by_the_installed_tt_model_as_authored(path):
+    """Parses through the real ``from_json`` with NOTHING supplied by the test.
 
-    raw = json.loads(path.read_text())
-    # tt-kernel generates these at push from the detected environment; supply stand-ins so
-    # the authored blocks can be validated on their own.
-    generated = {
-        "tt_metal_version": "test",
-        "arch": "blackhole",
-        "producer": {"tt_kernel_version": "0.0.0", "created_at": "1970-01-01T00:00:00Z"},
-        "runner": {"backend": "vllm", "bundle_dir": "bundle"},
-    }
-    m = Manifest.model_validate({**raw, **generated})
-    assert m.is_v4, f"{path.name} does not read as a v4 unified manifest"
+    The previous version of this test injected ``tt_metal_version``/``arch``/``producer`` as
+    "stand-ins", on the belief that tt-kernel generated them at push time. That belief is what
+    let the manifests go stale: when tt-model dropped v3/v4 (2026-08-28) those three became
+    *authored*, required fields, and the published bundle `episod/tt-tnt-1024` became
+    unreadable -- ``Unsupported bundle schema_version '4'`` -- while this test stayed green,
+    because it was filling in the very fields that were missing.
+
+    So it supplies nothing. ``from_json`` is the same entry point ``tt-model info`` uses, and
+    a manifest that needs the test's help is a manifest that will fail on a user's box.
+    """
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    from tt_kernel.manifest import SUPPORTED_SCHEMAS, Manifest
+
+    m = Manifest.from_json(path.read_text())
+    assert m.schema_version in SUPPORTED_SCHEMAS
     assert m.entrypoint is not None
+    # Required by the model, and each one wrong in a way that only shows up on hardware:
+    # arch mismatch is a fatal compare(), device_count mismatch is a forceable one.
+    assert m.arch, f"{path.name} declares no arch"
+    assert m.tt_metal_version, f"{path.name} declares no tt_metal_version"
+    assert m.producer.tt_kernel_version and m.producer.created_at
+
+
+@pytest.mark.parametrize("path", _manifests(), ids=lambda p: p.stem)
+def test_device_count_agrees_with_the_mesh_block(path):
+    """``device_count`` gates compare(); ``mesh.devices`` is what this repo has always
+    authored. Two fields naming the same quantity is a bug waiting for the day they differ,
+    so they are derived together and pinned here."""
+    raw = json.loads(path.read_text())
+    assert raw["device_count"] == raw["mesh"]["devices"], (
+        f"{path.name}: device_count {raw['device_count']} != mesh.devices "
+        f"{raw['mesh']['devices']}"
+    )
+
+
+@pytest.mark.parametrize("path", _manifests(), ids=lambda p: p.stem)
+def test_manifest_carries_no_field_the_v5_schema_dropped(path):
+    """``platform``, ``runtime`` and ``target`` were removed from the model. Pydantic ignores
+    unknown keys, so leaving them costs no error -- it costs a reader believing a compatibility
+    range is still enforced when nothing reads it. This repo has been bitten by stale citations
+    four times on one branch; a dead field in a published artifact is the same failure."""
+    raw = json.loads(path.read_text())
+    dead = sorted({"platform", "runtime", "target"} & set(raw))
+    assert not dead, f"{path.name} still carries dropped v4 field(s): {', '.join(dead)}"
 
 
 @pytest.mark.parametrize("path", _manifests(), ids=lambda p: p.stem)

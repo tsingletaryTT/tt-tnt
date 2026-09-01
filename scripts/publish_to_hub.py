@@ -62,7 +62,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-REPO_ID_DEFAULT = "episod/tt-tnt"
+#: There is deliberately NO default publication target. ``--repo-id`` is required.
+#:
+#: This used to default to ``episod/tt-tnt`` -- which TARGETS itself describes as "the
+#: protected baseline". So a bare ``publish_to_hub.py --yes``, run while working on the 1024
+#: line, would publish the OTHER model: the one nobody had touched, using whatever happened to
+#: be in its artifact directory. Publishing is outward-facing and awkward to walk back, and
+#: this repo has already published a wrong-corpus checkpoint once. A publish must therefore
+#: name its target out loud; there is no invocation that guesses.
 LICENSE = "apache-2.0"
 
 #: The local HF artifact this script uploads -- i.e. the directory whose contents are
@@ -499,8 +506,10 @@ def cmd_verify(repo_id: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--repo-id", default=REPO_ID_DEFAULT,
-                   help=f"Target model repo (default: {REPO_ID_DEFAULT}).")
+    p.add_argument("--repo-id", required=True, choices=sorted(TARGETS),
+                   help="Target model repo. REQUIRED and restricted to one declared target, "
+                        "so a single invocation publishes exactly one model and never the "
+                        "wrong one by default.")
     p.add_argument("--dry-run", action="store_true",
                    help="Print what would happen; never contacts the Hub for writes.")
     p.add_argument("--yes", action="store_true",

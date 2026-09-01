@@ -1,13 +1,14 @@
 {
+  "schema_version": "5",
   "name": "tt-tnt-1024",
+  "tt_metal_version": "v0.77.0",
+  "arch": "blackhole",
+  "device_count": 4,
+  "producer": {
+    "tt_kernel_version": "0.1.0",
+    "created_at": "2026-09-01T00:00:00Z"
+  },
   "description": "TT-TNT-1024 -- a Llama-3-style model sized for Tenstorrent: num_groups=4 so it shards across 1, 2 or 4 chips, and a derived SwiGLU width of 2816 (88 tiles = 8x11) that fits a harvested Blackhole grid at 80%. Weights are the 'dialogue' run at 512 context: 123M parameters, 10,764 steps on a corpus carrying a 2% instruction slice. It answers questions in form and sometimes in fact. Ships a chat template capping rendered conversation history at 5 messages -- that guard, not a larger context, is what prevents the growing-conversation KV-cache crash (a generic tt-metal/vLLM defect, docs/upstream-tt-metal-asks.md entry 6): verified at 512 context, 14 growing turns, zero crashes. A 2048-context variant was trained, published, and REVERTED on 2026-08-29 because it answered measurably worse; see train/configs/model/tt-tnt-1024.yaml.",
-  "platform": {
-    "ttnn": ">=0.65,<0.80"
-  },
-  "runtime": {
-    "kind": "vllm"
-  },
-  "target": "p300x2",
   "mesh": {
     "devices": 4,
     "topology": "1x4",
