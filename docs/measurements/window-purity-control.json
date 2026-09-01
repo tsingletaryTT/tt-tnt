@@ -1,0 +1,133 @@
+{
+ "spec": "docs/superpowers/specs/2026-09-01-window-purity-control.md",
+ "floor_ratio_min": 1.2,
+ "seeds": [
+  5489,
+  20260815,
+  8191
+ ],
+ "statistic": "delta_late = CE[64,128) - CE[448,512), per window",
+ "splits_never_pooled": true,
+ "results": [
+  {
+   "valset": "v4",
+   "arm_mean_v4": 0.12305926052192054,
+   "arm_mean_v5": 0.1291006806709856,
+   "effect": 0.006041420149065058,
+   "seed_floor": 0.010680629089833455,
+   "ratio_to_floor": 0.5656427255596479,
+   "across_seed_sd": 0.018245323612825208,
+   "across_seed_sem": 0.01053394249931647,
+   "across_seed_t": 0.5735193779021555,
+   "minimum_detectable": 0.02064652729866028,
+   "same_direction": "1/3",
+   "gate_floor_passed": false,
+   "gate_mde_passed": false,
+   "verdict": "NOT INTERPRETABLE: inside the seed floor AND below paired detection",
+   "per_seed": [
+    {
+     "seed": 5489,
+     "n": 512,
+     "mean_a": 0.12231901314282448,
+     "mean_b": 0.1211069507471661,
+     "paired_mean": -0.001212062395658381,
+     "paired_sd": 0.28195961809445563,
+     "paired_sem": 0.01246097237345992,
+     "t": -0.09726868492541559,
+     "n_positive": 260,
+     "n_negative": 252,
+     "sign_test_p": 0.7570830305441675,
+     "minimum_detectable": 0.024423505851981442
+    },
+    {
+     "seed": 20260815,
+     "n": 512,
+     "mean_a": 0.13698402096078321,
+     "mean_b": 0.1295223231601743,
+     "paired_mean": -0.007461697800608902,
+     "paired_sd": 0.281512888030448,
+     "paired_sem": 0.01244122950735869,
+     "t": -0.5997556588917106,
+     "n_positive": 252,
+     "n_negative": 260,
+     "sign_test_p": 0.7570830305441675,
+     "minimum_detectable": 0.02438480983442303
+    },
+    {
+     "seed": 8191,
+     "n": 512,
+     "mean_a": 0.10987474746215392,
+     "mean_b": 0.1366727681056164,
+     "paired_mean": 0.026798020643462483,
+     "paired_sd": 0.29012571284733213,
+     "paired_sem": 0.012821866184433098,
+     "t": 2.090024982166613,
+     "n_positive": 274,
+     "n_negative": 238,
+     "sign_test_p": 0.12182787324081809,
+     "minimum_detectable": 0.02513085772148887
+    }
+   ]
+  },
+  {
+   "valset": "v5",
+   "arm_mean_v4": 0.18223286688284898,
+   "arm_mean_v5": 0.19243018415442728,
+   "effect": 0.010197317271578299,
+   "seed_floor": 0.005405780861141005,
+   "ratio_to_floor": 1.8863726690959388,
+   "across_seed_sd": 0.010717944687968288,
+   "across_seed_sem": 0.006188008250758011,
+   "across_seed_t": 1.6479159138692423,
+   "minimum_detectable": 0.012128496171485701,
+   "same_direction": "2/3",
+   "gate_floor_passed": true,
+   "gate_mde_passed": false,
+   "verdict": "BELOW PAIRED DETECTION: clears the floor but not its own MDE",
+   "per_seed": [
+    {
+     "seed": 5489,
+     "n": 512,
+     "mean_a": 0.18050704847184684,
+     "mean_b": 0.19254273151132217,
+     "paired_mean": 0.012035683039475331,
+     "paired_sd": 0.48357491457261936,
+     "paired_sem": 0.021371193831625283,
+     "t": 0.5631731729307897,
+     "n_positive": 277,
+     "n_negative": 235,
+     "sign_test_p": 0.06988806753666936,
+     "minimum_detectable": 0.041887539909985554
+    },
+    {
+     "seed": 20260815,
+     "n": 512,
+     "mean_a": 0.1882672301770777,
+     "mean_b": 0.1869463246642299,
+     "paired_mean": -0.0013209055128478031,
+     "paired_sd": 0.49635004765960683,
+     "paired_sem": 0.021935780283898376,
+     "t": -0.06021693761299176,
+     "n_positive": 258,
+     "n_negative": 254,
+     "sign_test_p": 0.8945403708614397,
+     "minimum_detectable": 0.04299412935644081
+    },
+    {
+     "seed": 8191,
+     "n": 512,
+     "mean_a": 0.17792432199962244,
+     "mean_b": 0.1978014962877298,
+     "paired_mean": 0.01987717428810737,
+     "paired_sd": 0.48320933446955056,
+     "paired_sem": 0.021355037321003606,
+     "t": 0.9307955771426962,
+     "n_positive": 270,
+     "n_negative": 242,
+     "sign_test_p": 0.23274226626446565,
+     "minimum_detectable": 0.04185587314916707
+    }
+   ]
+  }
+ ]
+}

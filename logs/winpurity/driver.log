@@ -29,3 +29,9 @@
     real  val   loss : 2.7387
     [tt-train] Inferred fabric config 4 from MGD dim_types
 === 2026-09-01T09:28:17-07:00 START v5 seed 8191 -> artifacts/checkpoints-winpurity-v5-s8191 ===
+=== 2026-09-01T10:17:24-07:00 END v5 seed 8191 rc=0 ===
+    first train loss : 10.6406
+    last  train loss : 3.2305
+    real  val   loss : 3.4418
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T10:17:24-07:00 ALL RUNS DONE ===
