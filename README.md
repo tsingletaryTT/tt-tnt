@@ -726,6 +726,29 @@ source here, this project does not redistribute the text; it is fetched at reque
 the live NASA page listed above. `target_share` is `0.0` at registration — the share is set
 once the blend is re-settled to include it (see `docs/corpus_blend.md`).
 
+Long-context corpus — a pulp science-fiction slice, gated and currently empty. A twelfth
+source, `pulp_sf` (`scripts/fetch_pulp_sf.py`; see `train/corpus.py`), targets 1950-63
+American science fiction — long, plot-driven, agentic narrative the existing corpus is short
+of. US works published 1929-1963 are public domain **only if their copyright was never
+renewed** in its 28th year: the pre-1976 Copyright Act required an explicit renewal
+registration, and NYPL's Catalog of Copyright Entries project found only about 25% of
+registered books ever were renewed. Admission here is **verified per-work non-renewal**
+(`train/renewal.py::verify`/`admissible`, checked against a real CCE/Stanford renewal
+index) — **never a host's assertion of public domain**. Project Gutenberg hosts much of this
+era's pulp science fiction and asserts it is public domain on a theory documented (Locus,
+2010) as correct for some of those works and wrong for others, with no distinction drawn
+between titles; that assertion is explicitly not accepted as a basis here. Every candidate
+considered — kept or rejected — is written to `artifacts/pulp_sf/renewal_records.jsonl` as
+the audit trail, via `scripts/fetch_pulp_sf.py::select_admissible`, which rejects a
+candidate outside the 1929-1963 window or absent from the index as UNKNOWN rather than
+admitting it on missing evidence. **This slice carries no documents and `target_share` is
+`0.0`**: ingesting the real CCE/Stanford renewal index was explicitly deferred by an earlier
+task's ruling, and without it every candidate resolves to UNKNOWN and nothing is admitted —
+`scripts/fetch_pulp_sf.py`'s `main()` refuses to run at all without a real index rather than
+silently writing an empty file that would look like a successful fetch. `license_id` is
+deliberately empty: there is no SPDX identifier for "verified non-renewal, pending", and the
+reasoning lives in `license_note` instead.
+
 Architectural inspiration — Mini-LLM. The lesson arc credits
 [Mini-LLM by Ashx098](https://github.com/Ashx098/Mini-LLM) for its component choices — RoPE,
 RMSNorm, SwiGLU, GQA, subword BPE. That repository **declares no license**, so no rights are

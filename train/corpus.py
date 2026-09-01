@@ -483,6 +483,56 @@ SOURCES: Dict[str, CorpusSource] = {
             "inferred from their host. See license_note for the full account."
         ),
     ),
+    "pulp_sf": CorpusSource(
+        name="pulp_sf",
+        slice="agentic",
+        # No admissible documents exist yet -- see scripts/fetch_pulp_sf.py's module
+        # docstring and Task 6's scope ruling. Registered and gated now so the selection
+        # machinery (train/renewal.py, select_admissible) has a real registry entry to run
+        # against once the CCE/Stanford renewal index is ingested; it must not claim any
+        # share of the blend before it can actually supply one.
+        target_share=0.0,
+        hf_repo="", hf_revision="",
+        fetch_kind="url",
+        # No single representative URL exists yet -- candidates would come from a
+        # per-work bibliography once the renewal index is ingested, mined the same way
+        # scripts/fetch_pulp_sf.py's docstring describes for "mission". This is a
+        # placeholder anchor only, for the "resolvable fetch spec" shape every url source
+        # is expected to declare; it is not itself fetched by anything.
+        source_url="https://www.gutenberg.org/",
+        # No SPDX identifier exists for "verified non-renewal of a pre-1964 US copyright" --
+        # it is a case-by-case legal determination, not a licence -- so this is deliberately
+        # empty rather than naming one that doesn't apply.
+        license_id="",
+        license_url="https://www.copyright.gov/circs/circ15a.pdf",
+        attribution="1950-63 American science fiction, admitted per-work on verified "
+                    "non-renewal of its 28th-year US copyright renewal",
+        license_note=(
+            "US works published 1929-1963 are public domain ONLY if their copyright was "
+            "never renewed in the 28th year -- 17 USC (pre-1976 act) required an explicit "
+            "renewal registration, and NYPL's Catalog of Copyright Entries project found "
+            "only about 25% of registered books ever were. Admission here is VERIFIED "
+            "per-work non-renewal (train/renewal.py::verify/admissible against a real "
+            "CCE/Stanford renewal index), never a host's assertion of public domain -- "
+            "Project Gutenberg hosts much of this era's pulp SF and asserts it is public "
+            "domain on a theory documented (Locus, 2010) as correct for some of those works "
+            "and wrong for others, with no distinction drawn between titles. "
+            "Every candidate checked, kept or rejected, is recorded in "
+            "artifacts/pulp_sf/renewal_records.jsonl as the audit trail. This slice carries "
+            "NO documents and target_share is 0.0 until that real renewal index is "
+            "ingested (deferred by Task 3's own ruling) -- an empty, UNKNOWN-only index "
+            "admits nothing by construction, which is the gate working as designed, not an "
+            "oversight."
+        ),
+        rows_per_document=1,
+        rationale=(
+            "Gated, not yet populated. Registers the pulp_sf slice and its selection "
+            "machinery (scripts/fetch_pulp_sf.py::select_admissible, on top of "
+            "train/renewal.py's per-work verified-non-renewal gate) so the real "
+            "CCE/Stanford renewal index has a place to plug into. Carries no documents and "
+            "claims no share of the blend until that index exists -- see license_note."
+        ),
+    ),
 }
 
 

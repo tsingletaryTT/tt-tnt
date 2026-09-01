@@ -15,11 +15,15 @@ def test_fetch_kind_defaults_to_hf_so_every_existing_source_is_unchanged():
     dataset -- it asserted that adding the field changed nothing for them. Task 5 of the
     2026-08-31 long-context-corpus plan registered ``mission``, the first (and, by design,
     only) source that is genuinely NOT a HuggingFace dataset -- NASA pages fetched by
-    ``scripts/fetch_mission.py``. That one exclusion is the point of this task, not a
+    ``scripts/fetch_mission.py``. Task 6 registered ``pulp_sf``, gated on a per-work
+    verified-renewal check rather than a dataset fetch, as a second exclusion. Both
+    exclusions are the point of their respective tasks, not a
     regression of the property this test checks for every other source.
     """
     assert all(
-        s.fetch_kind == "hf" for name, s in SOURCES.items() if name != "mission"
+        s.fetch_kind == "hf"
+        for name, s in SOURCES.items()
+        if name not in ("mission", "pulp_sf")
     )
 
 

@@ -14,7 +14,16 @@ ALL = sorted(SOURCES)
 
 @pytest.mark.parametrize("name", ALL)
 def test_every_source_declares_a_licence(name):
+    """``pulp_sf`` is the one deliberate exception: it has no admissible documents yet (no
+    real CCE/Stanford renewal index has been ingested -- see train/corpus.py and
+    scripts/fetch_pulp_sf.py), so there is nothing to license and no SPDX identifier for
+    "verified non-renewal, pending" -- ``license_id`` is empty on purpose. Its basis must
+    still be stated in words in ``license_note``, which this test checks instead."""
     src = SOURCES[name]
+    if name == "pulp_sf":
+        assert src.license_id == ""
+        assert "renewal" in src.license_note.lower()
+        return
     assert src.license_id, f"{name}: no license_id"
     assert src.license_url, f"{name}: no license_url"
 
