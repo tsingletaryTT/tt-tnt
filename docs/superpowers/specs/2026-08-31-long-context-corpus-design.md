@@ -110,6 +110,49 @@ pattern including the `[A-Z]` written *because* case matters, and a token budget
 in a unit the tokenizer defines — retraining the tokenizer re-denominates every measurement
 taken before it.
 
+## CORRECTION 2026-08-31: the long documents were already here
+
+The corpus design above was written without measuring the per-source document length it depends
+on. Measured afterwards, on the prepared corpus:
+
+| source | documents | median | tokens in documents ≥2048 |
+|---|---:|---:|---:|
+| `folklore` | 199 | **97,276 tok** | **100.0%** |
+| `spine` | 241 | **89,810 tok** | **100.0%** |
+| `weird` | 55 | **85,025 tok** | **100.0%** |
+| `gutenberg_children` | 482 | **56,347 tok** | **100.0%** |
+| `longform` (FineWeb-Edu) | — | 582 tok | 43.7% |
+| `wikipedia_simple` | 81,391 | 136 tok | 22.3% |
+| `poetry` | 46,314 | 593 tok | 0.0% |
+| `tinystories` | 133,615 | 198 tok | 0.0% |
+
+**The four public-domain book slices are already perfect for the gate, and they are the four
+smallest.** Whole books run 56k–97k tokens; every one of them clears 2048. `longform`, proposed
+above as the load-bearing long source, is two orders of magnitude worse on the exact axis the
+gate measures — at 43.7% it would have to be ~91% of the blend to carry gate 3 alone, which is
+a replacement rather than a blend.
+
+**What changes.** The corpus problem is not "we lack long documents". It is **"the long
+documents we have are 3% of the blend while `tinystories`, at 198 tokens median and 0% above
+threshold, is 31%."** The fix is re-weighting, not acquisition. ~88M tokens of book text at 2×
+upsample gives ~176M against the ~160M a 400M-token budget needs at 40%.
+
+**What this costs the era goal, stated plainly.** Every post-1950 source with real character
+failed a rights check: Project Gutenberg's pulp-SF claim is documented as unreliable, the Apollo
+Lunar Surface Journal pages carry private copyright, and ClubFloyd's `license:mit` tag is
+packaging over copyrighted game text. Pre-1929 public domain is the one place where character
+and clean provenance coexist. The corpus will sound older than originally intended, and that is
+a consequence of copyright rather than of the design.
+
+**Revised slice list.** `mission` stays at one document (~173k words), honestly described.
+`pulp_sf` stays, under its per-work renewal gate. `longform` is **demoted, not dropped** — it
+still beats `tinystories` 43.7% to 0% and supplies the only modern non-narrative register here.
+A new `grimoire` slice adds pre-1929 occult, esoteric and Fortean books, extending `weird`.
+
+⚠️ **Gate 3's 40% threshold does not move.** It was declared before this measurement, and the
+measurement says it is reachable. Moving a pre-declared threshold after seeing which side you
+landed on is the one thing this project cannot do.
+
 ## The experiment
 
 Three gates. They are **numbered by importance and executed in reverse** — gate 3 is
