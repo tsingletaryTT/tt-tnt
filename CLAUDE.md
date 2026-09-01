@@ -3313,3 +3313,109 @@ serving at it while `~/tt-metal` stays at 0.77.0 for training. Rollback is then 
 change, not a rebuild. Our manifests already declare `platform.ttnn: ">=0.65,<0.80"`, so 0.78.0
 is in range with no manifest edit. A second tree plus build costs ~14G — **which the prune above
 has to happen first to afford.**
+
+## 2026-08-31/09-01 — a branch that refuted its own premise, and published the negative result
+
+`feat/long-context-corpus`. The ask was long context; what the branch actually produced is
+three eliminated hypotheses, a corpus nobody should train on yet, and two fixed publishing
+bugs. Every number below is committed under `docs/measurements/`.
+
+### The gate passed and proved nothing
+
+Gate 3 asked whether ≥40% of tokens live in documents of 2048+ tokens. `tokens-v5` came back
+at **69.87%** — a pass. Then the same statistic on the **unchanged** shipped corpus came back
+at **55.87%**, also a pass. **A gate every arm clears is decoration**, and this one gated the
+whole branch.
+
+### The spec's premise was mine, and it was wrong
+
+The design argued a 2048-token window holds *~eighteen unrelated documents*, from a 112-token
+median. Measured directly over 200,000 random windows of the corpus the model actually trained
+on: the **median window holds zero** separators, 53.0% lie wholly inside one document, 1.23%
+hold eighteen or more.
+
+Two errors, both in the spec's own table, both mine:
+
+- **It was measured over "the first 40M tokens"** — 11.3% of the array. Separator density
+  varies **501×** across deciles because `blend_corpus.py` emits sources sequentially, so no
+  prefix of this array represents it. The table reproduces *exactly* from that prefix, which is
+  how the cause was confirmed rather than guessed.
+- **It reported DOCUMENT fractions where the gate thresholds TOKEN fractions.** The same prefix
+  already showed 83.02% of tokens in long documents — the gate's own statistic, never computed,
+  already double its threshold.
+
+A document-weighted statistic answered a question about token positions. The median document is
+short; the median **token** lives in a long document. Both true, only the second one relevant.
+
+### The control arm: a null, on a real corpus difference
+
+The re-weighting was still real — cross-document contamination roughly halved, 57.9% → **74.2%**
+single-document windows at 512. Six runs, three seeds per arm, 4h52m, both arms probed on
+**identical windows** (each arm's own val split is the tail of a different blend; that
+asymmetry is the +0.4288-nat phantom the TinyStories run already paid for once).
+
+`Δ_late = CE[64,128) − CE[448,512)`: **+0.0060 at 0.57× the seed floor** on one split,
+**+0.0102 at 1.89× the floor but below its own 0.0121 MDE** on the other, positive in **three
+of six** seed×split cells. Neither clears both declared gates.
+
+**Both gates earned their place, one each.** A floor-only design passes the second row; an
+MDE-only design passes neither but for the wrong reason. The 1.89×-over-a-small-denominator
+shape is exactly the error the spec named in advance.
+
+An early 256-window read gave +0.0129 (t=+0.75) and **flipped sign at 512** (−0.0012,
+t=−0.10). It was labelled not-a-finding at the time; doubling the sample demonstrated it.
+
+Verified the null is not an instrument artifact before believing it: all six checkpoints hash
+distinct, and the probe's position curves differ between arms by up to 0.61.
+
+**Four mechanisms are now eliminated** for "the model ignores context past ~64": capacity,
+context length, document fragmentation, window purity. What none of them touched is
+**2.87 tokens/param against Chinchilla's 20** — drafted, not started, in
+`docs/superpowers/specs/2026-09-01-data-scale-up-design.md`. The corpus holds 870M unique
+tokens, 35.4% of what 123M parameters call for, and 51.5% of that is TinyStories.
+
+### The corpus is documented but NOT adopted
+
+`artifacts/corpus/blend.txt` is now the twelve-source v5 blend. **No published model trained on
+it.** `docs/corpus_blend.md` opens with that in a banner, and `docs/current_model.json` now
+records the digest the published weights *did* train on (`7f2f6e5f…`, ten sources, tinystories
+29.04%) — a field it never had. This repo has already shipped a checkpoint trained on the wrong
+corpus generation; a digest beside the weights is the cheap guard.
+
+### Two publishing bugs, found by updating tt-model-manager
+
+`tt-model` dropped v3/v4 schemas. **Both published bundles were unreadable** —
+`Unsupported bundle schema_version '4'`. The local manifests failed for a *different* reason
+than the commit message implied: no `schema_version` at all, so they took the new default "5",
+passed that gate, and failed on three now-required fields. Migration was three fields, not a
+rewrite. Details and what it invalidates: `docs/tt-model-v5-migration.md`.
+
+**The old test is why nobody noticed.** `test_manifest_is_valid_v4` *injected*
+`tt_metal_version`/`arch`/`producer` as "stand-ins, because tt-kernel generates them at push".
+When they became authored fields the test kept filling in exactly what was missing and stayed
+green while the published artifact broke. It now supplies nothing.
+
+⚠️ **The v0.78.0 adoption plan is invalidated, not merely dated.** It rested on registering a
+second tt-metal tree as a tt-model *instance*; `instances.py` is deleted on main. Our own F8
+ask landed upstream as `8eefade` (`serve --refresh`), and our `29f8fd4` did too.
+
+**`--repo-id` no longer has a default.** It defaulted to `episod/tt-tnt`, which `TARGETS`
+itself calls "the protected baseline" — so a bare `--yes`, run while working on the 1024 line,
+would have published the *other* model from whatever sat in its artifact directory. Now
+required and restricted to a declared target. New `--manifest` mode publishes the manifest
+alone, validated through the installed tt-model's own reader first, because publishing
+something the local tooling cannot read is precisely what happened.
+
+### Lessons
+
+- **A gate that both arms clear is not a gate.** Check the baseline against your own threshold
+  before running the experiment, not after.
+- **Match the statistic's weighting to the question's sampling unit.** Windows sample token
+  positions, so a document-weighted median cannot answer a question about windows.
+- **A prefix of a source-ordered array is not a sample of it.** 501× density variation across
+  deciles; the global note about truncated views applies to `--limit` on an array exactly as it
+  does to `head`.
+- **A test that supplies what the artifact is missing tests nothing.** Twice now: the manifest
+  stand-ins, and my own `--public` test that would have exited for the wrong reason.
+- **Publishing needs a named target.** A default that points at the model you are *not* working
+  on is a loaded gun.

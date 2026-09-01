@@ -3,6 +3,30 @@
 
 # What is actually in the blend
 
+> ### ⚠️ This is not the corpus the published models trained on
+>
+> **Published `episod/tt-tnt` and `episod/tt-tnt-1024` trained on the earlier ten-source
+> blend**, sha256 `7f2f6e5ff597bc19e17f59f311a0d0e0fdc4602b634211ab0a267cdaf2039cb1`, at
+> 399,486,992 tokens with `tinystories` at 29.04%. That digest is recorded in
+> `docs/current_model.json` beside the weights it belongs to.
+>
+> The blend described below is the **current registry's** output: twelve emitting sources
+> (`longform`, `mission` added; `pulp_sf` registered with no documents yet) re-weighted toward
+> long documents, at `tinystories` 10.01%. It exists, it is licence-audited, and **no published
+> model has trained on it.**
+>
+> It was built to test a hypothesis that did not survive. The premise — that a training window
+> holds ~18 unrelated documents — was
+> [refuted](measurements/gate3-document-length.json): the median 2048-token window on the
+> *old* blend already held zero document boundaries. The re-weighting still roughly halved
+> cross-document contamination (57.9% → 74.2% single-document windows at 512), and a six-run
+> control arm then measured that this
+> [does not reach the model](window-purity-control.md) — a null on both validation splits.
+>
+> So this page describes a real, reproducible artifact and an honest negative result. Adopting
+> it as a model's provenance would be a claim no measurement supports. Measuring and shipping
+> are different acts.
+
 The corpus itself is ~1.7 GB and is not committed; `artifacts/` is gitignored. This page and
 [`measurements/blend_manifest.json`](measurements/blend_manifest.json) are the in-repo record
 of what `scripts/blend_corpus.py` built, so "what was this model trained on" is answerable

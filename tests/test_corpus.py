@@ -245,3 +245,27 @@ def test_tinystories_is_no_longer_the_largest_slice():
     the gate. This does not mandate a particular value, only that it stopped dominating."""
     ts = SOURCES["tinystories"].target_share
     assert ts <= max(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)
+
+
+def test_the_readme_share_alike_count_matches_the_registry():
+    """A licensing claim in prose, checked against the source it describes.
+
+    The README said "two sources share-alike" until 2026-09-01. It was written when that was
+    true and was never revised when `dialogue` (CC-BY-SA-3.0) joined, so the repo understated
+    its own share-alike exposure for weeks. Licence statements are the one kind of prose here
+    that must not drift: this project's own rule is that adding a source means adding its
+    licence to the provenance section in the same change.
+    """
+    from pathlib import Path
+
+    from train.corpus import SOURCES
+
+    share_alike = [n for n, s in SOURCES.items()
+                   if "SA" in s.license_id or "Sharing" in s.license_id]
+    words = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    expected = f"**{words[len(share_alike)]} of its sources share-alike**"
+    assert expected in readme, (
+        f"README does not state the registry's actual share-alike count "
+        f"({len(share_alike)}: {', '.join(sorted(share_alike))}); expected {expected!r}"
+    )

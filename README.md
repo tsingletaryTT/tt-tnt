@@ -105,6 +105,32 @@ Same headline as before, much stronger evidence behind it: four scorers that cou
 effect and didn't, rather than three plus a dead one.
 ([`docs/measurements/improv-stage1.json`](docs/measurements/improv-stage1.json))
 
+### Four mechanisms eliminated, and the corpus is what's left
+
+The model stops using its context at about position 64 — per-token loss is flat from there to
+511. Four candidate mechanisms have now been tested and none explains it: **capacity** (22M →
+123M moved held-out loss 0.011 nats against a 0.194 seed floor), **context length** (two
+2048-context retrains, both reverted), **document fragmentation**, and **window purity**.
+
+The last two were tested on this branch and are worth recording together, because the first was
+refuted by its own gate. The premise was that a 2048-token window holds ~18 unrelated documents,
+inferred from a 112-token median document. Measured directly over 200,000 random windows of the
+corpus the model actually trained on, the **median window holds zero** document boundaries and
+53.0% lie wholly inside one document. The inference had used a document-weighted statistic for a
+question about token positions, on a 40M-token prefix of an array whose separator density varies
+**501×** across deciles.
+
+Rebuilding the corpus anyway roughly halved cross-document contamination (57.9% → 74.2%
+single-document windows at 512 tokens). A six-run control — three seeds per arm, both arms
+probed on identical windows — measured whether that reaches the model. It does not:
++0.0060 at 0.57× the seed floor on one validation split, +0.0102 at 1.89× the floor but below
+its own detection threshold on the other, and positive in three of six seed×split cells.
+([`window-purity-control.md`](docs/measurements/window-purity-control.md))
+
+What remains is the thing none of these touched: **2.87 tokens per parameter, against
+Chinchilla's 20**. The whole corpus holds 870M unique tokens, 35.4% of what this model's size
+calls for, and half of that is one source.
+
 ## The art
 
 The numbers are in `docs/measurements/`. What the model *sounds like* is in
@@ -282,7 +308,8 @@ Requires a tt-metal source checkout with `ttml` built, and `TT_METAL_HOME` set. 
 ```bash
 pip install -e .
 
-# Build the nine-source corpus blend (CPU only; downloads several GB, needs ~45 GB free —
+# Build the corpus blend (CPU only; twelve emitting sources; downloads several GB,
+# needs ~45 GB free —
 # scripts/check_disk_space.py refuses to start if the volume is too full)
 python scripts/fetch_corpus.py       # pinned revisions, one file per source
 python scripts/prepare_corpus.py     # normalise, strip Gutenberg packaging
@@ -604,7 +631,7 @@ produced is trained against that same Llama-3 architecture (RoPE, RMSNorm, SwiGL
 attention) through `ttml`. Nothing about the rename touched the model's shape or its trainer.
 
 What changed with the new name. Two things this project now owns that it didn't at the start:
-a **nine-source, licence-audited corpus** blended to a 400M-token budget (see
+a **licence-audited multi-source corpus** blended to a 400M-token budget (see
 [`docs/corpus_blend.md`](docs/corpus_blend.md) and [`docs/corpus_licensing.md`](docs/corpus_licensing.md)),
 in place of a single downloaded TinyStories dump; and a **32,000-token BPE tokenizer trained
 on that blend**, rather than inherited from someone else's vocabulary. Those two changes are
@@ -666,7 +693,8 @@ source file carries an SPDX header. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTI
 Apache-2.0 covers *our code*. It does not override the terms of what this project consumes,
 and two of those inputs deserve stating plainly rather than being folded into a blanket claim:
 
-Training corpus — a nine-source blend, two sources share-alike. The corpus (see
+Training corpus — a licence-audited blend, **three of its sources share-alike**. The
+corpus (see
 [`docs/corpus_blend.md`](docs/corpus_blend.md) and
 [`docs/corpus_licensing.md`](docs/corpus_licensing.md), the latter generated from
 `train/corpus.py`) mixes TinyStories, Simple English Wikipedia, a small instruction-dialogue
