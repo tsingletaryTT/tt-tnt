@@ -153,6 +153,7 @@ TARGETS = {
         # checks the Hub against this recorded expectation rather than a hardcoded True/False
         # that would go stale the day visibility legitimately changes again.
         "expected_private": False,
+        "manifest": ROOT / "manifests" / "tt_kernel_manifest-384.json",
         "note": "tt-tnt-v3, 384-dim at a 2048 context. The protected baseline.",
     },
     "episod/tt-tnt-1024": {
@@ -173,6 +174,7 @@ TARGETS = {
         # decision flips it, the same way this script itself never flips visibility.
         "expected_private": True,
         "card": ROOT / "docs" / "model-card-1024.md",
+        "manifest": ROOT / "manifests" / "tt_kernel_manifest-1024.json",
         "note": (
             "tt-tnt-1024, raised to a 2048-token context (from 512) to push the "
             "growing-conversation KV-cache crash (docs/upstream-tt-metal-asks.md "
@@ -391,6 +393,86 @@ def cmd_publish(repo_id: str, dry_run: bool, yes: bool) -> int:
     return 0
 
 
+#: Filename the bundle manifest takes in the Hub repo. tt-model reads exactly this name.
+HUB_MANIFEST_NAME = "tt_kernel_manifest.json"
+
+
+def cmd_publish_manifest(repo_id: str, dry_run: bool, yes: bool) -> int:
+    """Upload only the bundle manifest, replacing the one in the Hub repo.
+
+    Separate from the weight publish on purpose. The manifest is small, it changes for
+    reasons the weights do not (a schema migration, a corrected resource limit), and
+    re-uploading 246 MB of unchanged safetensors to fix a JSON field is how an artifact
+    acquires revisions nobody can explain later.
+
+    The manifest is validated through the INSTALLED tt-model's own ``Manifest.from_json``
+    before anything is uploaded. That is the whole point: the repo shipped a schema-4
+    manifest that the current tt-model refuses outright, and the way that happened was a
+    file nobody had run through the reader. Publishing one the local tooling cannot read is
+    now impossible rather than merely discouraged.
+    """
+    target = target_for(repo_id)
+    src = target.get("manifest")
+    if src is None:
+        print(f"error: target {repo_id!r} declares no manifest", file=sys.stderr)
+        return 2
+    print(f"repo:     {repo_id}")
+    # relative_to() raises for any path outside the repo, which a test fixture (and an
+    # operator pointing at a staged file) legitimately is. Display must never be the thing
+    # that fails a publish.
+    try:
+        shown = src.relative_to(ROOT)
+    except ValueError:
+        shown = src
+    print(f"manifest: {shown} -> {HUB_MANIFEST_NAME}")
+
+    try:
+        from tt_kernel.manifest import SUPPORTED_SCHEMAS, Manifest
+    except ImportError:
+        print("error: tt-model (tt_kernel) is not importable; cannot validate before "
+              "publishing, and publishing unvalidated is what caused the schema-4 break.",
+              file=sys.stderr)
+        return 2
+
+    try:
+        m = Manifest.from_json(src.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"error: {src.name} is not readable by the installed tt-model: {exc}",
+              file=sys.stderr)
+        return 2
+
+    # A manifest naming another repo's weights would serve the wrong model from the right
+    # URL -- silent, and exactly the class of mistake --repo-id being required guards against.
+    if m.weights is not None and m.weights.repo_id != repo_id:
+        print(f"error: {src.name} points weights at {m.weights.repo_id!r}, not {repo_id!r}",
+              file=sys.stderr)
+        return 2
+
+    print(f"schema:   {m.schema_version} (tt-model reads {', '.join(sorted(SUPPORTED_SCHEMAS))})")
+    print(f"arch:     {m.arch}   device_count: {m.device_count}   "
+          f"tt_metal: {m.tt_metal_version}")
+    print(f"weights:  {m.weights.repo_id}@{(m.weights.revision or '')[:12]}")
+
+    if dry_run:
+        print("\n--dry-run: nothing uploaded.")
+        return 0
+    if not yes:
+        print("\nrefusing to write without --yes.", file=sys.stderr)
+        return 2
+
+    from huggingface_hub import HfApi
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj=str(src),
+        path_in_repo=HUB_MANIFEST_NAME,
+        repo_id=repo_id,
+        repo_type="model",
+        commit_message=f"Publish bundle manifest at schema v{m.schema_version}",
+    )
+    print(f"\nuploaded {HUB_MANIFEST_NAME} to {repo_id}")
+    return 0
+
+
 def cmd_restore_card(repo_id: str, dry_run: bool, yes: bool) -> int:
     """Re-apply the target's card, for use after a tt-model push damages front matter."""
     target = target_for(repo_id)
@@ -519,6 +601,10 @@ def main(argv: list[str] | None = None) -> int:
                        help="Only re-apply docs/model-card.md as the repo card (use after "
                             "`tt-model push` damages front matter). Skips repo creation "
                             "and weight upload.")
+    mode.add_argument("--manifest", action="store_true",
+                       help="Publish ONLY the bundle manifest (manifests/tt_kernel_manifest-"
+                            "<size>.json) to the repo, validated against the installed "
+                            "tt-model first. Does not touch weights, tokenizer or card.")
     mode.add_argument("--verify", action="store_true",
                        help="Read-only round-trip check: load the published model+tokenizer "
                             "fresh from the Hub via transformers and assert key fields.")
@@ -532,6 +618,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.restore_card:
         return cmd_restore_card(args.repo_id, dry_run=args.dry_run, yes=args.yes)
+
+    if args.manifest:
+        return cmd_publish_manifest(args.repo_id, dry_run=args.dry_run, yes=args.yes)
 
     return cmd_publish(args.repo_id, dry_run=args.dry_run, yes=args.yes)
 

@@ -331,3 +331,90 @@ def test_every_declared_target_names_its_own_artifact_directory():
         f"more than one target defaults to the shared HF_DIR: {nones}. At most one target "
         f"may leave hf_dir None; every other must name its own directory."
     )
+
+
+# ---------------------------------------------------------------------------------------
+# --manifest: publishing the bundle manifest on its own
+# ---------------------------------------------------------------------------------------
+
+
+def test_every_target_declares_a_manifest_that_the_installed_tt_model_can_read():
+    """THE REGRESSION THIS CLOSES.
+
+    ``episod/tt-tnt-1024`` shipped a schema-4 manifest. When tt-model dropped v3/v4 the
+    published bundle became unreadable -- ``tt-model info`` fails outright -- and nothing in
+    this repo noticed, because no test ever fed a manifest to the real reader as authored.
+    """
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    from tt_kernel.manifest import SUPPORTED_SCHEMAS, Manifest
+
+    from scripts.publish_to_hub import TARGETS
+    for repo_id, target in TARGETS.items():
+        src = target.get("manifest")
+        assert src is not None, f"{repo_id} declares no manifest"
+        assert src.is_file(), f"{repo_id}'s manifest {src} does not exist"
+        m = Manifest.from_json(src.read_text(encoding="utf-8"))
+        assert m.schema_version in SUPPORTED_SCHEMAS
+        assert m.weights is not None and m.weights.repo_id == repo_id, (
+            f"{src.name} points weights at {m.weights and m.weights.repo_id!r}, not {repo_id!r}"
+        )
+
+
+def test_manifest_publish_refuses_without_yes(capsys):
+    """--dry-run prints; a bare --manifest must not write."""
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt-1024", "--manifest"])
+    assert rc == 2
+    assert "--yes" in capsys.readouterr().err
+
+
+def test_manifest_publish_refuses_a_manifest_the_installed_tt_model_cannot_read(
+        tmp_path, monkeypatch, capsys):
+    """The guard that makes this mode safe: validate through the REAL reader before upload.
+
+    Without it this command is a plain file copy to a public URL, and would happily
+    re-publish the schema-4 manifest it exists to replace.
+    """
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"schema_version": "4", "name": "tt-tnt-1024"}))
+    targets = dict(publish_to_hub.TARGETS)
+    targets["episod/tt-tnt-1024"] = {**targets["episod/tt-tnt-1024"], "manifest": bad}
+    monkeypatch.setattr(publish_to_hub, "TARGETS", targets)
+
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt-1024", "--manifest", "--yes"])
+    assert rc == 2
+    assert "not readable by the installed tt-model" in capsys.readouterr().err
+
+
+def test_manifest_publish_refuses_a_manifest_pointing_at_another_repo(
+        tmp_path, monkeypatch, capsys):
+    """A manifest naming another repo's weights serves the wrong model from the right URL."""
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    src = json.loads(
+        (publish_to_hub.ROOT / "manifests" / "tt_kernel_manifest-1024.json").read_text())
+    src["weights"]["repo"] = "episod/tt-tnt"          # the OTHER model
+    crossed = tmp_path / "crossed.json"
+    crossed.write_text(json.dumps(src))
+    targets = dict(publish_to_hub.TARGETS)
+    targets["episod/tt-tnt-1024"] = {**targets["episod/tt-tnt-1024"], "manifest": crossed}
+    monkeypatch.setattr(publish_to_hub, "TARGETS", targets)
+
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt-1024", "--manifest", "--yes"])
+    assert rc == 2
+    assert "points weights at" in capsys.readouterr().err
+
+
+def test_manifest_publish_does_not_touch_weights_or_card(monkeypatch):
+    """--manifest is mutually exclusive with the other modes and uploads ONE file.
+
+    Re-uploading 246 MB of unchanged safetensors to correct a JSON field is how an artifact
+    grows revisions nobody can account for.
+    """
+    with pytest.raises(SystemExit):
+        publish_to_hub.main(
+            ["--repo-id", "episod/tt-tnt-1024", "--manifest", "--verify", "--dry-run"])
+    source = _SCRIPT_PATH.read_text()
+    body = source[source.index("def cmd_publish_manifest"):source.index("def cmd_restore_card")]
+    assert "upload_folder" not in body, "--manifest must not upload a folder"
+    assert "_push_card" not in body, "--manifest must not touch the card"
+    assert body.count("upload_file") == 1

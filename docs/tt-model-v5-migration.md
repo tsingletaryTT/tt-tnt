@@ -8,7 +8,24 @@ using. `dbf0ce5` ("Drop legacy v3/v4 manifest schemas — keep only v5 (fat) + v
 is a declared hard break. `tt-model`/`tt-kernel` are installed **editable** from
 `~/code/tt-kernel-package-manager`, so updating that repo changed the live CLI immediately.
 
-## What is actually broken
+## RESOLVED 2026-09-01
+
+Both manifests were migrated to schema v5 and re-published, one model at a time, through a new
+guarded `publish_to_hub.py --manifest` mode that validates through the installed tt-model's own
+`Manifest.from_json` before it uploads anything. Verified afterwards:
+
+| repo | `tt-model info` |
+|---|---|
+| `episod/tt-tnt-1024` | schema 5, **✓ compatible with the local environment** |
+| `episod/tt-tnt` | schema 5, reads cleanly; one forceable `device_count` warning (bundle 1, local 4) — correct, it is a single-chip bundle |
+
+Only `tt_kernel_manifest.json` was uploaded in each case. Weights, tokenizer and card were not
+touched: re-uploading 246 MB of unchanged safetensors to correct a JSON field is how an
+artifact grows revisions nobody can account for later.
+
+The record of the original breakage follows.
+
+## What was actually broken
 
 **The published bundle.** Verified against the Hub, not inferred:
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "5",
   "name": "tt-tnt",
-  "tt_metal_version": "v0.77.0",
+  "tt_metal_version": "0.77.0",
   "arch": "blackhole",
   "device_count": 1,
   "producer": {
@@ -19,7 +19,7 @@
   },
   "weights": {
     "repo": "episod/tt-tnt",
-    "revision": "01bd6a88c4dd"
+    "revision": "01bd6a88c4ddbd769be3d88015e9ee36568967f3"
   },
   "resources": {
     "max_model_len": 2048,

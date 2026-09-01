@@ -1,7 +1,7 @@
 {
   "schema_version": "5",
   "name": "tt-tnt-1024",
-  "tt_metal_version": "v0.77.0",
+  "tt_metal_version": "0.77.0",
   "arch": "blackhole",
   "device_count": 4,
   "producer": {
