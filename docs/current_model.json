@@ -1,42 +1,49 @@
 {
-  "schema": "tt-tnt/current-model/1",
-  "_readme": [
-    "The subject of the benchmark. `scripts/evaluate.py --model` defaults to `current.hf_model`,",
-    "so 'evaluate the model' has one unambiguous answer and a comparison always names what it",
-    "is comparing against what.",
-    "",
-    "This file is DATA, not a claim of quality in the abstract. `reason` states what the",
-    "designation rests on, `evidence` says where to check it, and `qualification` states what",
-    "the designation does NOT mean. Change it in a deliberate commit that cites new evidence --",
-    "never as a side effect of a run, and never by a script. Nothing in this repo writes it.",
-    "",
-    "`hf_model` is `artifacts/hf-tt-tnt-1024` -- ONE fixed directory that gets overwritten with",
-    "whatever the current best idea for this size is, rather than a new suffixed sibling per",
-    "experiment. See CLAUDE.md's 2026-08-29 consolidation entry. The raw training checkpoints",
-    "under artifacts/checkpoints-* are untouched by that convention -- only the derived,",
-    "cheaply-regeneratable HF conversions are collapsed to one.",
-    "",
-    "RESOLVED 2026-08-29: an earlier version of this file flagged a confirmed Q&A regression in",
-    "a 2048-context retrain. That retrain has been reverted and the 512-context dialogue weights",
-    "republished. The regression notice is gone because the regression is gone, not because it",
-    "was decided to be unimportant -- see `qualification` for what the episode leaves behind."
+ "schema": "tt-tnt/current-model/1",
+ "_readme": [
+  "The subject of the benchmark. `scripts/evaluate.py --model` defaults to `current.hf_model`,",
+  "so 'evaluate the model' has one unambiguous answer and a comparison always names what it",
+  "is comparing against what.",
+  "",
+  "This file is DATA, not a claim of quality in the abstract. `reason` states what the",
+  "designation rests on, `evidence` says where to check it, and `qualification` states what",
+  "the designation does NOT mean. Change it in a deliberate commit that cites new evidence --",
+  "never as a side effect of a run, and never by a script. Nothing in this repo writes it.",
+  "",
+  "`hf_model` is `artifacts/hf-tt-tnt-1024` -- ONE fixed directory that gets overwritten with",
+  "whatever the current best idea for this size is, rather than a new suffixed sibling per",
+  "experiment. See CLAUDE.md's 2026-08-29 consolidation entry. The raw training checkpoints",
+  "under artifacts/checkpoints-* are untouched by that convention -- only the derived,",
+  "cheaply-regeneratable HF conversions are collapsed to one.",
+  "",
+  "RESOLVED 2026-08-29: an earlier version of this file flagged a confirmed Q&A regression in",
+  "a 2048-context retrain. That retrain has been reverted and the 512-context dialogue weights",
+  "republished. The regression notice is gone because the regression is gone, not because it",
+  "was decided to be unimportant -- see `qualification` for what the episode leaves behind."
+ ],
+ "current": {
+  "label": "tt-tnt-1024",
+  "hf_model": "artifacts/hf-tt-tnt-1024",
+  "checkpoints": "artifacts/checkpoints-1024-dialogue",
+  "training_window": 512,
+  "designated": "2026-08-29",
+  "designated_in_commit": "PENDING",
+  "reason": "The 512-context dialogue-slice weights (10,764 steps, one epoch over tokens-v4), now shipping a chat template baked into tokenizer_config.json that caps rendered conversation history at the last 5 messages. This pairing is the point: the guard -- not a larger context -- is what prevents the growing-conversation KV-cache crash that is a generic tt-metal/vLLM defect (reproduced identically on stock meta-llama/Llama-3.2-1B-Instruct; docs/upstream-tt-metal-asks.md entry 6). Measured directly at 512 context, the exact crash condition: 14 growing turns, zero crashes, prompt_tokens plateauing at ~102 while messages sent grew to 27, against a hard engine crash at turn 3 before the guard existed. These weights answer questions in form and sometimes in fact ('The color of the sky is blue' outright; 'The city of Turin is the capital of the Province of Turin' -- grammatical, on-topic, factually off), where every 2048-context checkpoint trained returned circular or looping non-answers.",
+  "evidence": [
+   "docs/measurements/ctx2048-regression-and-guard-efficacy.json",
+   "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
+   "docs/upstream-tt-metal-asks.md",
+   "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
+   "train/configs/model/tt-tnt-1024.yaml",
+   "tests/test_to_hf.py"
   ],
-  "current": {
-    "label": "tt-tnt-1024",
-    "hf_model": "artifacts/hf-tt-tnt-1024",
-    "checkpoints": "artifacts/checkpoints-1024-dialogue",
-    "training_window": 512,
-    "designated": "2026-08-29",
-    "designated_in_commit": "PENDING",
-    "reason": "The 512-context dialogue-slice weights (10,764 steps, one epoch over tokens-v4), now shipping a chat template baked into tokenizer_config.json that caps rendered conversation history at the last 5 messages. This pairing is the point: the guard -- not a larger context -- is what prevents the growing-conversation KV-cache crash that is a generic tt-metal/vLLM defect (reproduced identically on stock meta-llama/Llama-3.2-1B-Instruct; docs/upstream-tt-metal-asks.md entry 6). Measured directly at 512 context, the exact crash condition: 14 growing turns, zero crashes, prompt_tokens plateauing at ~102 while messages sent grew to 27, against a hard engine crash at turn 3 before the guard existed. These weights answer questions in form and sometimes in fact ('The color of the sky is blue' outright; 'The city of Turin is the capital of the Province of Turin' -- grammatical, on-topic, factually off), where every 2048-context checkpoint trained returned circular or looping non-answers.",
-    "evidence": [
-      "docs/measurements/ctx2048-regression-and-guard-efficacy.json",
-      "docs/measurements/behaviour-tt-tnt-v3-vs-tt-tnt-v5-setB.json",
-      "docs/upstream-tt-metal-asks.md",
-      "artifacts/checkpoints-1024-dialogue/val_losses.jsonl",
-      "train/configs/model/tt-tnt-1024.yaml",
-      "tests/test_to_hf.py"
-    ],
-    "qualification": "Not unqualified. These are the SAME weights this project designated on 2026-08-18, with a chat template added -- no training improved them, and their known regression stands: 4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and the spider-legs question still returns a repetition loop. What changed on 2026-08-29 is that a 2048-context replacement was trained, published, measured to be WORSE at question answering, and reverted -- so this designation is a restoration, not an advance. The reason 2048 degraded Q&A was NOT isolated: the epoch-inflation hypothesis (steps held at 10,764 while seq_len quadrupled, taking epochs 1.00 -> 4.00) was tested by a six-checkpoint epoch sweep and NOT supported -- termination came back non-monotone and every comparison against this checkpoint was NOT SIGNIFICANT at n=32, and the metrics chosen carried no signal at all. The discriminating evidence is Q&A coherence, which was READ rather than scored, and the 512-vs-2048 comparison is confounded by epochs and sequence length moving together. Anyone re-raising the context should treat the mechanism as open and should not assume fewer epochs fixes it. Separately: this is a 512-window model, so its loss is not comparable to tt-tnt-v3's 2048-window figure -- evaluate() windows at cfg.seq_len, and comparing across windows is the error this file exists to prevent."
+  "qualification": "Not unqualified. These are the SAME weights this project designated on 2026-08-18, with a chat template added -- no training improved them, and their known regression stands: 4-gram repeat rate worse than tt-tnt-1024a at 3.32x the seed floor, visible in plain output ('the sky is blue because it is blue because it is blue'), and the spider-legs question still returns a repetition loop. What changed on 2026-08-29 is that a 2048-context replacement was trained, published, measured to be WORSE at question answering, and reverted -- so this designation is a restoration, not an advance. The reason 2048 degraded Q&A was NOT isolated: the epoch-inflation hypothesis (steps held at 10,764 while seq_len quadrupled, taking epochs 1.00 -> 4.00) was tested by a six-checkpoint epoch sweep and NOT supported -- termination came back non-monotone and every comparison against this checkpoint was NOT SIGNIFICANT at n=32, and the metrics chosen carried no signal at all. The discriminating evidence is Q&A coherence, which was READ rather than scored, and the 512-vs-2048 comparison is confounded by epochs and sequence length moving together. Anyone re-raising the context should treat the mechanism as open and should not assume fewer epochs fixes it. Separately: this is a 512-window model, so its loss is not comparable to tt-tnt-v3's 2048-window figure -- evaluate() windows at cfg.seq_len, and comparing across windows is the error this file exists to prevent.",
+  "corpus": {
+   "blend_sha256": "7f2f6e5ff597bc19e17f59f311a0d0e0fdc4602b634211ab0a267cdaf2039cb1",
+   "tokens_dir": "artifacts/tokens-v4",
+   "sources": 10,
+   "emitted_tokens": 399486992,
+   "note": "The blend these weights trained on. docs/corpus_blend.md now describes a LATER, re-weighted twelve-source blend (sha 074129b2...) that no published model has trained on and that measured as a null -- see docs/measurements/window-purity-control.md. Recorded here because a corpus generation is not implied by a model size or a training recipe, and this repo has already shipped a checkpoint trained on the wrong one."
   }
+ }
 }

@@ -1,0 +1,37 @@
+=== 2026-09-01T05:25:23-07:00 START v4 seed 5489 -> artifacts/checkpoints-winpurity-v4-s5489 ===
+=== 2026-09-01T06:10:50-07:00 END v4 seed 5489 rc=0 ===
+    first train loss : 10.6250
+    last  train loss : 2.8789
+    real  val   loss : 2.9117
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T06:10:50-07:00 START v5 seed 5489 -> artifacts/checkpoints-winpurity-v5-s5489 ===
+=== 2026-09-01T07:00:44-07:00 END v5 seed 5489 rc=0 ===
+    first train loss : 10.6094
+    last  train loss : 3.1758
+    real  val   loss : 3.4594
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T07:00:44-07:00 START v4 seed 20260815 -> artifacts/checkpoints-winpurity-v4-s20260815 ===
+=== 2026-09-01T07:50:28-07:00 END v4 seed 20260815 rc=0 ===
+    first train loss : 10.6250
+    last  train loss : 2.9570
+    real  val   loss : 2.7887
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T07:50:28-07:00 START v5 seed 20260815 -> artifacts/checkpoints-winpurity-v5-s20260815 ===
+=== 2026-09-01T08:39:14-07:00 END v5 seed 20260815 rc=0 ===
+    first train loss : 10.5938
+    last  train loss : 3.2930
+    real  val   loss : 3.5535
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T08:39:14-07:00 START v4 seed 8191 -> artifacts/checkpoints-winpurity-v4-s8191 ===
+=== 2026-09-01T09:28:17-07:00 END v4 seed 8191 rc=0 ===
+    first train loss : 10.6562
+    last  train loss : 2.8125
+    real  val   loss : 2.7387
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T09:28:17-07:00 START v5 seed 8191 -> artifacts/checkpoints-winpurity-v5-s8191 ===
+=== 2026-09-01T10:17:24-07:00 END v5 seed 8191 rc=0 ===
+    first train loss : 10.6406
+    last  train loss : 3.2305
+    real  val   loss : 3.4418
+    [tt-train] Inferred fabric config 4 from MGD dim_types
+=== 2026-09-01T10:17:24-07:00 ALL RUNS DONE ===

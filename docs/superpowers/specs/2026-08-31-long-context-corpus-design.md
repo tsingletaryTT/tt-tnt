@@ -29,17 +29,54 @@ short one.
 
 | statistic | value |
 |---|---|
-| mean document length | 1,031 tokens |
-| **median** | **113 tokens** |
-| p75 / p90 / p95 | 224 / 405 / 610 |
+| mean document length | 1,030 tokens |
+| **median** | **112 tokens** |
+| p75 / p90 / p95 | 223 / 404 / 609 |
 | documents ≥ 512 tokens | 6.88% |
 | documents ≥ 1024 tokens | 2.17% |
 | documents ≥ 2048 tokens | 1.08% |
+
+A document's length **excludes** its terminating `</s>`. An earlier draft of this table was
+one token higher throughout because the measurement counted the separator as content; the
+figures above are the corrected ones, and `scripts/measure_document_lengths.py` pins the
+convention by test. The ratio the gate actually uses is unaffected — 1.08% of documents reach
+2048 tokens under either convention.
 
 The mean is dragged by a handful of Gutenberg books; the median is the honest number. A
 2048-token training window therefore holds on the order of **eighteen unrelated documents**.
 The model was never asked to carry information 2000 tokens; it was asked to ignore seventeen
 documents' worth of noise, and it correctly learned to.
+
+> ### ⛔ CORRECTION (2026-08-31, after gate 3) — the paragraph above is REFUTED
+>
+> Measured directly instead of inferred: separators falling inside 200,000 random 2048-token
+> windows of `artifacts/tokens-v4` — the corpus the model actually trained on. The **median
+> window holds zero** document boundaries; **53.0%** lie wholly inside a single document; the
+> mean is 4.28, and only **1.23%** hold eighteen or more. The "eighteen unrelated documents"
+> figure was computed from the *median document*, but a training window samples token
+> *positions*, so the token-weighted distribution is the one that governs. The median document
+> is short; the median **token** lives in a long document. Both are true and only the second
+> one matters here.
+>
+> **Two errors produced it, and both are in the table above.** First, it was measured over
+> "the first 40M tokens" — 11.3% of the array. Separator density varies **501×** across
+> deciles of `tokens-v4` because `blend_corpus.py` emits sources sequentially, so no prefix of
+> this array is representative of it. (The table reproduces *exactly* from that prefix, which
+> is how the cause was confirmed rather than guessed.) Second, the table reports **document**
+> fractions while gate 3 thresholds **token** fractions — and the same prefix already showed
+> **83.02%** of tokens in documents ≥2048, the gate's own statistic, never computed, already
+> double its 40% threshold.
+>
+> **Consequence for gate 3: it passes (69.87% ≥ 40%) but is not a discriminator** — the
+> unchanged `tokens-v4` also passes at 55.87%. It supplies no evidence for the re-weighting.
+>
+> **Fact 1 above is untouched and still stands**: the model does stop using context past
+> position ~64. What is refuted is document fragmentation as its *mechanism*. That mechanism
+> is once again unisolated — the same state §1 describes the ctx2048 regression as being in.
+>
+> Full numbers, including what the re-weighting did measurably buy (mean separators per window
+> 4.28 → 2.07; single-document windows 53.0% → 63.5%):
+> [`docs/measurements/gate3-document-length.json`](../../measurements/gate3-document-length.json).
 
 **This retires an open mystery.** `train/configs/model/tt-tnt-1024.yaml` records that
 `max_sequence_length` was raised to 2048 on 2026-08-28 and reverted on 2026-08-29 because every
@@ -103,6 +140,49 @@ are called out for the implementer: `re.IGNORECASE` applies to every character c
 pattern including the `[A-Z]` written *because* case matters, and a token budget is denominated
 in a unit the tokenizer defines — retraining the tokenizer re-denominates every measurement
 taken before it.
+
+## CORRECTION 2026-08-31: the long documents were already here
+
+The corpus design above was written without measuring the per-source document length it depends
+on. Measured afterwards, on the prepared corpus:
+
+| source | documents | median | tokens in documents ≥2048 |
+|---|---:|---:|---:|
+| `folklore` | 199 | **97,276 tok** | **100.0%** |
+| `spine` | 241 | **89,810 tok** | **100.0%** |
+| `weird` | 55 | **85,025 tok** | **100.0%** |
+| `gutenberg_children` | 482 | **56,347 tok** | **100.0%** |
+| `longform` (FineWeb-Edu) | — | 582 tok | 43.7% |
+| `wikipedia_simple` | 81,391 | 136 tok | 22.3% |
+| `poetry` | 46,314 | 593 tok | 0.0% |
+| `tinystories` | 133,615 | 198 tok | 0.0% |
+
+**The four public-domain book slices are already perfect for the gate, and they are the four
+smallest.** Whole books run 56k–97k tokens; every one of them clears 2048. `longform`, proposed
+above as the load-bearing long source, is two orders of magnitude worse on the exact axis the
+gate measures — at 43.7% it would have to be ~91% of the blend to carry gate 3 alone, which is
+a replacement rather than a blend.
+
+**What changes.** The corpus problem is not "we lack long documents". It is **"the long
+documents we have are 3% of the blend while `tinystories`, at 198 tokens median and 0% above
+threshold, is 31%."** The fix is re-weighting, not acquisition. ~88M tokens of book text at 2×
+upsample gives ~176M against the ~160M a 400M-token budget needs at 40%.
+
+**What this costs the era goal, stated plainly.** Every post-1950 source with real character
+failed a rights check: Project Gutenberg's pulp-SF claim is documented as unreliable, the Apollo
+Lunar Surface Journal pages carry private copyright, and ClubFloyd's `license:mit` tag is
+packaging over copyrighted game text. Pre-1929 public domain is the one place where character
+and clean provenance coexist. The corpus will sound older than originally intended, and that is
+a consequence of copyright rather than of the design.
+
+**Revised slice list.** `mission` stays at one document (~173k words), honestly described.
+`pulp_sf` stays, under its per-work renewal gate. `longform` is **demoted, not dropped** — it
+still beats `tinystories` 43.7% to 0% and supplies the only modern non-narrative register here.
+A new `grimoire` slice adds pre-1929 occult, esoteric and Fortean books, extending `weird`.
+
+⚠️ **Gate 3's 40% threshold does not move.** It was declared before this measurement, and the
+measurement says it is reachable. Moving a pre-declared threshold after seeing which side you
+landed on is the one thing this project cannot do.
 
 ## The experiment
 

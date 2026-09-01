@@ -14,7 +14,16 @@ ALL = sorted(SOURCES)
 
 @pytest.mark.parametrize("name", ALL)
 def test_every_source_declares_a_licence(name):
+    """``pulp_sf`` is the one deliberate exception: it has no admissible documents yet (no
+    real CCE/Stanford renewal index has been ingested -- see train/corpus.py and
+    scripts/fetch_pulp_sf.py), so there is nothing to license and no SPDX identifier for
+    "verified non-renewal, pending" -- ``license_id`` is empty on purpose. Its basis must
+    still be stated in words in ``license_note``, which this test checks instead."""
     src = SOURCES[name]
+    if name == "pulp_sf":
+        assert src.license_id == ""
+        assert "renewal" in src.license_note.lower()
+        return
     assert src.license_id, f"{name}: no license_id"
     assert src.license_url, f"{name}: no license_url"
 
@@ -27,6 +36,17 @@ def test_every_source_has_a_known_slice(name):
 @pytest.mark.parametrize("name", ALL)
 def test_every_source_has_a_resolvable_fetch_spec(name):
     src = SOURCES[name]
+    if src.fetch_kind == "url":
+        # A url-kind source pins by being a fixed URL rather than a dataset revision --
+        # "mission" is fetched from several such URLs (scripts/fetch_mission.py's
+        # MISSION_DOCUMENTS), of which source_url is one representative anchor, not the
+        # whole fetch spec. The resolvability requirement this test enforces still holds:
+        # a real, https, non-empty URL rather than a placeholder.
+        assert src.source_url, f"{name}: fetch_kind='url' with no source_url"
+        assert src.source_url.startswith("https://"), (
+            f"{name}: source_url '{src.source_url}' is not https"
+        )
+        return
     assert src.hf_repo, f"{name}: no hf_repo"
     assert src.hf_revision, f"{name}: no pinned revision — fetches must be reproducible"
     # Reject branch refs like "main", "master", "HEAD" — must be a pinned commit sha
@@ -127,9 +147,19 @@ def test_format_share_leaves_whole_percentages_whole():
 
 
 def test_no_registered_share_renders_as_zero():
-    """A slice that reads as 0% reads as "contributes nothing"."""
+    """A slice that reads as 0% reads as "contributes nothing".
+
+    The guard is against a NONZERO share that rounds away to nothing (``flavour``'s original
+    2.00% bug this test was written for). A source whose ``target_share`` is *exactly* 0.0 is
+    a different case: a deliberately unsettled placeholder for a source newly registered but
+    not yet given a real share (``longform``, staged by the 2026-08-31 long-context-corpus
+    plan's Task 4, awaiting Task 7's re-settle). That state is meant to read as "0%" -- it
+    IS zero -- so it is excluded here rather than made to pass some other way.
+    """
     from train.corpus import SOURCES, format_share
     for name, src in SOURCES.items():
+        if src.target_share == 0.0:
+            continue
         assert format_share(src.target_share) != "0%", name
 
 
@@ -180,3 +210,62 @@ def test_no_rationale_claims_an_upsample_the_registry_does_not_declare():
                 f"{name}'s rationale claims upsample={claimed}, registry declares "
                 f"{src.upsample}"
             )
+
+
+def test_longform_is_registered_with_an_open_licence_and_a_pinned_revision():
+    s = SOURCES["longform"]
+    assert s.fetch_kind == "hf"
+    assert s.hf_revision, "an unpinned fetch is not reproducible"
+    assert s.license_id, "a source with no licence id cannot be rendered into the model card"
+
+
+def test_longform_exists_for_document_LENGTH_and_says_so():
+    """A rationale that does not state why the source is here is prose, not provenance --
+    and this repo has a gate that fails when a rationale goes stale."""
+    r = SOURCES["longform"].rationale.lower()
+    assert "long" in r and ("2048" in r or "document" in r)
+
+
+#: Measured 2026-08-31 (scripts/measure_document_lengths.py over artifacts/corpus/*.txt):
+#: every one of these is a slice of whole books, 56k-97k tokens median, 100% of their tokens
+#: in documents >= 2048. They are the only sources that can carry gate 3.
+BOOK_SOURCES = ("folklore", "spine", "weird", "gutenberg_children", "grimoire")
+
+
+def test_the_book_slices_hold_the_share_gate_3_needs():
+    """Gate 3 needs >=40% of TOKENS in documents >=2048. Only whole-book sources supply those:
+    longform manages 43.7% of its own tokens, wikipedia_simple 22.3%, poetry and tinystories
+    0.0%. If the book slices are small, the gate cannot pass however the rest is arranged."""
+    books = sum(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)
+    assert books >= 0.40, f"book slices hold {books:.1%}, need >=40%"
+
+
+def test_tinystories_is_no_longer_the_largest_slice():
+    """It was 31% at 198 tokens median and 0% above threshold -- the single biggest obstacle to
+    the gate. This does not mandate a particular value, only that it stopped dominating."""
+    ts = SOURCES["tinystories"].target_share
+    assert ts <= max(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)
+
+
+def test_the_readme_share_alike_count_matches_the_registry():
+    """A licensing claim in prose, checked against the source it describes.
+
+    The README said "two sources share-alike" until 2026-09-01. It was written when that was
+    true and was never revised when `dialogue` (CC-BY-SA-3.0) joined, so the repo understated
+    its own share-alike exposure for weeks. Licence statements are the one kind of prose here
+    that must not drift: this project's own rule is that adding a source means adding its
+    licence to the provenance section in the same change.
+    """
+    from pathlib import Path
+
+    from train.corpus import SOURCES
+
+    share_alike = [n for n, s in SOURCES.items()
+                   if "SA" in s.license_id or "Sharing" in s.license_id]
+    words = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    expected = f"**{words[len(share_alike)]} of its sources share-alike**"
+    assert expected in readme, (
+        f"README does not state the registry's actual share-alike count "
+        f"({len(share_alike)}: {', '.join(sorted(share_alike))}); expected {expected!r}"
+    )

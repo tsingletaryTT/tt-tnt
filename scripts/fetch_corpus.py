@@ -52,6 +52,7 @@ TEXT_COLUMN = {
     "roneneldan/TinyStories": "text",
     "wikimedia/wikipedia": "text",
     "biglam/gutenberg-poetry-corpus": "line",
+    "HuggingFaceFW/fineweb-edu": "text",
 }
 
 
@@ -135,6 +136,22 @@ def fetch_gutenberg_batch(sources: list[CorpusSource], limit_rows: int = 0) -> D
                 fh.close()
 
 
+def _iter_url_rows(source: CorpusSource, limit_rows: int = 0) -> Iterator[Dict[str, object]]:
+    """Rows from a plain-text document at `source.source_url`.
+
+    One row per document, so `rows_per_document` stays 1: the whole point of these sources
+    is that a document is long, and splitting one into rows here would hand
+    `prepare_corpus.py` a separator every few lines -- the exact defect
+    `rows_per_document` exists to prevent for the poetry source.
+    """
+    import urllib.request
+
+    with urllib.request.urlopen(source.source_url, timeout=120) as fh:
+        text = fh.read().decode("utf-8", errors="replace")
+    if text.strip():
+        yield {"text": text}
+
+
 def iter_source_rows(source: CorpusSource, limit_rows: int = 0) -> Iterator[Dict[str, object]]:
     """Stream a source's rows, normalised to ``{"text": str}`` and filtered if Gutenberg.
 
@@ -142,6 +159,10 @@ def iter_source_rows(source: CorpusSource, limit_rows: int = 0) -> Iterator[Dict
     document count: rows that are filtered out — non-matching books, blank text, malformed
     metadata — still consume the budget, so fewer than N documents may be yielded.
     """
+    if source.fetch_kind == "url":
+        yield from _iter_url_rows(source, limit_rows)
+        return
+
     from datasets import load_dataset
 
     renderer = RENDERERS.get(source.hf_repo)

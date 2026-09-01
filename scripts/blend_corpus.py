@@ -303,6 +303,33 @@ def main() -> int:
     print("-" * 58)
     with out_path.open("w", encoding="utf-8") as out:
         for name in sorted(plan):
+            src = SOURCES[name]
+            if plan[name] == 0:
+                # A source with target_share=0.0 (e.g. pulp_sf: zero admissible documents
+                # exist yet -- see train/corpus.py's rationale) contributes nothing to the
+                # blend and must not be required to have a prepared file on disk. Recording
+                # it here -- rather than skipping it out of the manifest entirely -- is what
+                # keeps test_recorded_blend_covers_every_registered_source meaningful: every
+                # name in SOURCES is accounted for, zero-share ones included.
+                records[name] = {
+                    "planned_tokens": 0,
+                    "emitted_tokens": 0,
+                    "emitted_tokens_method": "excluded (target_share is 0.0)",
+                    "emitted_words": 0,
+                    "source_file_words": 0,
+                    "source_tokens_per_word": 0.0,
+                    "repetition_factor": 0.0,
+                    "declared_upsample": src.upsample,
+                    "repetition_within_declared_upsample": True,
+                    "target_share": src.target_share,
+                    "available_tokens": available.get(name, 0),
+                    "hf_repo": src.hf_repo,
+                    "hf_revision": src.hf_revision,
+                    "license_id": src.license_id,
+                }
+                print(f"{name:22} {0:>13,} {format_share(0.0):>7} {'--':>7} "
+                      f"{src.upsample:>4}  (excluded: target_share=0)")
+                continue
             src_path = corpus_dir / f"{name}.txt"
             if not src_path.is_file():
                 print(f"ERROR: {src_path} missing; run scripts/prepare_corpus.py",

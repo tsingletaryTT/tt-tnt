@@ -1,0 +1,145 @@
+=== seed 5489, probed on tokens-v4/val_ids.npy ===
+2026-09-01 10:19:44.015906: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-09-01 10:19:44.023528: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1788283184.031438  814708 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1788283184.034087  814708 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1788283184.041430  814708 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283184.041444  814708 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283184.041446  814708 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283184.041446  814708 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2026-09-01 10:19:44.043572: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+probing v4-s5489 and v5-s5489 on the SAME 512 windows of artifacts/tokens-v4/val_ids.npy (seed 0)
+
+delta_late = CE[64, 128] - CE[448, 512], per window
+  v4-s5489: +0.1223
+  v5-s5489: +0.1211
+  paired difference (b - a): -0.0012  sd 0.2820  sem 0.0125  t -0.10
+  positive on 260/512 windows, sign test p = 0.757
+  minimum detectable at this n: 0.0244
+
+wrote docs/measurements/winpurity/context-use-s5489-on-v4val.json
+=== seed 5489, probed on tokens-v5/val_ids.npy ===
+2026-09-01 10:23:39.248861: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-09-01 10:23:39.256769: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1788283419.265288  815904 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1788283419.267882  815904 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1788283419.274897  815904 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283419.274920  815904 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283419.274922  815904 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283419.274923  815904 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2026-09-01 10:23:39.277064: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+probing v4-s5489 and v5-s5489 on the SAME 512 windows of artifacts/tokens-v5/val_ids.npy (seed 0)
+
+delta_late = CE[64, 128] - CE[448, 512], per window
+  v4-s5489: +0.1805
+  v5-s5489: +0.1925
+  paired difference (b - a): +0.0120  sd 0.4836  sem 0.0214  t +0.56
+  positive on 277/512 windows, sign test p = 0.0699
+  minimum detectable at this n: 0.0419
+
+wrote docs/measurements/winpurity/context-use-s5489-on-v5val.json
+converting v4 s20260815 -> artifacts/hf-winpurity-v4-s20260815
+converting artifacts/checkpoints-winpurity-v4-s20260815/tt_tnt_step00010719.pkl -> artifacts/hf-winpurity-v4-s20260815
+wrote artifacts/hf-winpurity-v4-s20260815: hidden_size=1024 num_hidden_layers=8 vocab_size=32000 tie_word_embeddings=True
+converting v5 s20260815 -> artifacts/hf-winpurity-v5-s20260815
+converting artifacts/checkpoints-winpurity-v5-s20260815/tt_tnt_step00010719.pkl -> artifacts/hf-winpurity-v5-s20260815
+wrote artifacts/hf-winpurity-v5-s20260815: hidden_size=1024 num_hidden_layers=8 vocab_size=32000 tie_word_embeddings=True
+=== seed 20260815, probed on tokens-v4/val_ids.npy ===
+2026-09-01 10:27:42.006957: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-09-01 10:27:42.014592: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1788283662.022315  817122 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1788283662.024750  817122 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1788283662.031528  817122 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283662.031546  817122 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283662.031548  817122 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283662.031549  817122 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2026-09-01 10:27:42.033660: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+probing v4-s20260815 and v5-s20260815 on the SAME 512 windows of artifacts/tokens-v4/val_ids.npy (seed 0)
+
+delta_late = CE[64, 128] - CE[448, 512], per window
+  v4-s20260815: +0.1370
+  v5-s20260815: +0.1295
+  paired difference (b - a): -0.0075  sd 0.2815  sem 0.0124  t -0.60
+  positive on 252/512 windows, sign test p = 0.757
+  minimum detectable at this n: 0.0244
+
+wrote docs/measurements/winpurity/context-use-s20260815-on-v4val.json
+=== seed 20260815, probed on tokens-v5/val_ids.npy ===
+2026-09-01 10:31:43.229358: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-09-01 10:31:43.236872: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1788283903.245321  818318 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1788283903.248088  818318 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1788283903.255126  818318 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283903.255146  818318 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283903.255148  818318 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788283903.255148  818318 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2026-09-01 10:31:43.257247: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+probing v4-s20260815 and v5-s20260815 on the SAME 512 windows of artifacts/tokens-v5/val_ids.npy (seed 0)
+
+delta_late = CE[64, 128] - CE[448, 512], per window
+  v4-s20260815: +0.1883
+  v5-s20260815: +0.1869
+  paired difference (b - a): -0.0013  sd 0.4964  sem 0.0219  t -0.06
+  positive on 258/512 windows, sign test p = 0.895
+  minimum detectable at this n: 0.0430
+
+wrote docs/measurements/winpurity/context-use-s20260815-on-v5val.json
+converting v4 s8191 -> artifacts/hf-winpurity-v4-s8191
+converting artifacts/checkpoints-winpurity-v4-s8191/tt_tnt_step00010719.pkl -> artifacts/hf-winpurity-v4-s8191
+wrote artifacts/hf-winpurity-v4-s8191: hidden_size=1024 num_hidden_layers=8 vocab_size=32000 tie_word_embeddings=True
+converting v5 s8191 -> artifacts/hf-winpurity-v5-s8191
+converting artifacts/checkpoints-winpurity-v5-s8191/tt_tnt_step00010719.pkl -> artifacts/hf-winpurity-v5-s8191
+wrote artifacts/hf-winpurity-v5-s8191: hidden_size=1024 num_hidden_layers=8 vocab_size=32000 tie_word_embeddings=True
+=== seed 8191, probed on tokens-v4/val_ids.npy ===
+2026-09-01 10:35:45.113506: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-09-01 10:35:45.121073: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1788284145.128829  819562 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1788284145.131379  819562 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1788284145.138148  819562 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788284145.138169  819562 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788284145.138184  819562 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788284145.138185  819562 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2026-09-01 10:35:45.140260: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+probing v4-s8191 and v5-s8191 on the SAME 512 windows of artifacts/tokens-v4/val_ids.npy (seed 0)
+
+delta_late = CE[64, 128] - CE[448, 512], per window
+  v4-s8191: +0.1099
+  v5-s8191: +0.1367
+  paired difference (b - a): +0.0268  sd 0.2901  sem 0.0128  t +2.09
+  positive on 274/512 windows, sign test p = 0.122
+  minimum detectable at this n: 0.0251
+
+wrote docs/measurements/winpurity/context-use-s8191-on-v4val.json
+=== seed 8191, probed on tokens-v5/val_ids.npy ===
+2026-09-01 10:39:42.898468: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-09-01 10:39:42.905740: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1788284382.913395  820731 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1788284382.915808  820731 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1788284382.923166  820731 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788284382.923195  820731 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788284382.923196  820731 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1788284382.923197  820731 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2026-09-01 10:39:42.925379: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+probing v4-s8191 and v5-s8191 on the SAME 512 windows of artifacts/tokens-v5/val_ids.npy (seed 0)
+
+delta_late = CE[64, 128] - CE[448, 512], per window
+  v4-s8191: +0.1779
+  v5-s8191: +0.1978
+  paired difference (b - a): +0.0199  sd 0.4832  sem 0.0214  t +0.93
+  positive on 270/512 windows, sign test p = 0.233
+  minimum detectable at this n: 0.0419
+
+wrote docs/measurements/winpurity/context-use-s8191-on-v5val.json
+=== analysis complete ===

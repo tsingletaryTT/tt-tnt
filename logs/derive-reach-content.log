@@ -1,0 +1,33 @@
+stories read: 2,119,489 (separator '</s>', NOT a blank line)
+building the speech profile (narration vs quoted speech) over 2,119,489 stories ...
+  narration vocabulary 48,943  floor 0.2
+building the association table over 2,119,489 whole-story documents (this is the slow part) ...
+  vocabulary 52,302  pairs 31,856,720
+terciles fitted on 65,817 training observations: lo=0.705472 hi=0.821308  (distance = 1 - max NPMI; far is the HIGH end)
+kept 24,376/2,119,489  drop rate 98.8%  (train 21,939 / eval 2,437)
+    no_dialogue                                  976,158
+    too_few_utterances                           749,195
+    turn_derivation_failed_no_accept_at_turn_2   131,370
+    turn_derivation_failed_no_accept_at_turn_0   112,261
+    turn_derivation_failed_no_content_add_at_turn_0 59,502
+    turn_derivation_failed_no_accept_at_turn_4   22,428
+    turn_derivation_failed_no_add_at_turn_0      17,543
+    turn_derivation_failed_no_content_add_at_turn_2 12,149
+    turn_derivation_failed_no_content_add_at_turn_4 4,890
+    turn_derivation_failed_no_add_at_turn_2      3,650
+    empty_prefix                                 1,498
+    turn_derivation_failed_no_add_at_turn_4      1,147
+    over_max_seq_len                             968
+    turn_derivation_failed_no_content_at_turn_0  846
+    turn_derivation_failed_no_content_at_turn_2  779
+    same_voice_pair                              668
+    turn_derivation_failed_no_content_at_turn_4  59
+    reach_no_evidence                            2
+reach buckets (train): {'near': 21937, 'mid': 21896, 'far': 21984}  max_fraction 0.334
+zero-evidence observations: 2/73,134 = 2.7e-05
+ruling A (subject): dropped 668 of 26,014 skits reaching the filter
+ruling C: applied=True excluded=968
+content gate: removed 36,533 candidate words from the slot across the kept skits; hand-labelled sample precision 0.9493 recall 0.9424 (n=250)
+top-25 add words: look(2391) want(1786) love(1235) come(1071) give(974) go(862) doing(750) friend(612) need(514) stop(469) name(438) help(427) see(405) try(389) let(383) share(364) get(358) know(347) looks(344) mean(325) hurt(324) mommy(308) promise(300) kind(293) worry(281)
+dialogue: 53.9% of stories have any; 18.6% clear >=5; corpus units carrying dialogue 12.7%; utterance retention 3.6%
+WARNING: drop rate 98.8% is above 50% — the FILTER is choosing the behaviour, not the model. Report this with any result.

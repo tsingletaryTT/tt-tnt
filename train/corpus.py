@@ -44,6 +44,14 @@ class CorpusSource:
     hf_revision: str
     hf_config: Optional[str] = None
     hf_split: str = "train"
+    #: How this source is fetched. "hf" is a HuggingFace dataset (the original and still the
+    #: common case); "url" is a direct download, needed for sources that are files on a web
+    #: host rather than a dataset -- NASA's mission transcripts are the motivating case.
+    #: Adding a kind must never weaken the pinning rule: an "hf" source still requires a
+    #: revision, and a "url" source pins by being a fixed URL to an archived document.
+    fetch_kind: str = "hf"
+    #: For fetch_kind="url": where to get it. Empty for "hf".
+    source_url: str = ""
 
     # -- licensing ----------------------------------------------------------------
     #: SPDX identifier where one exists, else a short stable string.
@@ -87,6 +95,21 @@ class CorpusSource:
     rows_per_document: int = 1
     #: Why this source exists, in one line. Shown by ``describe()``.
     rationale: str = ""
+
+    def __post_init__(self) -> None:
+        if self.fetch_kind not in ("hf", "url"):
+            raise ValueError(
+                f"{self.name}: fetch_kind must be 'hf' or 'url', got {self.fetch_kind!r}. "
+                f"A typo here fetches nothing, and an empty slice is indistinguishable from "
+                f"a source that legitimately had no rows."
+            )
+        if self.fetch_kind == "url" and not self.source_url:
+            raise ValueError(f"{self.name}: fetch_kind='url' needs a source_url")
+        if self.fetch_kind == "hf" and self.hf_repo and not self.hf_revision:
+            raise ValueError(
+                f"{self.name}: hf_repo without hf_revision -- an unpinned fetch is not "
+                f"reproducible, and shipping an exact recipe is the point"
+            )
 
     def describe(self) -> str:
         sel = []
@@ -143,9 +166,16 @@ SOURCES: Dict[str, CorpusSource] = {
         # 0.310 -> 0.290 on 2026-08-18 to fund the dialogue slice. TinyStories is the
         # defensible donor: reducing it is the one corpus change this project has measured
         # as a real register gain (1.79x the seed floor, 3/3 seeds).
+        # 0.290 -> 0.10 on 2026-08-31 (Task 7, long-context-corpus): the corpus's median
+        # document is 112 tokens, and tinystories itself is 0% above 2048 tokens (198-token
+        # median) -- it was the single biggest obstacle to gate 3 (>=40% of tokens in
+        # documents >=2048). The freed 0.19 points fund `longform` (0.188) and `mission`
+        # (0.002); every other source's share is untouched, so this remains a
+        # single-variable change (tinystories down, two new long-document sources up) rather
+        # than a re-derivation of the whole blend.
         name="tinystories",
         slice="backbone",
-        target_share=0.290,
+        target_share=0.10,
         hf_repo="roneneldan/TinyStories",
         hf_revision="f54c09fd23315a6f9c86f9dc80f725de7d8f9c64",
         license_id="CDLA-Sharing-1.0",
@@ -383,6 +413,144 @@ SOURCES: Dict[str, CorpusSource] = {
                   "Re-measured 2026-08-14 after document separators were added: 575,391 "
                   "tokens (+14 — this slice is seven documents), needing 3.4759x. The "
                   "ceiling moves to 0.5754%, so the headroom is unchanged at 0.075 points.",
+    ),
+    "longform": CorpusSource(
+        name="longform",
+        slice="spine",
+        # Set by Task 7's re-settle (2026-08-31): funded by tinystories' 0.29 -> 0.10 cut.
+        # 200,000 rows fetched (artifacts/raw/longform/text.jsonl, ~154.1M words, approx
+        # 200.4M tokens at the fetch-time 1.3 tokens/word estimate) comfortably covers 0.188
+        # share (75.2M tokens) at upsample=1 -- see docs/corpus_blend.md for the
+        # tokenizer-measured figure that supersedes this approximation.
+        target_share=0.188,
+        hf_repo="HuggingFaceFW/fineweb-edu",
+        hf_revision="87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+        hf_config="sample-10BT",
+        license_id="ODC-By-1.0",
+        license_url="https://opendatacommons.org/licenses/by/1-0/",
+        attribution="FineWeb-Edu (HuggingFaceFW), ODC-By 1.0",
+        license_note=(
+            "ODC-By covers the DATABASE. The underlying web pages carry their own rights; "
+            "FineWeb-Edu is a filtered Common Crawl derivative and this project does not "
+            "redistribute it."
+        ),
+        rows_per_document=1,
+        rationale=(
+            "Bulk long documents. The corpus's median document is 112 tokens and only 1.08% "
+            "reach 2048, so a 2048-token window holds ~18 unrelated documents and the model "
+            "cannot learn to use distant context. This slice exists for LENGTH, not voice."
+        ),
+    ),
+    "mission": CorpusSource(
+        name="mission",
+        slice="agentic",
+        # Set by Task 7's re-settle (2026-08-31): a single ~172,973-word document (approx
+        # 224,865 tokens at 1.3 tokens/word) cannot fund a large share without repetition
+        # far beyond this project's usual working limit for tiny/degenerate-risk sources.
+        # 0.2% of the 400M budget is 800,000 tokens, needing ~3.56x repetition --
+        # upsample=4 covers it with margin (897,460 achievable) while staying inside the
+        # same 4x convention `flavour`/`weird` use, not the 8x hard cap.
+        target_share=0.002,
+        hf_repo="", hf_revision="",
+        fetch_kind="url",
+        upsample=4,
+        # A single representative anchor for the "resolvable fetch spec" test below --
+        # the real fetch spec for this source is the (label, url) list in
+        # scripts/fetch_mission.py::MISSION_DOCUMENTS, since this is the one source in the
+        # registry made of several independently-fetched documents rather than one
+        # dataset or one file.
+        source_url=(
+            "https://www.nasa.gov/wp-content/uploads/static/history//alsj/a11/"
+            "a11transcript_tec.html"
+        ),
+        # No SPDX identifier exists for "US Government work" -- it is a statutory basis,
+        # not a licence -- so this is a short descriptive string instead, non-empty because
+        # every source in this registry is required to declare SOME licence basis.
+        license_id="US Government work (17 USC 105); no SPDX identifier applies",
+        license_url="https://www.copyright.gov/title17/92chap1.html#105",
+        attribution="NASA Technical Air-to-Ground Voice Transcription (US Government work)",
+        license_note=(
+            "17 USC 105: works of the US Government are not subject to copyright in the "
+            "United States. This is a statutory basis, not a licence, and it covers only "
+            "material the government itself produced. A .gov URL is NOT, by itself, a "
+            "licence basis -- it says who SERVED a page, not who WROTE it. This slice "
+            "originally included eight Apollo Lunar Surface Journal pages found on the "
+            "same nasa.gov host; each carries an explicit third-party copyright notice "
+            "(\"Corrected Transcript and Commentary Copyright (c) 1995 by Eric M. Jones. "
+            "All rights reserved.\", or the 2012 variant crediting Rene Cantin) and none "
+            "was produced by the government -- they are Eric M. Jones's privately-authored "
+            "editorial commentary, merely hosted on a .gov server. Removed. What remains is "
+            "the raw Technical Air-to-Ground Voice Transcription: one document, a verbatim "
+            "transcription of actual mission radio traffic with no separate editorial "
+            "authorship claimed over it anywhere in its own text. Every fetched document is "
+            "now checked two ways, neither sufficient alone: the .gov-host test in "
+            "tests/test_fetch_mission.py, and a scan of the document's own text for a "
+            "copyright notice (scripts/fetch_mission.py::assert_no_third_party_copyright_"
+            "notice) that refuses the document outright if one is found."
+        ),
+        rows_per_document=1,
+        rationale=(
+            "The only unambiguously clean post-1950 source with period voice, and it is "
+            "one document: the raw Apollo 11 Technical Air-to-Ground Voice Transcription, "
+            "an extremely long single document (~173,000 words) of technical dialogue "
+            "between people solving hard problems under pressure -- further from this "
+            "corpus's existing children's fiction than anything else available. It is NOT "
+            "the eight-page Apollo Lunar Surface Journal set this slice originally "
+            "registered; those pages are privately-authored, separately-copyrighted "
+            "commentary that happened to be hosted on the same .gov server, and were "
+            "removed once that was checked directly against their own text rather than "
+            "inferred from their host. See license_note for the full account."
+        ),
+    ),
+    "pulp_sf": CorpusSource(
+        name="pulp_sf",
+        slice="agentic",
+        # No admissible documents exist yet -- see scripts/fetch_pulp_sf.py's module
+        # docstring and Task 6's scope ruling. Registered and gated now so the selection
+        # machinery (train/renewal.py, select_admissible) has a real registry entry to run
+        # against once the CCE/Stanford renewal index is ingested; it must not claim any
+        # share of the blend before it can actually supply one.
+        target_share=0.0,
+        hf_repo="", hf_revision="",
+        fetch_kind="url",
+        # No single representative URL exists yet -- candidates would come from a
+        # per-work bibliography once the renewal index is ingested, mined the same way
+        # scripts/fetch_pulp_sf.py's docstring describes for "mission". This is a
+        # placeholder anchor only, for the "resolvable fetch spec" shape every url source
+        # is expected to declare; it is not itself fetched by anything.
+        source_url="https://www.gutenberg.org/",
+        # No SPDX identifier exists for "verified non-renewal of a pre-1964 US copyright" --
+        # it is a case-by-case legal determination, not a licence -- so this is deliberately
+        # empty rather than naming one that doesn't apply.
+        license_id="",
+        license_url="https://www.copyright.gov/circs/circ15a.pdf",
+        attribution="1950-63 American science fiction, admitted per-work on verified "
+                    "non-renewal of its 28th-year US copyright renewal",
+        license_note=(
+            "US works published 1929-1963 are public domain ONLY if their copyright was "
+            "never renewed in the 28th year -- 17 USC (pre-1976 act) required an explicit "
+            "renewal registration, and NYPL's Catalog of Copyright Entries project found "
+            "only about 25% of registered books ever were. Admission here is VERIFIED "
+            "per-work non-renewal (train/renewal.py::verify/admissible against a real "
+            "CCE/Stanford renewal index), never a host's assertion of public domain -- "
+            "Project Gutenberg hosts much of this era's pulp SF and asserts it is public "
+            "domain on a theory documented (Locus, 2010) as correct for some of those works "
+            "and wrong for others, with no distinction drawn between titles. "
+            "Every candidate checked, kept or rejected, is recorded in "
+            "artifacts/pulp_sf/renewal_records.jsonl as the audit trail. This slice carries "
+            "NO documents and target_share is 0.0 until that real renewal index is "
+            "ingested (deferred by Task 3's own ruling) -- an empty, UNKNOWN-only index "
+            "admits nothing by construction, which is the gate working as designed, not an "
+            "oversight."
+        ),
+        rows_per_document=1,
+        rationale=(
+            "Gated, not yet populated. Registers the pulp_sf slice and its selection "
+            "machinery (scripts/fetch_pulp_sf.py::select_admissible, on top of "
+            "train/renewal.py's per-work verified-non-renewal gate) so the real "
+            "CCE/Stanford renewal index has a place to plug into. Carries no documents and "
+            "claims no share of the blend until that index exists -- see license_note."
+        ),
     ),
 }
 

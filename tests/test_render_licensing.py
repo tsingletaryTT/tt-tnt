@@ -41,11 +41,19 @@ def test_no_source_is_silently_omitted():
 
 def test_a_fractional_share_renders_with_its_fraction_intact():
     """``:.0%`` rendered flavour's 0.5% as **0%** and spine's 13.5% as 14%. "0%" reads as
-    "contributes nothing", in the one document whose banner promises it cannot go stale."""
+    "contributes nothing", in the one document whose banner promises it cannot go stale.
+
+    The guard is against a NONZERO share rounding away to nothing. A source registered with
+    ``target_share`` genuinely at 0.0 (``longform``, staged by the 2026-08-31
+    long-context-corpus plan's Task 4, awaiting Task 7's re-settle) is meant to render as
+    "0%" -- it IS zero -- so its row is excluded from this specific count rather than made to
+    read as a fractional share it does not have.
+    """
     out = render_licensing()
     assert "| 0.5% |" in out, "flavour's 0.5% share must not round to 0%"
     assert "| 13.5% |" in out, "spine's 13.5% share must not round to 14%"
-    assert "| 0% |" not in out, "no source contributes nothing"
+    zero_share_rows = sum(1 for s in SOURCES.values() if s.target_share == 0.0)
+    assert out.count("| 0% |") <= zero_share_rows, "no NONZERO source contributes nothing"
 
 
 def test_whole_percentages_are_not_padded_with_a_pointless_decimal():

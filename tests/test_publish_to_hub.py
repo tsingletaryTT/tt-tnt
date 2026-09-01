@@ -49,8 +49,11 @@ def test_source_never_sets_private_false():
     # Checks the argparse wiring specifically, not the docstring's prose (which mentions
     # "no --public flag" by name as documentation of this very guarantee).
     assert 'add_argument("--public"' not in source
+    # --repo-id is supplied so this SystemExit can only be about --public. Without it the
+    # parser would exit for the missing required argument instead, and this assertion would
+    # pass while proving nothing about --public at all.
     with pytest.raises(SystemExit):
-        publish_to_hub.main(["--public"])
+        publish_to_hub.main(["--repo-id", "episod/tt-tnt", "--public"])
     # And confirm the positive: repo creation really does pin private=True.
     assert "private=True" in source
 
@@ -234,7 +237,7 @@ def test_load_card_for_hub_raises_on_missing_front_matter(tmp_path, monkeypatch)
 
 
 def test_verify_requires_no_other_flags(capsys):
-    rc = publish_to_hub.main(["--verify", "--dry-run"])
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt", "--verify", "--dry-run"])
     assert rc != 0
     assert "read-only" in capsys.readouterr().err
 
@@ -285,3 +288,133 @@ def test_upload_reads_the_same_directory_the_guard_validated(monkeypatch, tmp_pa
             f"{repo_id}: uploaded {seen['folder']}, but its declared artifact is "
             f"{expected}. The uploader and the guard must read one directory."
         )
+
+
+def test_publishing_requires_naming_its_target_explicitly():
+    """THE GUARD: there is no default publication target.
+
+    ``--repo-id`` used to default to ``episod/tt-tnt``, which TARGETS itself calls "the
+    protected baseline". A bare ``--yes`` run, launched while working on the 1024 line, would
+    have published the other model from whatever sat in its artifact directory. Publishing is
+    outward-facing and awkward to undo, and this repo has already published a wrong-corpus
+    checkpoint once.
+    """
+    with pytest.raises(SystemExit):
+        publish_to_hub.main(["--dry-run"])
+
+
+def test_only_a_declared_target_can_be_published(capsys):
+    """One invocation, one declared model. An undeclared repo -- a typo, or a repo nobody
+    reviewed -- is refused BY THE PARSER, before any code runs.
+
+    Asserting a bare ``SystemExit`` here would be hollow, and was: an undeclared repo exits
+    either way, because ``target_for`` refuses it downstream too. Mutation-checked -- dropping
+    ``choices=`` from the argument left a bare-SystemExit version of this test green. So it
+    pins argparse's own signature: exit code 2 and an "invalid choice" message. Being refused
+    at parse time is the property worth having, because it holds for every subcommand
+    (``--verify``, ``--restore-card``) without each having to re-check.
+    """
+    with pytest.raises(SystemExit) as exc:
+        publish_to_hub.main(["--repo-id", "episod/tt-tnt-typo", "--dry-run"])
+    assert exc.value.code == 2, "an undeclared target must be an argparse usage error"
+    err = capsys.readouterr().err
+    assert "invalid choice" in err, f"not refused by the parser; stderr was: {err[:200]}"
+
+
+def test_every_declared_target_names_its_own_artifact_directory():
+    """``hf_dir: None`` resolves to the module-level HF_DIR, which is the 384 line's path. Any
+    SECOND target leaving it None would silently publish the 384 artifact under its own name --
+    the exact trap the 1024 entry's own comment records having avoided."""
+    from scripts.publish_to_hub import TARGETS
+    nones = [r for r, t in TARGETS.items() if t.get("hf_dir") is None]
+    assert len(nones) <= 1, (
+        f"more than one target defaults to the shared HF_DIR: {nones}. At most one target "
+        f"may leave hf_dir None; every other must name its own directory."
+    )
+
+
+# ---------------------------------------------------------------------------------------
+# --manifest: publishing the bundle manifest on its own
+# ---------------------------------------------------------------------------------------
+
+
+def test_every_target_declares_a_manifest_that_the_installed_tt_model_can_read():
+    """THE REGRESSION THIS CLOSES.
+
+    ``episod/tt-tnt-1024`` shipped a schema-4 manifest. When tt-model dropped v3/v4 the
+    published bundle became unreadable -- ``tt-model info`` fails outright -- and nothing in
+    this repo noticed, because no test ever fed a manifest to the real reader as authored.
+    """
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    from tt_kernel.manifest import SUPPORTED_SCHEMAS, Manifest
+
+    from scripts.publish_to_hub import TARGETS
+    for repo_id, target in TARGETS.items():
+        src = target.get("manifest")
+        assert src is not None, f"{repo_id} declares no manifest"
+        assert src.is_file(), f"{repo_id}'s manifest {src} does not exist"
+        m = Manifest.from_json(src.read_text(encoding="utf-8"))
+        assert m.schema_version in SUPPORTED_SCHEMAS
+        assert m.weights is not None and m.weights.repo_id == repo_id, (
+            f"{src.name} points weights at {m.weights and m.weights.repo_id!r}, not {repo_id!r}"
+        )
+
+
+def test_manifest_publish_refuses_without_yes(capsys):
+    """--dry-run prints; a bare --manifest must not write."""
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt-1024", "--manifest"])
+    assert rc == 2
+    assert "--yes" in capsys.readouterr().err
+
+
+def test_manifest_publish_refuses_a_manifest_the_installed_tt_model_cannot_read(
+        tmp_path, monkeypatch, capsys):
+    """The guard that makes this mode safe: validate through the REAL reader before upload.
+
+    Without it this command is a plain file copy to a public URL, and would happily
+    re-publish the schema-4 manifest it exists to replace.
+    """
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"schema_version": "4", "name": "tt-tnt-1024"}))
+    targets = dict(publish_to_hub.TARGETS)
+    targets["episod/tt-tnt-1024"] = {**targets["episod/tt-tnt-1024"], "manifest": bad}
+    monkeypatch.setattr(publish_to_hub, "TARGETS", targets)
+
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt-1024", "--manifest", "--yes"])
+    assert rc == 2
+    assert "not readable by the installed tt-model" in capsys.readouterr().err
+
+
+def test_manifest_publish_refuses_a_manifest_pointing_at_another_repo(
+        tmp_path, monkeypatch, capsys):
+    """A manifest naming another repo's weights serves the wrong model from the right URL."""
+    pytest.importorskip("tt_kernel", reason="tt-kernel not importable")
+    src = json.loads(
+        (publish_to_hub.ROOT / "manifests" / "tt_kernel_manifest-1024.json").read_text())
+    src["weights"]["repo"] = "episod/tt-tnt"          # the OTHER model
+    crossed = tmp_path / "crossed.json"
+    crossed.write_text(json.dumps(src))
+    targets = dict(publish_to_hub.TARGETS)
+    targets["episod/tt-tnt-1024"] = {**targets["episod/tt-tnt-1024"], "manifest": crossed}
+    monkeypatch.setattr(publish_to_hub, "TARGETS", targets)
+
+    rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt-1024", "--manifest", "--yes"])
+    assert rc == 2
+    assert "points weights at" in capsys.readouterr().err
+
+
+def test_manifest_publish_does_not_touch_weights_or_card(monkeypatch):
+    """--manifest is mutually exclusive with the other modes and uploads ONE file.
+
+    Re-uploading 246 MB of unchanged safetensors to correct a JSON field is how an artifact
+    grows revisions nobody can account for.
+    """
+    with pytest.raises(SystemExit):
+        publish_to_hub.main(
+            ["--repo-id", "episod/tt-tnt-1024", "--manifest", "--verify", "--dry-run"])
+    source = _SCRIPT_PATH.read_text()
+    body = source[source.index("def cmd_publish_manifest"):source.index("def cmd_restore_card")]
+    assert "upload_folder" not in body, "--manifest must not upload a folder"
+    assert "_push_card" not in body, "--manifest must not touch the card"
+    assert body.count("upload_file") == 1

@@ -105,6 +105,32 @@ Same headline as before, much stronger evidence behind it: four scorers that cou
 effect and didn't, rather than three plus a dead one.
 ([`docs/measurements/improv-stage1.json`](docs/measurements/improv-stage1.json))
 
+### Four mechanisms eliminated, and the corpus is what's left
+
+The model stops using its context at about position 64 — per-token loss is flat from there to
+511. Four candidate mechanisms have now been tested and none explains it: **capacity** (22M →
+123M moved held-out loss 0.011 nats against a 0.194 seed floor), **context length** (two
+2048-context retrains, both reverted), **document fragmentation**, and **window purity**.
+
+The last two were tested on this branch and are worth recording together, because the first was
+refuted by its own gate. The premise was that a 2048-token window holds ~18 unrelated documents,
+inferred from a 112-token median document. Measured directly over 200,000 random windows of the
+corpus the model actually trained on, the **median window holds zero** document boundaries and
+53.0% lie wholly inside one document. The inference had used a document-weighted statistic for a
+question about token positions, on a 40M-token prefix of an array whose separator density varies
+**501×** across deciles.
+
+Rebuilding the corpus anyway roughly halved cross-document contamination (57.9% → 74.2%
+single-document windows at 512 tokens). A six-run control — three seeds per arm, both arms
+probed on identical windows — measured whether that reaches the model. It does not:
++0.0060 at 0.57× the seed floor on one validation split, +0.0102 at 1.89× the floor but below
+its own detection threshold on the other, and positive in three of six seed×split cells.
+([`window-purity-control.md`](docs/measurements/window-purity-control.md))
+
+What remains is the thing none of these touched: **2.87 tokens per parameter, against
+Chinchilla's 20**. The whole corpus holds 870M unique tokens, 35.4% of what this model's size
+calls for, and half of that is one source.
+
 ## The art
 
 The numbers are in `docs/measurements/`. What the model *sounds like* is in
@@ -282,7 +308,8 @@ Requires a tt-metal source checkout with `ttml` built, and `TT_METAL_HOME` set. 
 ```bash
 pip install -e .
 
-# Build the nine-source corpus blend (CPU only; downloads several GB, needs ~45 GB free —
+# Build the corpus blend (CPU only; twelve emitting sources; downloads several GB,
+# needs ~45 GB free —
 # scripts/check_disk_space.py refuses to start if the volume is too full)
 python scripts/fetch_corpus.py       # pinned revisions, one file per source
 python scripts/prepare_corpus.py     # normalise, strip Gutenberg packaging
@@ -604,7 +631,7 @@ produced is trained against that same Llama-3 architecture (RoPE, RMSNorm, SwiGL
 attention) through `ttml`. Nothing about the rename touched the model's shape or its trainer.
 
 What changed with the new name. Two things this project now owns that it didn't at the start:
-a **nine-source, licence-audited corpus** blended to a 400M-token budget (see
+a **licence-audited multi-source corpus** blended to a 400M-token budget (see
 [`docs/corpus_blend.md`](docs/corpus_blend.md) and [`docs/corpus_licensing.md`](docs/corpus_licensing.md)),
 in place of a single downloaded TinyStories dump; and a **32,000-token BPE tokenizer trained
 on that blend**, rather than inherited from someone else's vocabulary. Those two changes are
@@ -666,7 +693,8 @@ source file carries an SPDX header. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTI
 Apache-2.0 covers *our code*. It does not override the terms of what this project consumes,
 and two of those inputs deserve stating plainly rather than being folded into a blanket claim:
 
-Training corpus — a nine-source blend, two sources share-alike. The corpus (see
+Training corpus — a licence-audited blend, **three of its sources share-alike**. The
+corpus (see
 [`docs/corpus_blend.md`](docs/corpus_blend.md) and
 [`docs/corpus_licensing.md`](docs/corpus_licensing.md), the latter generated from
 `train/corpus.py`) mixes TinyStories, Simple English Wikipedia, a small instruction-dialogue
@@ -683,6 +711,71 @@ weights trained on share-alike data constitute a "Data Derivative" (CDLA-Sharing
 "Adaptation" (CC-BY-SA-3.0) is not settled, and we do not assert that they don't. Anyone
 publishing weights trained with this code should reach their own conclusion rather than
 inheriting ours.
+
+Long-context corpus — FineWeb-Edu. A tenth source, `longform`
+([`HuggingFaceFW/fineweb-edu`](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu),
+`sample-10BT` config, pinned revision `87f0914` — see `train/corpus.py`), registered to fix a
+real gap: the corpus's median document is 112 tokens and only 1.08% reach 2048, so a
+2048-token training window holds roughly 18 unrelated documents and the model cannot learn to
+use distant context. It is licensed **ODC-By 1.0**, which covers the *database* FineWeb-Edu
+assembles — the underlying web pages it draws from carry their own, separate rights, and
+FineWeb-Edu is itself a filtered Common Crawl derivative. As with every other source here,
+this project does not redistribute the corpus; it is fetched from the Hugging Face Hub at the
+pinned revision above. `target_share` is `0.0` at registration — the share is set once the
+blend is re-settled to include it (see `docs/corpus_blend.md`).
+
+Long-context corpus — a NASA mission transcript. An eleventh source, `mission`
+(`scripts/fetch_mission.py::MISSION_DOCUMENTS`; see `train/corpus.py`), the only
+unambiguously clean post-1950 source with genuine period voice: fiction from 1964 onward is
+still under copyright, but works of the United States Government are not copyrightable in
+the first place. **17 USC 105** puts them outside copyright in the United States as a matter
+of statute — this is a *statutory basis*, not a licence, and there is no SPDX identifier for
+it; `train/corpus.py`'s `license_id` for this source says so in words rather than naming one
+that doesn't exist. That basis holds only for material the government itself produced — **a
+`.gov` URL is not, by itself, a licence basis**: it says who served a page, not who wrote it.
+This slice originally registered nine pages found on `www.nasa.gov` (the raw Technical
+Air-to-Ground Voice Transcription plus eight Apollo Lunar Surface Journal pages), and eight
+of the nine turned out to carry an explicit third-party copyright notice in their own text —
+"Corrected Transcript and Commentary Copyright © 1995 by Eric M. Jones. All rights
+reserved." (or the 2012 variant crediting René Cantin) — because the Apollo Lunar Surface
+Journal is Eric M. Jones's privately-authored editorial commentary, merely hosted on a
+`.nasa.gov` server, not a US Government work. Those eight were removed once that was checked
+directly against their own text. **The slice is now one document**: the raw Technical
+Air-to-Ground Voice Transcription, ~173,000 words of real air-to-ground technical dialogue
+with no separate editorial authorship claimed over it anywhere in its own text, kept for
+being an *extremely long single document* — the corpus's median document is 112 tokens, and
+a transcript this long is the opposite failure mode. Every fetched document is now checked
+two ways, neither sufficient alone: `tests/test_fetch_mission.py` asserts every registered
+URL is on a `.gov` host, and `scripts/fetch_mission.py::assert_no_third_party_copyright_notice`
+scans the fetched text itself for a copyright notice and refuses the document outright if one
+is found. Mission-elapsed-time stamps ("00 00 01 02") are kept as real document content, not
+stripped as markup; only the HTML tags wrapping the page are removed. As with every other
+source here, this project does not redistribute the text; it is fetched at request time from
+the live NASA page listed above. `target_share` is `0.0` at registration — the share is set
+once the blend is re-settled to include it (see `docs/corpus_blend.md`).
+
+Long-context corpus — a pulp science-fiction slice, gated and currently empty. A twelfth
+source, `pulp_sf` (`scripts/fetch_pulp_sf.py`; see `train/corpus.py`), targets 1950-63
+American science fiction — long, plot-driven, agentic narrative the existing corpus is short
+of. US works published 1929-1963 are public domain **only if their copyright was never
+renewed** in its 28th year: the pre-1976 Copyright Act required an explicit renewal
+registration, and NYPL's Catalog of Copyright Entries project found only about 25% of
+registered books ever were renewed. Admission here is **verified per-work non-renewal**
+(`train/renewal.py::verify`/`admissible`, checked against a real CCE/Stanford renewal
+index) — **never a host's assertion of public domain**. Project Gutenberg hosts much of this
+era's pulp science fiction and asserts it is public domain on a theory documented (Locus,
+2010) as correct for some of those works and wrong for others, with no distinction drawn
+between titles; that assertion is explicitly not accepted as a basis here. Every candidate
+considered — kept or rejected — is written to `artifacts/pulp_sf/renewal_records.jsonl` as
+the audit trail, via `scripts/fetch_pulp_sf.py::select_admissible`, which rejects a
+candidate outside the 1929-1963 window or absent from the index as UNKNOWN rather than
+admitting it on missing evidence. **This slice carries no documents and `target_share` is
+`0.0`**: ingesting the real CCE/Stanford renewal index was explicitly deferred by an earlier
+task's ruling, and without it every candidate resolves to UNKNOWN and nothing is admitted —
+`scripts/fetch_pulp_sf.py`'s `main()` refuses to run at all without a real index rather than
+silently writing an empty file that would look like a successful fetch. `license_id` is
+deliberately empty: there is no SPDX identifier for "verified non-renewal, pending", and the
+reasoning lives in `license_note` instead.
 
 Architectural inspiration — Mini-LLM. The lesson arc credits
 [Mini-LLM by Ashx098](https://github.com/Ashx098/Mini-LLM) for its component choices — RoPE,

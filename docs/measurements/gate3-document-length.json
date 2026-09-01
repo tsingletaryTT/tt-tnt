@@ -1,0 +1,86 @@
+{
+ "title": "Gate 3: passes as specified, and is not a discriminator",
+ "date": "2026-08-31",
+ "gate": {
+  "statistic": "fraction of TOKENS in documents >= 2048 tokens",
+  "threshold": 0.4,
+  "measured_on": "artifacts/tokens-v5/train_ids.npy",
+  "value": 0.6987,
+  "verdict": "PASS"
+ },
+ "the_problem": "The same statistic on the UNCHANGED shipped corpus (artifacts/tokens-v4) is 0.5587, which also passes. The gate cannot distinguish the new corpus from the old one, so it supplies no evidence for the re-weighting this branch performed.",
+ "full_corpus": {
+  "tokens-v4": {
+   "documents": 738652,
+   "tokens": 352641058,
+   "mean": 476,
+   "median": 173,
+   "tokens_in_docs_ge_2048": 0.5587,
+   "docs_ge_2048": 0.0066
+  },
+  "tokens-v5": {
+   "documents": 355733,
+   "tokens": 351241651,
+   "mean": 986,
+   "median": 193,
+   "tokens_in_docs_ge_2048": 0.6987,
+   "docs_ge_2048": 0.03
+  }
+ },
+ "spec_premise_refuted": {
+  "claim": "docs/superpowers/specs/2026-08-31-long-context-corpus-design.md: 'A 2048-token training window therefore holds on the order of eighteen unrelated documents.'",
+  "derived_from": "the MEDIAN document length (112 tokens), a document-weighted statistic",
+  "measured_directly": "separators falling inside 200,000 random 2048-token windows",
+  "tokens-v4": {
+   "mean_separators_per_window": 4.276,
+   "median_separators_per_window": 0,
+   "windows_wholly_inside_one_document": 0.53,
+   "windows_with_18_or_more": 0.0123
+  },
+  "tokens-v5": {
+   "mean_separators_per_window": 2.072,
+   "median_separators_per_window": 0,
+   "windows_wholly_inside_one_document": 0.635,
+   "windows_with_18_or_more": 0.0028
+  },
+  "verdict": "REFUTED on the corpus the model actually trained on. The median 2048-token window already contained zero document boundaries."
+ },
+ "why_the_spec_was_wrong": {
+  "cause_1": "The table was measured over 'the first 40M tokens' -- 11.3% of the array. Reproduced exactly from that prefix (mean 1030, median 112, p75/p90/p95 223/404/609, docs>=2048 1.08%), confirming the prefix is the source of the figures.",
+  "cause_2": "Separator density varies 501x across deciles of tokens-v4 because blend_corpus.py emits sources sequentially. No prefix of this array is representative.",
+  "cause_3": "The table reported DOCUMENT fractions; the gate thresholds TOKEN fractions. The same 40M prefix already showed 83.02% of tokens in documents >=2048 -- the gate's own statistic, never computed, already far above its 40% threshold.",
+  "decile_density_v4": [
+   110,
+   2,
+   17,
+   1,
+   1,
+   383,
+   465,
+   478,
+   168,
+   470
+  ]
+ },
+ "what_the_reweighting_did_buy": {
+  "mean_separators_per_2048_window": [
+   4.276,
+   2.072
+  ],
+  "windows_wholly_inside_one_document": [
+   0.53,
+   0.635
+  ],
+  "tokens_in_docs_ge_2048": [
+   0.5587,
+   0.6987
+  ],
+  "note": "Real and measured, roughly halving cross-document contamination per window. But it is an improvement to a corpus that was already majority-clean by token mass, not a fix for a corpus that 'cannot teach long context'."
+ },
+ "what_still_stands": "The spec's fact 1 -- probe_context_use.py shows per-token loss flat from position ~64 to 511 -- is untouched by this and remains true. What is refuted is document fragmentation as its MECHANISM. That mechanism is again unisolated.",
+ "limitations": [
+  "Window sampling is uniform over token positions with a fixed seed (0), n=200,000 windows per corpus; it does not model the trainer's own batch sampler.",
+  "No model was trained or evaluated here. This is a corpus measurement only.",
+  "tokens-v3 and tokens-v4 were read but never written."
+ ]
+}

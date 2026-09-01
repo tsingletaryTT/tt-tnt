@@ -1,12 +1,12 @@
 {
   "budget": 400000000,
-  "total_emitted_tokens": 399486992,
-  "total_vs_budget_tokens": -513008,
-  "total_vs_budget_pct": -0.128,
+  "total_emitted_tokens": 399449409,
+  "total_vs_budget_tokens": -550591,
+  "total_vs_budget_pct": -0.138,
   "token_count_method": "tokenizer",
   "token_count_note": "emitted_tokens is counted with the trained tokenizer over exactly the text written for each source, chunked the same way scripts/measure_corpus.py chunks it, so it is directly comparable with available_tokens. repetition_factor is exact (emitted_words / source_file_words). source_tokens_per_word is available_tokens / source_file_words, the measured ratio the emitter sizes its output with.",
   "output": "blend.txt",
-  "sha256": "7f2f6e5ff597bc19e17f59f311a0d0e0fdc4602b634211ab0a267cdaf2039cb1",
+  "sha256": "074129b2073e5e8e3abe31ae83be6bb230c75b26345be7f845ebbf4239cdd29f",
   "sources": {
     "dialogue": {
       "planned_tokens": 8000000,
@@ -24,7 +24,7 @@
       "hf_revision": "bdd27f4d94b9c1f951818a7da7fd7aeea5dbff1a",
       "license_id": "CC-BY-SA-3.0",
       "planned_vs_emitted_error": -0.000526,
-      "achieved_share": 0.020015157339591173
+      "achieved_share": 0.020017040505872923
     },
     "flavour": {
       "planned_tokens": 2000000,
@@ -42,7 +42,7 @@
       "hf_revision": "28973b04f28fd7be4a6186a042bc26159d4366ca",
       "license_id": "MIT (packaging); public domain (texts)",
       "planned_vs_emitted_error": -0.010105,
-      "achieved_share": 0.004955828449102543
+      "achieved_share": 0.004956294728176704
     },
     "folklore": {
       "planned_tokens": 32000000,
@@ -60,7 +60,7 @@
       "hf_revision": "28973b04f28fd7be4a6186a042bc26159d4366ca",
       "license_id": "MIT (packaging); public domain (texts)",
       "planned_vs_emitted_error": 0.002452,
-      "achieved_share": 0.08029914525977858
+      "achieved_share": 0.08030670036615326
     },
     "gutenberg_children": {
       "planned_tokens": 60000000,
@@ -78,7 +78,43 @@
       "hf_revision": "28973b04f28fd7be4a6186a042bc26159d4366ca",
       "license_id": "MIT (packaging); public domain (texts)",
       "planned_vs_emitted_error": -0.000265,
-      "achieved_share": 0.15015283401267793
+      "achieved_share": 0.1501669614436706
+    },
+    "longform": {
+      "planned_tokens": 75200000,
+      "emitted_tokens": 75193760,
+      "emitted_tokens_method": "tokenizer",
+      "emitted_words": 53153674,
+      "source_file_words": 154327966,
+      "source_tokens_per_word": 1.414766,
+      "repetition_factor": 0.3444,
+      "declared_upsample": 1,
+      "repetition_within_declared_upsample": true,
+      "target_share": 0.188,
+      "available_tokens": 218337930,
+      "hf_repo": "HuggingFaceFW/fineweb-edu",
+      "hf_revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+      "license_id": "ODC-By-1.0",
+      "planned_vs_emitted_error": -8.3e-05,
+      "achieved_share": 0.18824351296011055
+    },
+    "mission": {
+      "planned_tokens": 800000,
+      "emitted_tokens": 801966,
+      "emitted_tokens_method": "tokenizer",
+      "emitted_words": 496956,
+      "source_file_words": 172974,
+      "source_tokens_per_word": 1.609803,
+      "repetition_factor": 2.873,
+      "declared_upsample": 4,
+      "repetition_within_declared_upsample": true,
+      "target_share": 0.002,
+      "available_tokens": 278454,
+      "hf_repo": "",
+      "hf_revision": "",
+      "license_id": "US Government work (17 USC 105); no SPDX identifier applies",
+      "planned_vs_emitted_error": 0.002458,
+      "achieved_share": 0.002007678524315954
     },
     "poetry": {
       "planned_tokens": 4000000,
@@ -96,7 +132,7 @@
       "hf_revision": "fcd42e249fed48dbd1d3b9b969528ef9298d3464",
       "license_id": "CC0-1.0",
       "planned_vs_emitted_error": -0.012366,
-      "achieved_share": 0.009889022869610733
+      "achieved_share": 0.00988995329819101
     },
     "procedural": {
       "planned_tokens": 48000000,
@@ -114,7 +150,24 @@
       "hf_revision": "28973b04f28fd7be4a6186a042bc26159d4366ca",
       "license_id": "MIT (packaging); public domain (texts)",
       "planned_vs_emitted_error": -0.000119,
-      "achieved_share": 0.12013976164710764
+      "achieved_share": 0.120151065237901
+    },
+    "pulp_sf": {
+      "planned_tokens": 0,
+      "emitted_tokens": 0,
+      "emitted_tokens_method": "excluded (target_share is 0.0)",
+      "emitted_words": 0,
+      "source_file_words": 0,
+      "source_tokens_per_word": 0.0,
+      "repetition_factor": 0.0,
+      "declared_upsample": 1,
+      "repetition_within_declared_upsample": true,
+      "target_share": 0.0,
+      "available_tokens": 0,
+      "hf_repo": "",
+      "hf_revision": "",
+      "license_id": "",
+      "achieved_share": 0.0
     },
     "spine": {
       "planned_tokens": 54000000,
@@ -132,25 +185,25 @@
       "hf_revision": "28973b04f28fd7be4a6186a042bc26159d4366ca",
       "license_id": "MIT (packaging); public domain (texts)",
       "planned_vs_emitted_error": -0.001573,
-      "achieved_share": 0.13496075236412203
+      "achieved_share": 0.1349734504175972
     },
     "tinystories": {
-      "planned_tokens": 116000000,
-      "emitted_tokens": 116013358,
+      "planned_tokens": 40000000,
+      "emitted_tokens": 39980049,
       "emitted_tokens_method": "tokenizer",
-      "emitted_words": 96808191,
+      "emitted_words": 33382135,
       "source_file_words": 373833093,
       "source_tokens_per_word": 1.198246,
-      "repetition_factor": 0.259,
+      "repetition_factor": 0.0893,
       "declared_upsample": 1,
       "repetition_within_declared_upsample": true,
-      "target_share": 0.29,
+      "target_share": 0.1,
       "available_tokens": 447943902,
       "hf_repo": "roneneldan/TinyStories",
       "hf_revision": "f54c09fd23315a6f9c86f9dc80f725de7d8f9c64",
       "license_id": "CDLA-Sharing-1.0",
-      "planned_vs_emitted_error": 0.000115,
-      "achieved_share": 0.29040584630600436
+      "planned_vs_emitted_error": -0.000499,
+      "achieved_share": 0.10008789123030096
     },
     "weird": {
       "planned_tokens": 16000000,
@@ -168,7 +221,7 @@
       "hf_revision": "28973b04f28fd7be4a6186a042bc26159d4366ca",
       "license_id": "MIT (packaging); public domain (texts)",
       "planned_vs_emitted_error": -0.001378,
-      "achieved_share": 0.03999619592119285
+      "achieved_share": 0.039999959043624474
     },
     "wikipedia_simple": {
       "planned_tokens": 60000000,
@@ -186,7 +239,7 @@
       "hf_revision": "b04c8d1ceb2f5cd4588862100d08de323dccfbaa",
       "license_id": "CC-BY-SA-3.0",
       "planned_vs_emitted_error": -0.006706,
-      "achieved_share": 0.14918545583081214
+      "achieved_share": 0.1491994922440854
     }
   }
 }
