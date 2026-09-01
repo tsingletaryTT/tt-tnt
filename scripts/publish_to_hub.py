@@ -426,6 +426,15 @@ def cmd_publish_manifest(repo_id: str, dry_run: bool, yes: bool) -> int:
         shown = src
     print(f"manifest: {shown} -> {HUB_MANIFEST_NAME}")
 
+    # Write intent is checked BEFORE validation, and deliberately. Refusing a missing --yes
+    # is an argument error: it must not depend on tt-model being importable, on a network,
+    # or on anything else. CI has no tt-model, so the original order made this guard report
+    # an unrelated ImportError there -- a guard that says the wrong thing in the one
+    # environment that runs it automatically is not a guard.
+    if not dry_run and not yes:
+        print("\nrefusing to write without --yes.", file=sys.stderr)
+        return 2
+
     try:
         from tt_kernel.manifest import SUPPORTED_SCHEMAS, Manifest
     except ImportError:
@@ -456,9 +465,6 @@ def cmd_publish_manifest(repo_id: str, dry_run: bool, yes: bool) -> int:
     if dry_run:
         print("\n--dry-run: nothing uploaded.")
         return 0
-    if not yes:
-        print("\nrefusing to write without --yes.", file=sys.stderr)
-        return 2
 
     from huggingface_hub import HfApi
     api = HfApi()
