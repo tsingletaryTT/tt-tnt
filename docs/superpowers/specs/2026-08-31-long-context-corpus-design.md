@@ -47,6 +47,37 @@ The mean is dragged by a handful of Gutenberg books; the median is the honest nu
 The model was never asked to carry information 2000 tokens; it was asked to ignore seventeen
 documents' worth of noise, and it correctly learned to.
 
+> ### ⛔ CORRECTION (2026-08-31, after gate 3) — the paragraph above is REFUTED
+>
+> Measured directly instead of inferred: separators falling inside 200,000 random 2048-token
+> windows of `artifacts/tokens-v4` — the corpus the model actually trained on. The **median
+> window holds zero** document boundaries; **53.0%** lie wholly inside a single document; the
+> mean is 4.28, and only **1.23%** hold eighteen or more. The "eighteen unrelated documents"
+> figure was computed from the *median document*, but a training window samples token
+> *positions*, so the token-weighted distribution is the one that governs. The median document
+> is short; the median **token** lives in a long document. Both are true and only the second
+> one matters here.
+>
+> **Two errors produced it, and both are in the table above.** First, it was measured over
+> "the first 40M tokens" — 11.3% of the array. Separator density varies **501×** across
+> deciles of `tokens-v4` because `blend_corpus.py` emits sources sequentially, so no prefix of
+> this array is representative of it. (The table reproduces *exactly* from that prefix, which
+> is how the cause was confirmed rather than guessed.) Second, the table reports **document**
+> fractions while gate 3 thresholds **token** fractions — and the same prefix already showed
+> **83.02%** of tokens in documents ≥2048, the gate's own statistic, never computed, already
+> double its 40% threshold.
+>
+> **Consequence for gate 3: it passes (69.87% ≥ 40%) but is not a discriminator** — the
+> unchanged `tokens-v4` also passes at 55.87%. It supplies no evidence for the re-weighting.
+>
+> **Fact 1 above is untouched and still stands**: the model does stop using context past
+> position ~64. What is refuted is document fragmentation as its *mechanism*. That mechanism
+> is once again unisolated — the same state §1 describes the ctx2048 regression as being in.
+>
+> Full numbers, including what the re-weighting did measurably buy (mean separators per window
+> 4.28 → 2.07; single-document windows 53.0% → 63.5%):
+> [`docs/measurements/gate3-document-length.json`](../../measurements/gate3-document-length.json).
+
 **This retires an open mystery.** `train/configs/model/tt-tnt-1024.yaml` records that
 `max_sequence_length` was raised to 2048 on 2026-08-28 and reverted on 2026-08-29 because every
 2048-context checkpoint answered questions worse, and that **the mechanism was never isolated**

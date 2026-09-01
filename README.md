@@ -687,7 +687,7 @@ inheriting ours.
 Long-context corpus — FineWeb-Edu. A tenth source, `longform`
 ([`HuggingFaceFW/fineweb-edu`](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu),
 `sample-10BT` config, pinned revision `87f0914` — see `train/corpus.py`), registered to fix a
-real gap: the corpus's median document is 113 tokens and only 1.08% reach 2048, so a
+real gap: the corpus's median document is 112 tokens and only 1.08% reach 2048, so a
 2048-token training window holds roughly 18 unrelated documents and the model cannot learn to
 use distant context. It is licensed **ODC-By 1.0**, which covers the *database* FineWeb-Edu
 assembles — the underlying web pages it draws from carry their own, separate rights, and
@@ -715,7 +715,7 @@ Journal is Eric M. Jones's privately-authored editorial commentary, merely hoste
 directly against their own text. **The slice is now one document**: the raw Technical
 Air-to-Ground Voice Transcription, ~173,000 words of real air-to-ground technical dialogue
 with no separate editorial authorship claimed over it anywhere in its own text, kept for
-being an *extremely long single document* — the corpus's median document is 113 tokens, and
+being an *extremely long single document* — the corpus's median document is 112 tokens, and
 a transcript this long is the opposite failure mode. Every fetched document is now checked
 two ways, neither sufficient alone: `tests/test_fetch_mission.py` asserts every registered
 URL is on a `.gov` host, and `scripts/fetch_mission.py::assert_no_third_party_copyright_notice`

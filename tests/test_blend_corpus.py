@@ -241,11 +241,27 @@ def test_recorded_blend_covers_every_registered_source():
 
 def test_recorded_token_counts_are_the_tokenizers_own():
     """'approx' here would mean the provenance manifest is estimating what it claims to
-    record."""
+    record.
+
+    Scoped to the sources that actually emitted text. A registered source with no documents
+    yet (`pulp_sf`, awaiting the CCE renewal ingest) is recorded as excluded rather than
+    counted, and a source that emitted nothing cannot have estimated anything. The second
+    assertion is what keeps that from becoming a loophole: "excluded" is only acceptable
+    alongside a genuinely zero emission, so a real slice can never be marked excluded to
+    dodge the tokenizer requirement."""
     rec = _record()
     assert rec["token_count_method"] == "tokenizer"
-    assert all(s["emitted_tokens_method"] == "tokenizer"
-               for s in rec["sources"].values())
+    for name, s in rec["sources"].items():
+        if s["emitted_tokens"]:
+            assert s["emitted_tokens_method"] == "tokenizer", (
+                f"{name} emitted {s['emitted_tokens']:,} tokens counted by "
+                f"{s['emitted_tokens_method']!r}, not the tokenizer"
+            )
+        else:
+            assert s["emitted_tokens_method"].startswith("excluded"), (
+                f"{name} emitted nothing but is recorded as "
+                f"{s['emitted_tokens_method']!r}"
+            )
 
 
 def test_recorded_repetition_never_exceeds_the_declared_upsample():

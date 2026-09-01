@@ -224,3 +224,24 @@ def test_longform_exists_for_document_LENGTH_and_says_so():
     and this repo has a gate that fails when a rationale goes stale."""
     r = SOURCES["longform"].rationale.lower()
     assert "long" in r and ("2048" in r or "document" in r)
+
+
+#: Measured 2026-08-31 (scripts/measure_document_lengths.py over artifacts/corpus/*.txt):
+#: every one of these is a slice of whole books, 56k-97k tokens median, 100% of their tokens
+#: in documents >= 2048. They are the only sources that can carry gate 3.
+BOOK_SOURCES = ("folklore", "spine", "weird", "gutenberg_children", "grimoire")
+
+
+def test_the_book_slices_hold_the_share_gate_3_needs():
+    """Gate 3 needs >=40% of TOKENS in documents >=2048. Only whole-book sources supply those:
+    longform manages 43.7% of its own tokens, wikipedia_simple 22.3%, poetry and tinystories
+    0.0%. If the book slices are small, the gate cannot pass however the rest is arranged."""
+    books = sum(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)
+    assert books >= 0.40, f"book slices hold {books:.1%}, need >=40%"
+
+
+def test_tinystories_is_no_longer_the_largest_slice():
+    """It was 31% at 198 tokens median and 0% above threshold -- the single biggest obstacle to
+    the gate. This does not mandate a particular value, only that it stopped dominating."""
+    ts = SOURCES["tinystories"].target_share
+    assert ts <= max(SOURCES[n].target_share for n in BOOK_SOURCES if n in SOURCES)

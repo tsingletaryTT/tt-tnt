@@ -52,6 +52,7 @@ TEXT_COLUMN = {
     "roneneldan/TinyStories": "text",
     "wikimedia/wikipedia": "text",
     "biglam/gutenberg-poetry-corpus": "line",
+    "HuggingFaceFW/fineweb-edu": "text",
 }
 
 

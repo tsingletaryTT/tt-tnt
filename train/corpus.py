@@ -166,9 +166,16 @@ SOURCES: Dict[str, CorpusSource] = {
         # 0.310 -> 0.290 on 2026-08-18 to fund the dialogue slice. TinyStories is the
         # defensible donor: reducing it is the one corpus change this project has measured
         # as a real register gain (1.79x the seed floor, 3/3 seeds).
+        # 0.290 -> 0.10 on 2026-08-31 (Task 7, long-context-corpus): the corpus's median
+        # document is 112 tokens, and tinystories itself is 0% above 2048 tokens (198-token
+        # median) -- it was the single biggest obstacle to gate 3 (>=40% of tokens in
+        # documents >=2048). The freed 0.19 points fund `longform` (0.188) and `mission`
+        # (0.002); every other source's share is untouched, so this remains a
+        # single-variable change (tinystories down, two new long-document sources up) rather
+        # than a re-derivation of the whole blend.
         name="tinystories",
         slice="backbone",
-        target_share=0.290,
+        target_share=0.10,
         hf_repo="roneneldan/TinyStories",
         hf_revision="f54c09fd23315a6f9c86f9dc80f725de7d8f9c64",
         license_id="CDLA-Sharing-1.0",
@@ -410,7 +417,12 @@ SOURCES: Dict[str, CorpusSource] = {
     "longform": CorpusSource(
         name="longform",
         slice="spine",
-        target_share=0.0,   # set by the re-settle in Task 7
+        # Set by Task 7's re-settle (2026-08-31): funded by tinystories' 0.29 -> 0.10 cut.
+        # 200,000 rows fetched (artifacts/raw/longform/text.jsonl, ~154.1M words, approx
+        # 200.4M tokens at the fetch-time 1.3 tokens/word estimate) comfortably covers 0.188
+        # share (75.2M tokens) at upsample=1 -- see docs/corpus_blend.md for the
+        # tokenizer-measured figure that supersedes this approximation.
+        target_share=0.188,
         hf_repo="HuggingFaceFW/fineweb-edu",
         hf_revision="87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
         hf_config="sample-10BT",
@@ -424,7 +436,7 @@ SOURCES: Dict[str, CorpusSource] = {
         ),
         rows_per_document=1,
         rationale=(
-            "Bulk long documents. The corpus's median document is 113 tokens and only 1.08% "
+            "Bulk long documents. The corpus's median document is 112 tokens and only 1.08% "
             "reach 2048, so a 2048-token window holds ~18 unrelated documents and the model "
             "cannot learn to use distant context. This slice exists for LENGTH, not voice."
         ),
@@ -432,9 +444,16 @@ SOURCES: Dict[str, CorpusSource] = {
     "mission": CorpusSource(
         name="mission",
         slice="agentic",
-        target_share=0.0,   # set by the re-settle in Task 7
+        # Set by Task 7's re-settle (2026-08-31): a single ~172,973-word document (approx
+        # 224,865 tokens at 1.3 tokens/word) cannot fund a large share without repetition
+        # far beyond this project's usual working limit for tiny/degenerate-risk sources.
+        # 0.2% of the 400M budget is 800,000 tokens, needing ~3.56x repetition --
+        # upsample=4 covers it with margin (897,460 achievable) while staying inside the
+        # same 4x convention `flavour`/`weird` use, not the 8x hard cap.
+        target_share=0.002,
         hf_repo="", hf_revision="",
         fetch_kind="url",
+        upsample=4,
         # A single representative anchor for the "resolvable fetch spec" test below --
         # the real fetch spec for this source is the (label, url) list in
         # scripts/fetch_mission.py::MISSION_DOCUMENTS, since this is the one source in the

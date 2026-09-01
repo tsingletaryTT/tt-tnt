@@ -13,12 +13,12 @@ copied from it and `tests/test_corpus_blend_doc.py` holds them to it, so this pa
 drift from the artifact it describes.
 
 The artifact these figures describe is `artifacts/corpus/blend.txt`, sha256
-`7f2f6e5ff597bc19e17f59f311a0d0e0fdc4602b634211ab0a267cdaf2039cb1`.
+`074129b2073e5e8e3abe31ae83be6bb230c75b26345be7f845ebbf4239cdd29f`.
 A page that quotes numbers without naming the file they came from cannot be checked against anything; the digest is what makes "this blend" a claim rather than a phrase.
 
 ## The headline number
 
-399,486,992 tokens against a **400,000,000** budget — **513,008 short, −0.128%**.
+399,449,409 tokens against a **400,000,000** budget — **550,591 short, −0.138%**.
 
 That is the real count from the trained tokenizer, not an estimate. Each source's emitted
 text is counted as it is written, chunked into paragraphs exactly the way
@@ -28,7 +28,7 @@ are the same kind of number and can be divided by each other. (BPE merges do not
 would no longer be comparable.)
 
 The shortfall is the truncation of each source's final pass landing a word or two early,
-nine times over. It is not a share problem: every slice is within 0.083 points of its target.
+twelve times over. It is not a share problem: every slice is within 0.080 points of its target.
 
 ## Per source
 
@@ -36,14 +36,17 @@ nine times over. It is not a share problem: every slice is within 0.083 points o
 |---|---:|---:|---:|---:|---:|---:|
 | `dialogue` | 7,995,795 | 2.002% | 2% | 2.8358x | 3x | 1.422037 |
 | `flavour` | 1,979,789 | 0.496% | 0.5% | 3.4759x | 4x | 1.412325 |
-| `folklore` | 32,078,464 | 8.029% | 8% | 1.5041x | 2x | 1.357543 |
-| `gutenberg_children` | 59,984,104 | 15.014% | 15% | 1.7516x | 2x | 1.322577 |
+| `folklore` | 32,078,464 | 8.031% | 8% | 1.5041x | 2x | 1.357543 |
+| `gutenberg_children` | 59,984,104 | 15.017% | 15% | 1.7516x | 2x | 1.322577 |
+| `longform` | 75,193,760 | 18.824% | 18.8% | 0.3444x | 1x | 1.414766 |
+| `mission` | 801,966 | 0.201% | 0.2% | 2.873x | 4x | 1.609803 |
 | `poetry` | 3,950,536 | 0.989% | 1% | 0.1305x | 1x | 1.392825 |
-| `procedural` | 47,994,272 | 12.013% | 12% | 3.9109x | 4x | 1.340927 |
-| `spine` | 53,915,065 | 13.495% | 13.5% | 2.061x | 3x | 1.33756 |
-| `tinystories` | 116,013,358 | 29.041% | 29% | 0.259x | 1x | 1.198246 |
-| `weird` | 15,977,960 | 3.999% | 4% | 2.2724x | 3x | 1.31158 |
-| `wikipedia_simple` | 59,597,649 | 14.918% | 15% | 0.8763x | 1x | 1.561208 |
+| `procedural` | 47,994,272 | 12.015% | 12% | 3.9109x | 4x | 1.340927 |
+| `pulp_sf` | 0 | 0.000% | 0% | 0.0x | 1x | 0.0 |
+| `spine` | 53,915,065 | 13.497% | 13.5% | 2.061x | 3x | 1.33756 |
+| `tinystories` | 39,980,049 | 10.009% | 10% | 0.0893x | 1x | 1.198246 |
+| `weird` | 15,977,960 | 4.000% | 4% | 2.2724x | 3x | 1.31158 |
+| `wikipedia_simple` | 59,597,649 | 14.920% | 15% | 0.8763x | 1x | 1.561208 |
 
 `blend.txt` SHA-256 `24f3d112e04696630ff6553dbd9440ce77b54a54204b17b589ee2ec4cfc9f4d1`.
 
@@ -55,7 +58,7 @@ tokens displace ordinary text rather than adding to the total, and each source's
 ## Document boundaries
 
 Every document in the blend is terminated by a line holding exactly `</s>` — the trained
-tokenizer's eos token, id 2. There are **798,771** of them, one per ~500 tokens, 0.200% of
+tokenizer's eos token, id 2. There are **512,977** of them, one per ~779 tokens, 0.128% of
 the corpus. `scripts/prepare_corpus.py` writes them, because it is the only stage that can
 see a document boundary at all: `scripts/fetch_corpus.py` writes one JSON object per
 document, `prepare_corpus.py` consumes them one at a time, and everything downstream sees
@@ -111,8 +114,8 @@ retain; the grouping is an approximation and is documented as one.
 
 `_emit` truncates each source's final pass at word level to hit its token target, which lands
 mid-document. That fragment is now closed with a separator (never doubled, if the truncation
-happened to land on one). Nine extra separators against ~400M tokens costs nothing, whereas
-nine *unmarked* transitions — source A's half-sentence running straight into source B's first
+happened to land on one). Twelve extra separators against ~400M tokens costs nothing, whereas
+twelve *unmarked* transitions — source A's half-sentence running straight into source B's first
 document — would be the same defect this whole change removes, just rarer.
 
 ### Where the separators actually landed
@@ -127,13 +130,15 @@ exactly, on a line boundary, at the exact declared word count).
 | `flavour` | 26 | 7 | 3.71x | 3.4759x |
 | `folklore` | 308 | 199 | 1.55x | 1.5041x |
 | `gutenberg_children` | 1,016 | 583 | 1.74x | 1.7516x |
+| `longform` | 67,562 | 199,989 | 0.34x | 0.3444x |
+| `mission` | 3 | 1 | 3.00x | 2.873x |
 | `poetry` | 6,002 | 48,205 | 0.12x | 0.1305x |
 | `procedural` | 702 | 180 | 3.90x | 3.9109x |
-| `spine` | 494 | 241 | 2.05x | 2.0610x |
-| `tinystories` | 546,554 | 2,119,489 | 0.26x | 0.259x |
+| `spine` | 494 | 241 | 2.05x | 2.061x |
+| `tinystories` | 188,515 | 2,119,489 | 0.09x | 0.0893x |
 | `weird` | 117 | 55 | 2.13x | 2.2724x |
 | `wikipedia_simple` | 205,650 | 241,787 | 0.85x | 0.8763x |
-| **total** | **803,451** | **2,425,757** | | |
+| **total** | **512,977** | **2,625,747** | | |
 
 The last two columns are close but not equal, and should not be expected to be: repetition is
 measured in **words**, and documents are not uniform in length. A source used fractionally
@@ -142,14 +147,14 @@ length is independent of position in the file. For `wikipedia_simple` (articles 
 lengths varying by orders of magnitude) that assumption is visibly wrong, and for `weird` —
 55 books total — the granularity alone explains it.
 
-The count survives tokenization exactly. `artifacts/tokens-v3/` holds 734,978 occurrences
-of id 2 in `train_ids.npy` and 63,793 in `val_ids.npy`: **798,771** together, equal to the
+The count survives tokenization exactly. `artifacts/tokens-v5/` holds 355,733 occurrences
+of id 2 in `train_ids.npy` and 157,244 in `val_ids.npy`: **512,977** together, equal to the
 number of `</s>` lines in `blend.txt` to the token. None were added, none were lost, and none
 were split into ordinary subwords.
 
 ## A second count: tokenizing the finished file
 
-The headline number above (399,486,992) is **not** the only token count this project has for
+The headline number above (399,449,409) is **not** the only token count this project has for
 this corpus, and the other one was missing from this page until now — which is exactly how a
 reviewer came to flag it as unverifiable. Recorded here so it stops being a number that only
 exists in a training run's own header.
@@ -157,20 +162,20 @@ exists in a training run's own header.
 `train/tokenization.py` runs the retrained tokenizer once over the finished, concatenated
 `artifacts/corpus/blend.txt` and splits the result into train/val arrays. Over the corpus
 described on this page — the one that includes `dialogue` — written to
-`artifacts/tokens-v4/` on 2026-08-18:
+`artifacts/tokens-v5/` on 2026-08-31:
 
 | | Tokens |
 |---|---:|
-| Total | **391,823,393** |
-| Train split | **352,641,058** |
-| Val split | **39,182,335** |
-| of which id 2 (`</s>`) | **803,451** |
+| Total | **390,268,501** |
+| Train split | **351,241,651** |
+| Val split | **39,026,850** |
+| of which id 2 (`</s>`) | **512,977** |
 | Vocabulary | 32,000 |
 
 The `</s>` count is a cross-check, not a restatement. Walking `blend.txt` and counting
-`DOCUMENT_SEPARATOR` lines gives **803,451**, and counting id 2 in the two token arrays
-gives **803,451**. The separator survives tokenization exactly, and the agreement is what
-establishes that `tokens-v4` is the tokenization of *this* blend rather than a neighbouring
+`DOCUMENT_SEPARATOR` lines gives **512,977**, and counting id 2 in the two token arrays
+gives **512,977**. The separator survives tokenization exactly, and the agreement is what
+establishes that `tokens-v5` is the tokenization of *this* blend rather than a neighbouring
 one — a question that turned out to matter: two training runs were once compared against a
 baseline trained on a different token set, and nothing on disk said so.
 
