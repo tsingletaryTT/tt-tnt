@@ -1,10 +1,36 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC -->
+<!--
+  SOURCE OF TRUTH for the Hugging Face model card at episod/tt-tnt-1024.
+
+  Kept in this repo because tt-model's `tag_repo` replaces the card's front matter
+  wholesale on push, destroying `license`, `pipeline_tag`, `library_name` and
+  `datasets`. The prose body survives; the metadata does not. After any tt-model
+  operation, re-apply the front matter below with
+  `publish_to_hub.py --repo-id episod/tt-tnt-1024 --restore-card --yes` and verify.
+
+  The `datasets` list is the TEN sources these weights actually trained on
+  (tokens-v4, corpus_tokens 391,823,393, verified from the checkpoint header) -- NOT
+  train/corpus.py's current registry, which has since gained three sources this model
+  has never seen. See docs/current_model.json's `corpus` field.
+-->
 ---
 license: apache-2.0
 library_name: transformers
+pipeline_tag: text-generation
+datasets:
+  - biglam/gutenberg-poetry-corpus
+  - databricks/databricks-dolly-15k
+  - roneneldan/TinyStories
+  - sedthh/gutenberg_english
+  - wikimedia/wikipedia
 tags:
   - tenstorrent
   - blackhole
   - llama
+  - tt-metal
+  - ttml
+  - trained-from-scratch
 ---
 
 # tt-tnt-1024
