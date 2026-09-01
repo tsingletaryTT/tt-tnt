@@ -11,7 +11,7 @@ tags:
 
 A 123M-parameter Llama-3-style model that is *of* Tenstorrent hardware, not merely
 trained on it. Trained from random initialization on Blackhole with `ttml`
-(tt-train) over a nine-source corpus with a small instruction slice, served
+(tt-train) over a ten-source corpus with a small instruction slice, served
 through the Tenstorrent vLLM plugin, and packaged with
 [tt-model-manager](https://github.com/tenstorrent/tt-model-manager).
 

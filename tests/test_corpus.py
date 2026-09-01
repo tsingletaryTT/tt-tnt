@@ -269,3 +269,25 @@ def test_the_readme_share_alike_count_matches_the_registry():
         f"README does not state the registry's actual share-alike count "
         f"({len(share_alike)}: {', '.join(sorted(share_alike))}); expected {expected!r}"
     )
+
+
+def test_each_model_card_names_the_corpus_its_weights_were_actually_trained_on():
+    """Verified from the checkpoint headers, not from memory.
+
+    `episod/tt-tnt` (384) trained on tokens-v3 -- corpus_tokens 391,921,555, the NINE-source
+    blend, before the `dialogue` slice existed. `episod/tt-tnt-1024` trained on tokens-v4 --
+    391,823,393, TEN sources. Both cards said "nine-source"; only one was right, and a bulk
+    rename would have made the correct one wrong. A corpus generation is not implied by a
+    model size or a training recipe: this repo has already shipped a checkpoint trained on
+    the wrong one.
+    """
+    from pathlib import Path
+
+    docs = Path(__file__).resolve().parents[1] / "docs"
+    card_384 = (docs / "model-card.md").read_text(encoding="utf-8")
+    card_1024 = (docs / "model-card-1024.md").read_text(encoding="utf-8")
+    assert "nine-source" in card_384, "the 384 card describes tokens-v3, which IS nine-source"
+    assert "nine-source" not in card_1024, (
+        "the 1024 card describes tokens-v4, which is TEN-source (the dialogue slice)"
+    )
+    assert "ten-source" in card_1024
