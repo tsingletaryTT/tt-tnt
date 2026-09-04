@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
+"""HTTP client for the Gradio demo's optional "live on Blackhole" mode, mirroring
+scripts/story_tools.py's request pattern (stdlib urllib, no new dependency). This
+module never opens a Tenstorrent device itself -- it only talks to a vLLM server the
+user already launched separately via `tt-model serve`
+(docs/serving-with-tt-kernel.md). `probe()` is what lets app.py show "vLLM not
+reachable" instead of silently falling back to CPU and looking like a live result.
+"""
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+DEFAULT_BASE = "http://localhost:8000"
+_PROBE_TIMEOUT = 2.0
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    reachable: bool
+    served_model_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+def _get(url: str, timeout: float) -> Dict[str, Any]:
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return json.load(resp)
+
+
+def _post(url: str, payload: dict, timeout: float) -> Dict[str, Any]:
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+
+def parse_models_response(data: Dict[str, Any]) -> Optional[str]:
+    """Pull the first served model id out of a `/v1/models` response body, or None if
+    the shape doesn't match what vLLM returns."""
+    entries = data.get("data")
+    if not entries:
+        return None
+    first = entries[0]
+    if not isinstance(first, dict):
+        return None
+    model_id = first.get("id")
+    return model_id if isinstance(model_id, str) else None
+
+
+def probe(base: str = DEFAULT_BASE, *, timeout: float = _PROBE_TIMEOUT) -> ProbeResult:
+    try:
+        data = _get(f"{base}/v1/models", timeout)
+    except (urllib.error.URLError, OSError) as exc:
+        return ProbeResult(reachable=False, error=str(exc))
+    return ProbeResult(reachable=True, served_model_id=parse_models_response(data))
+
+
+def complete(prompt: str, *, base: str = DEFAULT_BASE, max_tokens: int = 60,
+             temperature: float = 0.8, top_p: float = 0.95, timeout: float = 60.0) -> str:
+    payload = {
+        "model": "default", "prompt": prompt, "max_tokens": max_tokens,
+        "temperature": temperature, "top_p": top_p,
+    }
+    data = _post(f"{base}/v1/completions", payload, timeout)
+    return data["choices"][0]["text"]
+
+
+def chat(messages: List[Dict[str, str]], *, tools: Optional[List[Dict[str, Any]]] = None,
+         base: str = DEFAULT_BASE, max_tokens: int = 80, temperature: float = 0.8,
+         timeout: float = 60.0) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "model": "default", "messages": messages, "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if tools is not None:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+    return _post(f"{base}/v1/chat/completions", payload, timeout)
