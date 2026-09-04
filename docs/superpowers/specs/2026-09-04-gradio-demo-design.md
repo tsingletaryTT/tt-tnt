@@ -159,6 +159,41 @@ already has a `config.json`.
 - If a listed file is missing (e.g. a leaner clone), that card is simply omitted, not
   an error.
 
+## Portability: HuggingFace Spaces
+
+Unlike `tt-animatediff`'s separate `spaces/app.py` (needed there because Blackhole's
+video pipeline has a genuinely different CPU code path), tt-tnt's CPU-direct path *is*
+the reference-quality path already (`chat.py`'s own docstring: the vLLM device path is
+currently the worse of the two). So this ships as **one `app.py`**, not a fork — it runs
+on a Space by leaning on error-handling this design already requires:
+
+- `demo_checkpoints.list_available()` resolves a label against a local
+  `artifacts/hf-*` directory first and, if absent, against a **published Hub repo id**
+  (`episod/tt-tnt-1024` for the production label) via the same
+  `AutoModelForCausalLM.from_pretrained` call `demo_hf_backend` already makes —
+  `from_pretrained` accepts a repo id or a local path interchangeably, so no branch is
+  needed in the loading code itself, only in what path/id gets offered.
+- `demo_vllm_backend.probe()` naturally reports unreachable on a Space (Blackhole isn't
+  reachable from HF infrastructure), which already disables the vLLM half of Tabs 1 and
+  2 per the existing error-handling rules — no Spaces-specific code path.
+- Tab 2 (Tool-Calling) has nothing to load on a Space: those checkpoints were never
+  promoted/published (per this project's "PARTIAL results aren't shipped" convention).
+  It degrades to the same "not available, checkpoint missing" state as a lean local
+  clone — already specified, not a new case.
+- Tab 3's `editor-blend` preset can't run on a Space for the same reason; it degrades to
+  showing the actual verbatim collapse transcript already quoted in CLAUDE.md as static
+  text, labeled "captured locally, not reproducible here" — the same move
+  `tt-animatediff`'s Space makes with its pre-rendered gallery for what real hardware
+  produces versus what the Space itself can show.
+- Tab 4 (Research Findings) is already static-file reads; the Space just needs
+  `docs/measurements/*.json` copied into the Space repo alongside `app.py`.
+- Deploy: create a Gradio-SDK Space, copy `app.py` + its support modules
+  (`demo_checkpoints.py`, `demo_hf_backend.py`, `demo_vllm_backend.py`) + the
+  `docs/measurements/*.json` files referenced by Tab 4 into the Space repo root. No
+  extra runtime dependencies beyond what CPU-direct generation already needs
+  (`gradio`, `torch`, `transformers`, `safetensors`, `huggingface_hub`) — no `ttnn`, no
+  device.
+
 ## `.disco/app.yaml`
 
 ```yaml
