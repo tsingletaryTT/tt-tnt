@@ -45,3 +45,26 @@ def test_complete_returns_the_first_choice_text():
     fake = _fake_response({"choices": [{"text": "a story continues"}]})
     with patch("urllib.request.urlopen", return_value=fake):
         assert complete("Once upon a time") == "a story continues"
+
+
+def test_probe_returns_unreachable_when_response_has_invalid_json():
+    fake = MagicMock()
+    fake.__enter__.return_value = fake
+    fake.read.return_value = b"not json"
+    with patch("urllib.request.urlopen", return_value=fake):
+        result = probe()
+    assert result.reachable is False
+    assert result.served_model_id is None
+    assert "JSONDecodeError" in result.error or "Expecting value" in result.error
+
+
+def test_complete_raises_runtime_error_on_http_error():
+    url = "http://localhost:8000/v1/completions"
+    exc = urllib.error.HTTPError(url, 400, "Bad Request", {}, None)
+    with patch("urllib.request.urlopen", side_effect=exc):
+        try:
+            complete("test")
+            assert False, "Should have raised RuntimeError"
+        except RuntimeError as e:
+            assert "HTTP 400" in str(e)
+            assert url in str(e)

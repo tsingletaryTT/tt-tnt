@@ -35,8 +35,12 @@ def _post(url: str, payload: dict, timeout: float) -> Dict[str, Any]:
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.load(resp)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        raise RuntimeError(f"HTTP {exc.code} from {url}: {body[:500]}") from exc
 
 
 def parse_models_response(data: Dict[str, Any]) -> Optional[str]:
@@ -55,7 +59,7 @@ def parse_models_response(data: Dict[str, Any]) -> Optional[str]:
 def probe(base: str = DEFAULT_BASE, *, timeout: float = _PROBE_TIMEOUT) -> ProbeResult:
     try:
         data = _get(f"{base}/v1/models", timeout)
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
         return ProbeResult(reachable=False, error=str(exc))
     return ProbeResult(reachable=True, served_model_id=parse_models_response(data))
 
