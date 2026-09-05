@@ -19,6 +19,17 @@ dev = ["pytest>=7.0"]
 # Needs the tagger data too:
 #   python -m nltk.downloader averaged_perceptron_tagger_eng punkt_tab
 content = ["nltk>=3.9"]
+# app.py, the Gradio demo. Optional because nothing else in the tree needs a UI
+# toolkit and a bare checkout must still run pytest with no extras installed.
+# The starlette pin is load-bearing, not decoration: gradio 4.44's routes.py calls
+# the OLD-style `Jinja2Templates.TemplateResponse(name, context)` (no `request` as
+# first arg). Starlette kept a deprecated back-compat shim for that call shape all
+# through its 0.x line (checked directly through 0.52.1, the last 0.x release) and
+# deleted it at the 1.0.0 major bump, which fastapi's own `starlette>=0.46.0` (no
+# upper bound) happily resolves to on a fresh/shared install -- producing a runtime
+# `TypeError: unhashable type: 'dict'` on every page load with no import-time error
+# to catch it earlier. `<1.0` keeps pip on a 0.x release that still has the shim.
+ui = ["gradio>=4.44,<5", "starlette<1.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
