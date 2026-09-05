@@ -14,6 +14,7 @@ docs/superpowers/specs/2026-09-04-gradio-demo-design.md's "Portability" section)
 from __future__ import annotations
 
 import json
+from typing import List, Optional
 
 import gradio as gr
 
@@ -23,6 +24,16 @@ import demo_hf_backend
 import demo_vllm_backend
 
 PORT = 7862
+
+
+def _default_label(available: List[str]) -> Optional[str]:
+    """The checkpoint label a dropdown should default to: the production checkpoint
+    if it's available locally, else the first available label, else None. gradio's
+    `Dropdown` does NOT default to the first choice when `value` is omitted, so every
+    checkpoint dropdown in this app needs to compute one explicitly."""
+    if "tt-tnt-1024 (production)" in available:
+        return "tt-tnt-1024 (production)"
+    return available[0] if available else None
 
 
 def _cpu_generate(label: str, prompt: str, max_new_tokens: int, temperature: float) -> str:
@@ -40,7 +51,10 @@ def _cpu_generate(label: str, prompt: str, max_new_tokens: int, temperature: flo
 def _vllm_status_message() -> str:
     result = demo_vllm_backend.probe()
     if not result.reachable:
-        return "vLLM server not reachable at localhost:8000 -- CPU direct only."
+        return (
+            f"vLLM server not reachable at {demo_vllm_backend.DEFAULT_BASE} -- "
+            "CPU direct only."
+        )
     return f"vLLM is serving: {result.served_model_id or 'unknown model'}"
 
 
@@ -55,10 +69,9 @@ def build_chat_tab() -> None:
         refresh_btn.click(lambda: _vllm_status_message(), outputs=vllm_status)
         with gr.Row():
             available = demo_checkpoints.list_available()
-            default = "tt-tnt-1024 (production)" if "tt-tnt-1024 (production)" in available else (
-                available[0] if available else None
+            checkpoint = gr.Dropdown(
+                choices=available, value=_default_label(available), label="Checkpoint",
             )
-            checkpoint = gr.Dropdown(choices=available, value=default, label="Checkpoint")
             backend = gr.Radio(["CPU direct", "vLLM server"], value="CPU direct", label="Backend")
         prompt = gr.Textbox(label="Prompt", value="Once upon a time, there was a little")
         with gr.Row():
@@ -74,7 +87,8 @@ def build_chat_tab() -> None:
                     return "vLLM server not reachable -- switch to CPU direct."
                 try:
                     return demo_vllm_backend.complete(
-                        prompt_text, max_tokens=int(max_tok), temperature=float(temp),
+                        prompt_text, model=result.served_model_id,
+                        max_tokens=int(max_tok), temperature=float(temp),
                     )
                 except Exception as exc:  # noqa: BLE001
                     return f"ERROR from vLLM server: {exc}"
@@ -124,6 +138,7 @@ def build_tool_calling_tab() -> None:
                     resp = demo_vllm_backend.chat(
                         [{"role": "user", "content": q}],
                         tools=demo_vllm_backend.openai_tool_schemas(),
+                        model=result.served_model_id,
                     )
                     tool_calls = resp["choices"][0]["message"].get("tool_calls")
                     parsed = json.dumps(tool_calls, indent=2) if tool_calls else "no tool call returned"
@@ -148,14 +163,30 @@ _LIMITATION_PRESETS = [
         ),
     },
     {
-        "title": "Register / genre collapse",
+        "title": "TinyStories lexical habit / coherence slips",
         "checkpoint": "tt-tnt-1024 (production)",
         "prompt": "Once upon a time, there was a little",
         "temperature": 1.2,
+        # NOTE: this preset used to claim the model "falls back into the same
+        # fairy-tale register" at high temperature -- but the prompt itself is a
+        # fairy-tale opening, so getting fairy-tale output back proves nothing; a
+        # register-collapse claim needs a control (a non-fairy-tale prompt at the
+        # same temperature) to mean anything, and this preset has none. Verified
+        # directly against this checkpoint instead (5 samples at T=1.2, same prompt):
+        # TinyStories-specific names (Lily x3/5, Sue x1/5) and the stock phrase
+        # "One day," appeared in every single completion regardless of the story
+        # that had actually started, and one completion introduces a rescuing
+        # "truck" that becomes a "dog" one sentence later with no reintroduction --
+        # a character/object drifting or appearing without having been set up. That
+        # is a genuine, showable lexical-habit and coherence failure and does not
+        # need a control condition to demonstrate.
         "why": (
-            "TinyStories dominates the training corpus. Even sampled at high "
-            "temperature for variety, the model tends to fall back into the same "
-            "fairy-tale register rather than genuinely diversifying."
+            "Even when the story's own setup doesn't call for it, the model keeps "
+            "reaching for the same handful of TinyStories names (Lily, Sue) and "
+            "stock phrases ('One day,'), and can lose track of a character or "
+            "object it just introduced -- e.g. a rescuing truck that becomes a dog "
+            "one sentence later with no explanation. A lexical habit and a "
+            "coherence slip, not a deliberate creative choice."
         ),
     },
     {
@@ -195,9 +226,12 @@ def build_limitations_tab() -> None:
             "cherry-picked bad luck. CPU direct only; this tab is about the model, "
             "not the serving stack."
         )
-        available = set(demo_checkpoints.list_available())
-        prompt = gr.Textbox(label="Prompt")
-        checkpoint = gr.Dropdown(choices=demo_checkpoints.list_available(), label="Checkpoint")
+        available_list = demo_checkpoints.list_available()
+        available = set(available_list)
+        prompt = gr.Textbox(label="Prompt", value=_LIMITATION_PRESETS[0]["prompt"])
+        checkpoint = gr.Dropdown(
+            choices=available_list, value=_default_label(available_list), label="Checkpoint",
+        )
         temperature = gr.Slider(0.0, 1.5, value=0.8, step=0.05, label="Temperature")
         why = gr.Markdown()
         for preset in _LIMITATION_PRESETS:

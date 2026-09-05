@@ -4,7 +4,7 @@ import json
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from demo_vllm_backend import complete, openai_tool_schemas, parse_models_response, probe
+from demo_vllm_backend import chat, complete, openai_tool_schemas, parse_models_response, probe
 
 
 def _fake_response(payload: dict):
@@ -45,6 +45,74 @@ def test_complete_returns_the_first_choice_text():
     fake = _fake_response({"choices": [{"text": "a story continues"}]})
     with patch("urllib.request.urlopen", return_value=fake):
         assert complete("Once upon a time") == "a story continues"
+
+
+def _captured_request_payload(fake_response, call, **kwargs):
+    """Call `call(**kwargs)` against a mocked urlopen, capturing the actual
+    urllib.request.Request object that was sent, and return its decoded JSON body."""
+    captured = {}
+
+    def _fake_urlopen(request, timeout=None):
+        captured["request"] = request
+        return fake_response
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+        call(**kwargs)
+    return json.loads(captured["request"].data.decode())
+
+
+def test_complete_sends_the_real_model_id_in_the_request_payload():
+    fake = _fake_response({"choices": [{"text": "a story continues"}]})
+    payload = _captured_request_payload(
+        fake, complete, prompt="Once upon a time", model="episod/tt-tnt-1024",
+    )
+    assert payload["model"] == "episod/tt-tnt-1024"
+
+
+def test_complete_sends_an_empty_model_string_when_none_given():
+    fake = _fake_response({"choices": [{"text": "a story continues"}]})
+    payload = _captured_request_payload(fake, complete, prompt="Once upon a time")
+    assert payload["model"] == ""
+
+
+def test_complete_never_sends_the_literal_string_default():
+    fake = _fake_response({"choices": [{"text": "a story continues"}]})
+    payload = _captured_request_payload(
+        fake, complete, prompt="Once upon a time", model="episod/tt-tnt-1024",
+    )
+    assert payload["model"] != "default"
+
+
+def test_chat_sends_the_real_model_id_in_the_request_payload():
+    fake = _fake_response({"choices": [{"message": {"content": "hi"}}]})
+    payload = _captured_request_payload(
+        fake, chat, messages=[{"role": "user", "content": "hi"}], model="episod/tt-tnt-1024",
+    )
+    assert payload["model"] == "episod/tt-tnt-1024"
+
+
+def test_chat_sends_an_empty_model_string_when_none_given():
+    fake = _fake_response({"choices": [{"message": {"content": "hi"}}]})
+    payload = _captured_request_payload(
+        fake, chat, messages=[{"role": "user", "content": "hi"}],
+    )
+    assert payload["model"] == ""
+
+
+def test_chat_payload_includes_tools_only_when_tools_are_passed():
+    fake = _fake_response({"choices": [{"message": {"content": "hi"}}]})
+    tools = [{"type": "function", "function": {"name": "witty_response"}}]
+    with_tools = _captured_request_payload(
+        fake, chat, messages=[{"role": "user", "content": "hi"}], tools=tools,
+    )
+    assert with_tools["tools"] == tools
+    assert with_tools["tool_choice"] == "auto"
+
+    without_tools = _captured_request_payload(
+        fake, chat, messages=[{"role": "user", "content": "hi"}],
+    )
+    assert "tools" not in without_tools
+    assert "tool_choice" not in without_tools
 
 
 def test_probe_returns_unreachable_when_response_has_invalid_json():

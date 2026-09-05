@@ -64,10 +64,11 @@ def probe(base: str = DEFAULT_BASE, *, timeout: float = _PROBE_TIMEOUT) -> Probe
     return ProbeResult(reachable=True, served_model_id=parse_models_response(data))
 
 
-def complete(prompt: str, *, base: str = DEFAULT_BASE, max_tokens: int = 60,
-             temperature: float = 0.8, top_p: float = 0.95, timeout: float = 60.0) -> str:
+def complete(prompt: str, *, model: Optional[str] = None, base: str = DEFAULT_BASE,
+             max_tokens: int = 60, temperature: float = 0.8, top_p: float = 0.95,
+             timeout: float = 60.0) -> str:
     payload = {
-        "model": "default", "prompt": prompt, "max_tokens": max_tokens,
+        "model": model or "", "prompt": prompt, "max_tokens": max_tokens,
         "temperature": temperature, "top_p": top_p,
     }
     data = _post(f"{base}/v1/completions", payload, timeout)
@@ -75,10 +76,10 @@ def complete(prompt: str, *, base: str = DEFAULT_BASE, max_tokens: int = 60,
 
 
 def chat(messages: List[Dict[str, str]], *, tools: Optional[List[Dict[str, Any]]] = None,
-         base: str = DEFAULT_BASE, max_tokens: int = 80, temperature: float = 0.8,
-         timeout: float = 60.0) -> Dict[str, Any]:
+         model: Optional[str] = None, base: str = DEFAULT_BASE, max_tokens: int = 80,
+         temperature: float = 0.8, timeout: float = 60.0) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
-        "model": "default", "messages": messages, "max_tokens": max_tokens,
+        "model": model or "", "messages": messages, "max_tokens": max_tokens,
         "temperature": temperature,
     }
     if tools is not None:

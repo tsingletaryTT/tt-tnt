@@ -390,14 +390,16 @@ historical research findings.
 ### Local
 
 ```bash
-pip install -e ".[ui]"
-python scripts/prepare_demo_checkpoints.py  # one-time, converts 2 missing checkpoints
-python app.py
+python -m venv .venv
+.venv/bin/pip install -e ".[ui]"
+.venv/bin/python scripts/prepare_demo_checkpoints.py  # one-time, converts 2 missing checkpoints
+.venv/bin/python app.py
 # open http://localhost:7862
 ```
 
-Discoverable via [tt-discolike](https://github.com/) through `.disco/app.yaml` — no
-separate launch step needed if you're already using that catalog.
+`.disco/app.yaml` launches via `.venv/bin/python app.py`, so the venv above is what
+makes the demo discoverable via [tt-discolike](https://github.com/) with no separate
+launch step, once you're using that catalog.
 
 ### HuggingFace Spaces
 
@@ -408,8 +410,11 @@ those parts degrade gracefully rather than erroring. To deploy:
 
 1. Create a new Space (SDK: Gradio).
 2. Copy `app.py`, `demo_checkpoints.py`, `demo_hf_backend.py`,
-   `demo_vllm_backend.py`, `demo_findings.py`, `requirements.txt`, and
-   `docs/measurements/` into the Space repo root.
+   `demo_vllm_backend.py`, `demo_findings.py`, `requirements.txt`, and the
+   `docs/measurements/` directory into the Space repo root, **preserving its
+   `docs/measurements/` path** — `demo_findings.py` reads from that exact relative
+   path, so copying only the *contents* of `docs/measurements/` into the Space root
+   leaves the Research Findings tab empty.
 3. No further configuration — checkpoint resolution falls back to the Hub repo id
    automatically when no local `artifacts/hf-*` directory exists.
 
