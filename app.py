@@ -13,6 +13,8 @@ docs/superpowers/specs/2026-09-04-gradio-demo-design.md's "Portability" section)
 """
 from __future__ import annotations
 
+import json
+
 import gradio as gr
 
 import demo_checkpoints
@@ -83,10 +85,59 @@ def build_chat_tab() -> None:
         )
 
 
+def build_tool_calling_tab() -> None:
+    tool_calling_labels = [
+        l for l in demo_checkpoints.list_available() if l.startswith("tool-calling-")
+    ]
+    with gr.Tab("Tool-Calling Roles"):
+        gr.Markdown(
+            "Trained to answer through one of four tools: `factual_response`, "
+            "`witty_response`, `absurdist_response`, `misunderstood_question`. Shows "
+            "the raw generated text (literal `<tool_call>` tag included) and, when a "
+            "vLLM server is live and actually serving a tool-calling checkpoint, the "
+            "real *parsed* structured tool call vLLM's hermes parser extracts from it."
+        )
+        if not tool_calling_labels:
+            gr.Markdown(
+                "No tool-calling checkpoint available locally. Run "
+                "`python scripts/prepare_demo_checkpoints.py` first."
+            )
+            return
+        checkpoint = gr.Dropdown(
+            choices=tool_calling_labels, value=tool_calling_labels[0], label="Checkpoint",
+        )
+        question = gr.Textbox(label="Question", value="What is the capital of Portugal?")
+        ask_btn = gr.Button("Ask")
+        raw_output = gr.Textbox(label="Raw generation (CPU direct)", lines=4)
+        parsed_output = gr.Textbox(label="Parsed tool call (vLLM, if live)", lines=4)
+
+        def _ask(label, q):
+            raw = _cpu_generate(label, f"Q: {q}\nAnswer:", 80, 0.8)
+            result = demo_vllm_backend.probe()
+            if not result.reachable:
+                parsed = "vLLM not reachable -- start `tt-model serve` to see the parsed tool call."
+            elif result.served_model_id is None or "tool-calling" not in result.served_model_id:
+                parsed = f"vLLM is serving {result.served_model_id!r}, not a tool-calling checkpoint."
+            else:
+                try:
+                    resp = demo_vllm_backend.chat(
+                        [{"role": "user", "content": q}],
+                        tools=demo_vllm_backend.openai_tool_schemas(),
+                    )
+                    tool_calls = resp["choices"][0]["message"].get("tool_calls")
+                    parsed = json.dumps(tool_calls, indent=2) if tool_calls else "no tool call returned"
+                except Exception as exc:  # noqa: BLE001
+                    parsed = f"ERROR from vLLM server: {exc}"
+            return raw, parsed
+
+        ask_btn.click(_ask, inputs=[checkpoint, question], outputs=[raw_output, parsed_output])
+
+
 def build_app() -> gr.Blocks:
     with gr.Blocks(title="tt-tnt demo") as demo:
         gr.Markdown("# tt-tnt demo\nWhat this model is good, weird, and bad at.")
         build_chat_tab()
+        build_tool_calling_tab()
     return demo
 
 

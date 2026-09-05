@@ -4,7 +4,7 @@ import json
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from demo_vllm_backend import complete, parse_models_response, probe
+from demo_vllm_backend import complete, openai_tool_schemas, parse_models_response, probe
 
 
 def _fake_response(payload: dict):
@@ -68,3 +68,21 @@ def test_complete_raises_runtime_error_on_http_error():
         except RuntimeError as e:
             assert "HTTP 400" in str(e)
             assert url in str(e)
+
+
+def test_openai_tool_schemas_derives_all_four_tools_from_train_tool_calling():
+    schemas = openai_tool_schemas()
+    names = {s["function"]["name"] for s in schemas}
+    assert names == {
+        "factual_response", "witty_response", "absurdist_response", "misunderstood_question",
+    }
+
+
+def test_openai_tool_schemas_includes_enum_constraints():
+    schemas = openai_tool_schemas()
+    witty = next(s for s in schemas if s["function"]["name"] == "witty_response")
+    assert witty["function"]["parameters"]["properties"]["technique"]["enum"] == [
+        "pun", "wordplay", "reference",
+    ]
+    factual = next(s for s in schemas if s["function"]["name"] == "factual_response")
+    assert "enum" not in factual["function"]["parameters"]["properties"]["answer"]

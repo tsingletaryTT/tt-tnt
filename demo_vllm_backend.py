@@ -85,3 +85,33 @@ def chat(messages: List[Dict[str, str]], *, tools: Optional[List[Dict[str, Any]]
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
     return _post(f"{base}/v1/chat/completions", payload, timeout)
+
+
+def openai_tool_schemas() -> List[Dict[str, Any]]:
+    """Build OpenAI-style tool schemas straight from train.tool_calling.TOOLS, so the
+    demo's vLLM request always matches what the model was actually trained on -- never
+    a hand-duplicated copy of the schema that can drift out of sync."""
+    from train.tool_calling import TOOLS
+
+    schemas = []
+    for name, spec in TOOLS.items():
+        required = spec["required_args"]
+        enum_args = spec["enum_args"]
+        properties: Dict[str, Any] = {}
+        for arg in required:
+            prop: Dict[str, Any] = {"type": "string"}
+            if arg in enum_args:
+                prop["enum"] = list(enum_args[arg])
+            properties[arg] = prop
+        schemas.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": list(required),
+                },
+            },
+        })
+    return schemas
