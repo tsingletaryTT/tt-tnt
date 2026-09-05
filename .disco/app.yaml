@@ -1,0 +1,4 @@
+name: tt-tnt
+description: tt-tnt demo — chat, tool-calling roles, known limitations, and research findings
+port: 7862
+launch: .venv/bin/python app.py

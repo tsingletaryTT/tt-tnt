@@ -1,0 +1,17 @@
+# HuggingFace Spaces runtime pin. Copy this file, app.py, demo_checkpoints.py,
+# demo_hf_backend.py, demo_vllm_backend.py, demo_findings.py, and docs/measurements/
+# into a new Space repo (SDK: Gradio). gradio is pinned exactly and MUST match the
+# Space's sdk_version in its README.md front matter -- a drift between the two means
+# the Space builds against a different Gradio than this file claims.
+gradio==4.44.1
+torch>=2.0.0
+transformers>=4.52,<6
+huggingface_hub>=0.36
+safetensors>=0.4.0
+# The starlette pin is load-bearing, not decoration: gradio 4.44's routes.py calls
+# the OLD-style Jinja2Templates.TemplateResponse (no `request` as first arg). Starlette
+# kept a deprecated back-compat shim for that call shape all through its 0.x line and
+# deleted it at the 1.0.0 major bump, which fastapi's starlette>=0.46.0 resolves to on
+# a fresh install -- producing a runtime TypeError on every page load. <1.0 keeps pip
+# on a 0.x release that still has the shim.
+starlette<1.0

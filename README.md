@@ -382,6 +382,37 @@ plugin older than `c127c17` will reproduce it.
 report — what the v4 manifest schema can express, which fields are actually read, and what
 authoring a real bundle against it turned up.
 
+## Gradio Demo
+
+A demo covering chat/completion, tool-calling roles, known failure modes, and
+historical research findings.
+
+### Local
+
+```bash
+pip install -e ".[ui]"
+python scripts/prepare_demo_checkpoints.py  # one-time, converts 2 missing checkpoints
+python app.py
+# open http://localhost:7862
+```
+
+Discoverable via [tt-discolike](https://github.com/) through `.disco/app.yaml` — no
+separate launch step needed if you're already using that catalog.
+
+### HuggingFace Spaces
+
+Only the published production checkpoint (`episod/tt-tnt-1024`) and the static
+research-findings tab work on a Space — the tool-calling and editor-blend checkpoints
+were never published, and Blackhole hardware isn't reachable from HF infrastructure, so
+those parts degrade gracefully rather than erroring. To deploy:
+
+1. Create a new Space (SDK: Gradio).
+2. Copy `app.py`, `demo_checkpoints.py`, `demo_hf_backend.py`,
+   `demo_vllm_backend.py`, `demo_findings.py`, `requirements.txt`, and
+   `docs/measurements/` into the Space repo root.
+3. No further configuration — checkpoint resolution falls back to the Hub repo id
+   automatically when no local `artifacts/hf-*` directory exists.
+
 ## Evaluating a checkpoint
 
 `scripts/evaluate.py` is the single entry point. It does not measure anything itself — it
