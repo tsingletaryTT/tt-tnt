@@ -1,0 +1,22 @@
+{
+  "what": "v6 thin-package decode throughput, batch=1, greedy",
+  "served_as": "episod/tt-tnt-1024",
+  "arch": "4-chip (P300x2, FABRIC_2D_TORUS_XY)",
+  "prompt": "Once upon a time, in a small village near the mountains,",
+  "max_tokens": 128,
+  "runs": 5,
+  "warmup_runs_excluded": 1,
+  "tokens_per_sec": {
+    "mean": 324.81,
+    "min": 285.8,
+    "max": 345.8
+  },
+  "per_run_seconds": [
+    0.379,
+    0.384,
+    0.37,
+    0.398,
+    0.448
+  ],
+  "bundle": "v6 thin (tt-model package-thin), local tt-metal-models wheel (tenstorrent/tt-metal#54478 cherry-picked onto v0.77.0), vllm-tt-plugin @6d3bb28, prebuilt empty-target vllm 0.25.1+empty"
+}
