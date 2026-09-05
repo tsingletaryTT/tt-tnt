@@ -18,6 +18,7 @@ import json
 import gradio as gr
 
 import demo_checkpoints
+import demo_findings
 import demo_hf_backend
 import demo_vllm_backend
 
@@ -133,11 +134,113 @@ def build_tool_calling_tab() -> None:
         ask_btn.click(_ask, inputs=[checkpoint, question], outputs=[raw_output, parsed_output])
 
 
+_LIMITATION_PRESETS = [
+    {
+        "title": "Q&A collapse",
+        "checkpoint": "tt-tnt-1024 (production)",
+        "prompt": "Q: What is the capital of France?\nAnswer:",
+        "temperature": 0.0,
+        "why": (
+            "This model's Q&A ability came from a thin dialogue slice layered onto a "
+            "story-completion base. It often can't hold a factual answer and "
+            "collapses into repeating a wrong answer rather than admitting it "
+            "doesn't know."
+        ),
+    },
+    {
+        "title": "Register / genre collapse",
+        "checkpoint": "tt-tnt-1024 (production)",
+        "prompt": "Once upon a time, there was a little",
+        "temperature": 1.2,
+        "why": (
+            "TinyStories dominates the training corpus. Even sampled at high "
+            "temperature for variety, the model tends to fall back into the same "
+            "fairy-tale register rather than genuinely diversifying."
+        ),
+    },
+    {
+        "title": "Catastrophic repeat loop (editor-blend, broken run)",
+        "checkpoint": "editor-blend (broken run)",
+        # NOTE: deliberately NOT an ordinary TinyStories-style prompt. This project's
+        # own incident record (CLAUDE.md, "The base-blend follow-up's first attempt
+        # trained a second, worse-broken checkpoint") measured that this checkpoint
+        # stays fluent on an ordinary opening like "Once upon a time, there was a
+        # little" -- the collapse was reproduced only on the "spine"-register frozen
+        # prompts (docs/evaluation_prompts_b.json, id prefix "b-spine-"). Verified
+        # directly against this converted checkpoint before shipping this preset:
+        # this exact prompt collapses into "to to to to..." from the first generated
+        # token, matching the historical record; an ordinary story-opening prompt does
+        # not trigger the collapse at all and would have shown fluent prose instead.
+        "prompt": (
+            "The beetle came back to the same square of wall each evening, and I "
+            "began to"
+        ),
+        "temperature": 0.8,
+        "why": (
+            "A real, diagnosed bug: an unshifted-labels error in an earlier training "
+            "run taught the model to predict the token already at its own position. "
+            "This checkpoint collapses into repeating a single word from the very "
+            "first generated token (e.g. 'to to to to...') on unusual, non-TinyStories "
+            "openings -- an ordinary story prompt stays fluent, which is itself part "
+            "of the finding."
+        ),
+    },
+]
+
+
+def build_limitations_tab() -> None:
+    with gr.Tab("Known Limitations (weird & bad)"):
+        gr.Markdown(
+            "Curated failures this project actually measured and diagnosed -- not "
+            "cherry-picked bad luck. CPU direct only; this tab is about the model, "
+            "not the serving stack."
+        )
+        available = set(demo_checkpoints.list_available())
+        prompt = gr.Textbox(label="Prompt")
+        checkpoint = gr.Dropdown(choices=demo_checkpoints.list_available(), label="Checkpoint")
+        temperature = gr.Slider(0.0, 1.5, value=0.8, step=0.05, label="Temperature")
+        why = gr.Markdown()
+        for preset in _LIMITATION_PRESETS:
+            disabled = preset["checkpoint"] not in available
+            label = preset["title"] + (" [unavailable locally]" if disabled else "")
+            btn = gr.Button(label, interactive=not disabled)
+
+            def _fill(p=preset):
+                return p["prompt"], p["checkpoint"], p["temperature"], p["why"]
+
+            btn.click(_fill, outputs=[prompt, checkpoint, temperature, why])
+
+        output = gr.Textbox(label="Output", lines=6)
+        run_btn = gr.Button("Run")
+        run_btn.click(
+            lambda ck, p, t: _cpu_generate(ck, p, 80, t),
+            inputs=[checkpoint, prompt, temperature], outputs=output,
+        )
+
+
+def build_findings_tab() -> None:
+    with gr.Tab("Research Findings"):
+        gr.Markdown(
+            "**Historical findings, not live generation.** These checkpoints are no "
+            "longer available to serve -- this reads the actual committed "
+            "`docs/measurements/*.json` verdicts and quotes them verbatim."
+        )
+        cards = demo_findings.load_findings()
+        if not cards:
+            gr.Markdown("No docs/measurements/*.json files found.")
+            return
+        for card in cards:
+            verdict = card["verdict"] or "(verdict field not found -- check docs/measurements/ schema)"
+            gr.Markdown(f"### {card['title']}\n{verdict}\n\n*Source: `{card['source']}`*")
+
+
 def build_app() -> gr.Blocks:
     with gr.Blocks(title="tt-tnt demo") as demo:
         gr.Markdown("# tt-tnt demo\nWhat this model is good, weird, and bad at.")
         build_chat_tab()
         build_tool_calling_tab()
+        build_limitations_tab()
+        build_findings_tab()
     return demo
 
 
