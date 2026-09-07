@@ -236,6 +236,68 @@ def test_load_card_for_hub_raises_on_missing_front_matter(tmp_path, monkeypatch)
         publish_to_hub._load_card_for_hub()
 
 
+def test_push_card_merges_hub_tags_instead_of_replacing_them(monkeypatch):
+    """The real regression this guards: `tt-model push` tags a repo `tt-model-cache` so
+    `tt-model search` can find it. `--restore-card` runs afterward, required to undo push's
+    OTHER damage (license/pipeline_tag/library_name/datasets) -- but a plain
+    `card.push_to_hub` replaces the WHOLE tags list with only what the local card declares,
+    silently erasing `tt-model-cache` and making the repo unsearchable again. `_push_card`
+    must fold in any tag already on the Hub that the local card doesn't know about, never
+    just overwrite.
+    """
+    import huggingface_hub
+
+    class FakeLiveCard:
+        data = type("D", (), {"tags": ["tt-model-cache", "blackhole"]})()
+
+    pushed = {}
+
+    class FakeCard:
+        data = type("D", (), {"tags": ["tenstorrent", "blackhole", "llama"]})()
+
+        def push_to_hub(self, repo_id, repo_type):
+            pushed["repo_id"] = repo_id
+            pushed["tags"] = list(self.data.tags)
+
+    fake_card = FakeCard()
+    monkeypatch.setattr(publish_to_hub, "_load_card_for_hub", lambda card_path=None: fake_card)
+    monkeypatch.setattr(huggingface_hub, "ModelCard",
+                        type("FakeModelCard", (), {"load": staticmethod(lambda *a, **k: FakeLiveCard())}))
+
+    publish_to_hub._push_card("episod/tt-tnt")
+
+    assert pushed["repo_id"] == "episod/tt-tnt"
+    # tt-model-cache came only from the Hub, and must survive; nothing declared locally
+    # is dropped either.
+    assert set(pushed["tags"]) == {"tenstorrent", "blackhole", "llama", "tt-model-cache"}
+
+
+def test_push_card_tolerates_a_brand_new_repo_with_no_live_card(monkeypatch):
+    """A repo that doesn't exist yet (first publish) has no live card to merge from --
+    `ModelCard.load` raising must not block the push, it must just push the local tags as-is.
+    """
+    import huggingface_hub
+
+    pushed = {}
+
+    class FakeCard:
+        data = type("D", (), {"tags": ["tenstorrent", "tt-model-cache"]})()
+
+        def push_to_hub(self, repo_id, repo_type):
+            pushed["tags"] = list(self.data.tags)
+
+    def _raise_not_found(*a, **k):
+        raise Exception("404: repo not found")
+
+    monkeypatch.setattr(publish_to_hub, "_load_card_for_hub", lambda card_path=None: FakeCard())
+    monkeypatch.setattr(huggingface_hub, "ModelCard",
+                        type("FakeModelCard", (), {"load": staticmethod(_raise_not_found)}))
+
+    publish_to_hub._push_card("episod/tt-tnt")
+
+    assert set(pushed["tags"]) == {"tenstorrent", "tt-model-cache"}
+
+
 def test_verify_requires_no_other_flags(capsys):
     rc = publish_to_hub.main(["--repo-id", "episod/tt-tnt", "--verify", "--dry-run"])
     assert rc != 0

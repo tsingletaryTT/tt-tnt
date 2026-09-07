@@ -18,6 +18,7 @@ tags:
   - tenstorrent
   - blackhole
   - llama
+  - tt-model-cache
   - tt-metal
   - ttml
   - trained-from-scratch

@@ -1,0 +1,201 @@
+{
+  "schema": "tt-tnt/checkpoint-prune/1",
+  "pruned_at": "2026-09-02T19:38:20.691396+00:00",
+  "root": "/home/ttuser/code/tt-tnt/artifacts",
+  "keep_per_run": 1,
+  "excluded": [],
+  "files_removed": 91,
+  "bytes_freed": 50254217804,
+  "runs": [
+    {
+      "run": "checkpoints-1024-editor-lora",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_100.pkl",
+        "step_200.pkl",
+        "step_300.pkl",
+        "step_400.pkl",
+        "step_500.pkl",
+        "step_600.pkl",
+        "step_700.pkl",
+        "step_800.pkl",
+        "step_900.pkl",
+        "step_1000.pkl",
+        "step_1100.pkl",
+        "step_1200.pkl",
+        "step_1300.pkl",
+        "step_1400.pkl",
+        "step_1500.pkl",
+        "step_1600.pkl",
+        "step_1700.pkl",
+        "step_1800.pkl",
+        "step_1900.pkl",
+        "step_2000.pkl",
+        "step_2100.pkl",
+        "step_2200.pkl",
+        "step_2300.pkl",
+        "step_2400.pkl",
+        "step_2500.pkl",
+        "step_2600.pkl",
+        "step_2700.pkl",
+        "step_2800.pkl",
+        "step_2900.pkl"
+      ],
+      "bytes": 14305817709
+    },
+    {
+      "run": "checkpoints-1024-tool-calling-lora",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_100.pkl",
+        "step_200.pkl",
+        "step_300.pkl",
+        "step_400.pkl",
+        "step_500.pkl",
+        "step_600.pkl",
+        "step_700.pkl",
+        "step_800.pkl",
+        "step_900.pkl",
+        "step_1000.pkl",
+        "step_1100.pkl",
+        "step_1200.pkl",
+        "step_1300.pkl",
+        "step_1400.pkl",
+        "step_1500.pkl",
+        "step_1600.pkl",
+        "step_1700.pkl",
+        "step_1800.pkl",
+        "step_1900.pkl",
+        "step_2000.pkl",
+        "step_2100.pkl",
+        "step_2200.pkl",
+        "step_2300.pkl",
+        "step_2400.pkl",
+        "step_2500.pkl",
+        "step_2600.pkl",
+        "step_2700.pkl",
+        "step_2800.pkl",
+        "step_2900.pkl"
+      ],
+      "bytes": 14305817709
+    },
+    {
+      "run": "checkpoints-1024-tool-calling-s3",
+      "keep": [
+        "step_3000.pkl"
+      ],
+      "drop": [
+        "step_250.pkl",
+        "step_500.pkl",
+        "step_750.pkl",
+        "step_1000.pkl",
+        "step_1250.pkl",
+        "step_1500.pkl",
+        "step_1750.pkl",
+        "step_2000.pkl",
+        "step_2250.pkl",
+        "step_2500.pkl",
+        "step_2750.pkl"
+      ],
+      "bytes": 5410436228
+    },
+    {
+      "run": "checkpoints-tt-tnt-1024-ctx2048",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 3689124125
+    },
+    {
+      "run": "checkpoints-tt-tnt-1024-ctx2048-v4corpus",
+      "keep": [
+        "tt_tnt_step00010764.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00002000.pkl",
+        "tt_tnt_step00004000.pkl",
+        "tt_tnt_step00006000.pkl",
+        "tt_tnt_step00008000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 3689124125
+    },
+    {
+      "run": "checkpoints-winpurity-v4-s20260815",
+      "keep": [
+        "tt_tnt_step00010719.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1475649654
+    },
+    {
+      "run": "checkpoints-winpurity-v5-s20260815",
+      "keep": [
+        "tt_tnt_step00010719.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1475649654
+    },
+    {
+      "run": "checkpoints-winpurity-v4-s5489",
+      "keep": [
+        "tt_tnt_step00010719.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1475649650
+    },
+    {
+      "run": "checkpoints-winpurity-v4-s8191",
+      "keep": [
+        "tt_tnt_step00010719.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1475649650
+    },
+    {
+      "run": "checkpoints-winpurity-v5-s5489",
+      "keep": [
+        "tt_tnt_step00010719.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1475649650
+    },
+    {
+      "run": "checkpoints-winpurity-v5-s8191",
+      "keep": [
+        "tt_tnt_step00010719.pkl"
+      ],
+      "drop": [
+        "tt_tnt_step00005000.pkl",
+        "tt_tnt_step00010000.pkl"
+      ],
+      "bytes": 1475649650
+    }
+  ]
+}

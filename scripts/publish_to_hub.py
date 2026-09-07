@@ -21,13 +21,14 @@ Safety rules baked into this script, not left to the caller's discipline:
   and does not belong in a re-runnable publish script.
 
   That flip has since happened, out-of-band, with explicit authorization: ``episod/tt-tnt``
-  and ``episod/tt-tnt-corpus`` were both made public on 2026-08-14. This script's behavior
-  did not change and does not need to -- ``create_repo(..., private=True, exist_ok=True)``
-  only applies ``private=True`` when it actually creates a repo; per ``huggingface_hub``'s
-  own docs, "this value is ignored if the repo already exists," so re-running the initial
-  publish path against the now-public repo cannot silently flip it back. ``EXPECTED_PRIVATE``
-  below records the current expectation for ``--verify`` rather than leaving it as a
-  hardcoded assumption that would go stale the way this docstring almost did.
+  and ``episod/tt-tnt-corpus`` were both made public on 2026-08-14, and ``episod/tt-tnt-1024``
+  followed on 2026-09-02. This script's behavior did not change and does not need to --
+  ``create_repo(..., private=True, exist_ok=True)`` only applies ``private=True`` when it
+  actually creates a repo; per ``huggingface_hub``'s own docs, "this value is ignored if the
+  repo already exists," so re-running the initial publish path against a now-public repo
+  cannot silently flip it back. Each target's own ``expected_private`` in ``TARGETS`` records
+  the current expectation for ``--verify`` rather than leaving it as a hardcoded assumption
+  that would go stale the day visibility legitimately changes again.
 * Any action that writes to the Hub (initial publish, ``--restore-card``) requires ``--yes``.
   ``--dry-run`` never touches the Hub, regardless of ``--yes``.
 * ``--verify`` is read-only: it round-trips the *published* copy through ``transformers``,
@@ -169,10 +170,11 @@ TARGETS = {
         "tie_word_embeddings": True,
         "vocab_size": 32000,
         "param_count": 122962944,
-        # Never explicitly authorized public the way episod/tt-tnt was (see that target's
-        # comment and the module docstring) -- stays private until a deliberate, separate
-        # decision flips it, the same way this script itself never flips visibility.
-        "expected_private": True,
+        # Explicitly authorized out-of-band on 2026-09-02 (same pattern as episod/tt-tnt's
+        # 2026-08-14 flip above) -- --verify checks the Hub against this recorded
+        # expectation rather than a hardcoded True/False that would go stale the day
+        # visibility legitimately changes again.
+        "expected_private": False,
         "card": ROOT / "docs" / "model-card-1024.md",
         "manifest": ROOT / "manifests" / "tt_kernel_manifest-1024.json",
         "note": (
@@ -326,7 +328,30 @@ def _set_license(repo_id: str) -> None:
 
 
 def _push_card(repo_id: str, card_path=None) -> None:
+    """Push the local model card, preserving any tag the Hub already carries.
+
+    A plain ``card.push_to_hub`` replaces the *entire* front-matter ``tags`` list with
+    whatever ``docs/model-card.md`` declares -- which is exactly how a prior
+    ``tt-model push`` (or ``tt-model publish``) applying ``tt-model-cache``/
+    ``tt-model-catalog`` got silently erased by the very restore step meant to undo that
+    push's OTHER damage (license/pipeline_tag/library_name/datasets). This script owns
+    those four fields; it does not own every tag ever applied to the repo, so it must not
+    destroy tags it didn't set. Any live tag absent from the local card is folded in before
+    pushing -- an additive merge, never a narrowing, so a stale live tag can still only be
+    removed by editing the Hub directly, not silently reset by an unrelated card restore.
+    """
+    from huggingface_hub import ModelCard
+
     card = _load_card_for_hub(card_path)
+    try:
+        live_tags = ModelCard.load(repo_id, repo_type="model").data.tags or []
+    except Exception:
+        live_tags = []
+    merged = list(card.data.tags or [])
+    for tag in live_tags:
+        if tag not in merged:
+            merged.append(tag)
+    card.data.tags = merged
     card.push_to_hub(repo_id, repo_type="model")
 
 
