@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+*.egg-info/
 data/
 # Curated lexicon files under train/data/ (e.g. harm_lexicon.txt, closure_lexicon.txt)
 # are hand-written source, not generated/downloaded data — carve them out of the bare

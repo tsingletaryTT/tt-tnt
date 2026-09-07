@@ -29,7 +29,25 @@ content = ["nltk>=3.9"]
 # upper bound) happily resolves to on a fresh/shared install -- producing a runtime
 # `TypeError: unhashable type: 'dict'` on every page load with no import-time error
 # to catch it earlier. `<1.0` keeps pip on a 0.x release that still has the shim.
-ui = ["gradio>=4.44,<5", "starlette<1.0"]
+# `torch` belongs here, not in the base dependencies: demo_hf_backend.py (the "CPU
+# direct" generation path app.py's Gradio UI calls) imports it lazily at call time,
+# so its absence didn't fail at import -- it surfaced as a caught exception,
+# "ERROR generating with <checkpoint> (production): No module named 'torch'", on
+# the first click. requirements.txt (the separate HF Spaces runtime pin) already
+# had torch>=2.0.0; this was a real gap between the two dependency declarations,
+# not a Spaces-only requirement.
+#
+# Same shape of bug as the starlette pin above, one dependency over: gradio 4.44's
+# oauth.py does `from huggingface_hub import HfFolder, whoami` -- HfFolder is a
+# legacy API huggingface_hub removed at its own 1.0.0 major bump (checked: still
+# present through 0.36.2, gone by 1.30.0). The base `huggingface_hub>=0.36` has no
+# upper bound, so an unconstrained `pip install -e ".[ui]"` resolves straight to
+# the newest 1.x and gradio fails at import with
+# `ImportError: cannot import name 'HfFolder' from 'huggingface_hub'`. Pinning
+# `<1.0` here (combined with the base floor) keeps the resolver on the newest
+# compatible 0.x release for this extra only, without lowering the floor for
+# non-UI consumers (train/eval scripts, tests) that don't hit gradio's oauth.py.
+ui = ["gradio>=4.44,<5", "starlette<1.0", "torch>=2.0.0", "huggingface_hub<1.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
