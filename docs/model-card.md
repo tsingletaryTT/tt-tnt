@@ -22,6 +22,9 @@ tags:
   - tt-metal
   - ttml
   - trained-from-scratch
+  - self-contained
+  - vllm
+  - p150
 datasets:
   - roneneldan/TinyStories
   - sedthh/gutenberg_english
