@@ -1,4 +1,0 @@
-{
-  "arch": "LlamaForCausalLM",
-  "main_class": "tt_tnt_adapter:LlamaForCausalLM"
-}
