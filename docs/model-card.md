@@ -3,11 +3,16 @@
 <!--
   SOURCE OF TRUTH for the Hugging Face model card at episod/tt-tnt.
 
-  Kept in this repo because tt-model's `tag_repo` (hub.py:56-66) replaces the card's
-  front matter wholesale with `ModelCardData(tags=...)` on every `tt-model push`,
-  destroying `license`, `pipeline_tag`, `library_name`, and `datasets`. The prose body
-  survives; the metadata does not. After any tt-kernel operation, re-apply the front
-  matter below and verify it stuck.
+  tt-model's `tag_repo` used to replace the card's front matter wholesale on every
+  push, destroying `license`, `pipeline_tag`, `library_name`, and `datasets`
+  (tenstorrent/tt-model-manager#114, fixed) -- it now merges tags in place and leaves
+  the rest alone. Still worth a quick re-check after a push, since `tag_repo` only
+  ever ADDS tags (never prunes a stale one itself): confirm this file and the live
+  card agree, especially after a schema change.
+
+  Currently packaged as v6 THIN (episod/tt-tnt), not v5 fat -- "self-contained" is
+  deliberately NOT in this tag list; v6 thin resolves ttnn/tt-tnt-models-closure from
+  an index at install time, so the bundle is not self-contained.
 -->
 
 ---
@@ -22,7 +27,7 @@ tags:
   - tt-metal
   - ttml
   - trained-from-scratch
-  - self-contained
+  - thin
   - vllm
   - p150
 datasets:

@@ -49,7 +49,7 @@ think-blocks in **98%** of generations where the control arm emits none.
 | Thinking — five-slot think-blocks | ✅ format · ⏳ effect | 98% adherence; steers but does not yet govern |
 | Per-core Gumbel sampling on device | ✅ | custom kernels, per-core RNG streams |
 | vLLM serving via the TT plugin | ✅ | `tt-model serve`, OpenAI-compatible |
-| `tt-model` bundle packaging | ✅ v4 · ⏳ v5 self-contained | v5 needs wheels assembled |
+| `tt-model` bundle packaging | ✅ v6 thin | `episod/tt-tnt` + `episod/tt-tnt-1024`, hardware-verified |
 | Host-portable HF export | ✅ | `scripts/chat.py` runs it CPU-only |
 | Tool calling / reasoning parsers | ➖ | plumbing exists; base model declares none |
 | Chat template / instruction tuning | ➖ | base completion model by design |
