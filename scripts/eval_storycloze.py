@@ -147,3 +147,136 @@ def score_ending(model, context_ids: Sequence[int], ending_ids: Sequence[int]) -
     raw_sum = float(ending_logprobs.sum())
     n = int(ending_logprobs.numel())
     return EndingScore(raw_sum_logprob=raw_sum, mean_logprob=raw_sum / n, n_tokens=n)
+
+
+@dataclass(frozen=True)
+class ItemResult:
+    """One scored Story Cloze item: both endings, full-context and context-blind."""
+
+    story_id: str
+    correct_ending: int
+    full_1: EndingScore
+    full_2: EndingScore
+    blind_1: EndingScore
+    blind_2: EndingScore
+
+
+def score_item(model, tokenizer, item: StoryClozeItem) -> ItemResult:
+    """Score both endings of ``item`` under full context and under a context-blind control.
+
+    The blind context is exactly ``[bos_token_id]`` -- one token, so ``score_ending`` still
+    has something to condition the first ending token on, but it carries no information about
+    THIS item's actual story. Reusing ``score_ending`` for both conditions (rather than a
+    separate blind-scoring function) is what makes
+    ``test_context_blind_scores_are_identical_regardless_of_context`` a meaningful proof: the
+    blind path is structurally incapable of seeing ``context_sentences``.
+    """
+    bos_id = tokenizer.bos_token_id
+    if bos_id is None:
+        raise ValueError(
+            f"{tokenizer} has no bos_token_id -- the context-blind control needs one token "
+            f"to condition the first ending token on")
+
+    context_ids: List[int] = []
+    for sentence in item.context_sentences:
+        context_ids.extend(tokenize_sentence(tokenizer, sentence))
+    ending_1_ids = tokenize_sentence(tokenizer, item.ending_1)
+    ending_2_ids = tokenize_sentence(tokenizer, item.ending_2)
+
+    return ItemResult(
+        story_id=item.story_id,
+        correct_ending=item.correct_ending,
+        full_1=score_ending(model, context_ids, ending_1_ids),
+        full_2=score_ending(model, context_ids, ending_2_ids),
+        blind_1=score_ending(model, [bos_id], ending_1_ids),
+        blind_2=score_ending(model, [bos_id], ending_2_ids),
+    )
+
+
+@dataclass(frozen=True)
+class NormalizationStats:
+    n_items: int
+    accuracy: float
+    context_blind_accuracy: float
+    class_balance_fraction_answer_1: float
+    length_bias_correlation: Optional[float]
+    context_blind_length_bias_correlation: Optional[float]
+
+    def as_json(self) -> dict:
+        return {
+            "n_items": self.n_items,
+            "accuracy": self.accuracy,
+            "context_blind_accuracy": self.context_blind_accuracy,
+            "class_balance_fraction_answer_1": self.class_balance_fraction_answer_1,
+            "length_bias_correlation": self.length_bias_correlation,
+            "context_blind_length_bias_correlation": self.context_blind_length_bias_correlation,
+        }
+
+
+def pearson_correlation(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
+    """Pearson correlation, or None if either series has zero variance (undefined, not 0.0)."""
+    n = len(xs)
+    if n < 2 or n != len(ys):
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x == 0.0 or var_y == 0.0:
+        return None
+    return cov / math.sqrt(var_x * var_y)
+
+
+def _accuracy_and_length_bias(
+    picks: Sequence[Tuple[float, float, int, int]], correct: Sequence[int],
+) -> Tuple[float, Optional[float]]:
+    """``picks`` is (score_1, score_2, n_tokens_1, n_tokens_2) per item.
+
+    Returns (accuracy, length_bias_correlation), where length_bias_correlation is the Pearson
+    correlation between (score_1 - score_2) and (n_tokens_1 - n_tokens_2) across items -- a
+    scorer with no length bias should show this near 0.
+    """
+    n_correct = 0
+    score_diffs: List[float] = []
+    len_diffs: List[float] = []
+    for (s1, s2, len1, len2), correct_ending in zip(picks, correct):
+        chosen = 1 if s1 > s2 else 2
+        if chosen == correct_ending:
+            n_correct += 1
+        score_diffs.append(s1 - s2)
+        len_diffs.append(float(len1 - len2))
+    accuracy = n_correct / len(picks) if picks else 0.0
+    return accuracy, pearson_correlation(score_diffs, len_diffs)
+
+
+def aggregate(results: Sequence[ItemResult]) -> Dict[str, NormalizationStats]:
+    """Accuracy, context-blind accuracy, class balance, and length-bias per normalization."""
+    if not results:
+        raise ValueError("aggregate() called with zero items")
+
+    correct = [r.correct_ending for r in results]
+    n_answer_1 = sum(1 for c in correct if c == 1)
+    class_balance = n_answer_1 / len(results)
+
+    out: Dict[str, NormalizationStats] = {}
+    for norm_name, attr in (("raw_sum", "raw_sum_logprob"), ("mean_per_token", "mean_logprob")):
+        full_picks = [
+            (getattr(r.full_1, attr), getattr(r.full_2, attr), r.full_1.n_tokens, r.full_2.n_tokens)
+            for r in results
+        ]
+        blind_picks = [
+            (getattr(r.blind_1, attr), getattr(r.blind_2, attr), r.blind_1.n_tokens, r.blind_2.n_tokens)
+            for r in results
+        ]
+        full_acc, full_bias = _accuracy_and_length_bias(full_picks, correct)
+        blind_acc, blind_bias = _accuracy_and_length_bias(blind_picks, correct)
+        out[norm_name] = NormalizationStats(
+            n_items=len(results),
+            accuracy=full_acc,
+            context_blind_accuracy=blind_acc,
+            class_balance_fraction_answer_1=class_balance,
+            length_bias_correlation=full_bias,
+            context_blind_length_bias_correlation=blind_bias,
+        )
+    return out

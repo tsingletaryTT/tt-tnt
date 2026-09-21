@@ -135,3 +135,77 @@ def test_scorer_prefers_the_real_continuation_over_a_garbled_one():
     garbled_score = score_ending(model, context_ids, garbled_ids)
 
     assert real_score.mean_logprob > garbled_score.mean_logprob
+
+
+def test_score_item_returns_both_endings_full_and_blind():
+    from scripts.eval_storycloze import StoryClozeItem, score_item
+
+    model, tokenizer = _tiny_causal_lm_and_tokenizer()
+    item = StoryClozeItem(
+        story_id="s1", context_sentences=("A.", "B.", "C.", "D."),
+        ending_1="It ended well.", ending_2="It ended badly.", correct_ending=1)
+    result = score_item(model, tokenizer, item)
+    assert result.story_id == "s1"
+    assert result.correct_ending == 1
+    for field_name in ("full_1", "full_2", "blind_1", "blind_2"):
+        score = getattr(result, field_name)
+        assert score.n_tokens > 0
+
+
+def test_context_blind_scores_are_identical_regardless_of_context():
+    """The context-blind control must be provably blind, not merely named blind.
+
+    Two DIFFERENT contexts, same ending text: if the "blind" score ever changes with the
+    context, the control is leaking context and is not measuring what it claims to measure.
+    """
+    from scripts.eval_storycloze import StoryClozeItem, score_item
+
+    model, tokenizer = _tiny_causal_lm_and_tokenizer()
+    item_a = StoryClozeItem(
+        story_id="a", context_sentences=("The sun rose.", "Birds sang.", "It was warm.", "Dew glistened."),
+        ending_1="She smiled.", ending_2="unused", correct_ending=1)
+    item_b = StoryClozeItem(
+        story_id="b", context_sentences=("The city burned.", "Sirens wailed.", "Smoke rose.", "People fled."),
+        ending_1="She smiled.", ending_2="unused", correct_ending=1)
+
+    result_a = score_item(model, tokenizer, item_a)
+    result_b = score_item(model, tokenizer, item_b)
+
+    assert result_a.blind_1.raw_sum_logprob == pytest.approx(result_b.blind_1.raw_sum_logprob)
+    assert result_a.blind_1.mean_logprob == pytest.approx(result_b.blind_1.mean_logprob)
+
+
+def test_aggregate_computes_accuracy_and_length_bias_per_normalization():
+    from scripts.eval_storycloze import (
+        EndingScore, ItemResult, aggregate,
+    )
+
+    # Item 1: correct ending (1) scores higher on both raw and mean -- a clean correct case.
+    # Item 2: correct ending (2) scores LOWER on raw sum (because it's longer) but higher on
+    #   mean-per-token -- this is the length-bias case the aggregation must be able to show.
+    results = [
+        ItemResult(
+            story_id="i1", correct_ending=1,
+            full_1=EndingScore(raw_sum_logprob=-2.0, mean_logprob=-1.0, n_tokens=2),
+            full_2=EndingScore(raw_sum_logprob=-5.0, mean_logprob=-2.5, n_tokens=2),
+            blind_1=EndingScore(raw_sum_logprob=-2.0, mean_logprob=-1.0, n_tokens=2),
+            blind_2=EndingScore(raw_sum_logprob=-2.0, mean_logprob=-1.0, n_tokens=2),
+        ),
+        ItemResult(
+            story_id="i2", correct_ending=2,
+            full_1=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-3.0, n_tokens=1),
+            full_2=EndingScore(raw_sum_logprob=-4.0, mean_logprob=-1.0, n_tokens=4),
+            blind_1=EndingScore(raw_sum_logprob=-1.0, mean_logprob=-1.0, n_tokens=1),
+            blind_2=EndingScore(raw_sum_logprob=-1.0, mean_logprob=-1.0, n_tokens=1),
+        ),
+    ]
+    stats = aggregate(results)
+    assert set(stats) == {"raw_sum", "mean_per_token"}
+    # raw_sum: item 1 correct (picks ending 1, higher raw), item 2 WRONG (picks ending 1,
+    # -3.0 > -4.0, but correct is ending 2) -> 1/2 accuracy
+    assert stats["raw_sum"].accuracy == pytest.approx(0.5)
+    # mean_per_token: item 1 correct, item 2 correct (-1.0 > -3.0, picks ending 2) -> 2/2
+    assert stats["mean_per_token"].accuracy == pytest.approx(1.0)
+    assert stats["raw_sum"].n_items == 2
+    assert 0 <= stats["raw_sum"].class_balance_fraction_answer_1 <= 1
+    assert stats["raw_sum"].length_bias_correlation is not None
