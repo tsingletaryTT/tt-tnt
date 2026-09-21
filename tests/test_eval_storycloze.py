@@ -413,3 +413,9 @@ def test_eval_storycloze_module_imports_no_tenstorrent():
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
                         check=True, cwd=str(ROOT))
     assert out.stdout.strip() == "", f"scripts.eval_storycloze pulled in: {out.stdout.strip()}"
+
+
+def test_readme_documents_storycloze_license():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "juletxara/xstory_cloze" in readme
+    assert "CC BY-SA 4.0" in readme
