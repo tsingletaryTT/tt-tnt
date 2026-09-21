@@ -91,3 +91,59 @@ def load_storycloze_items(split: str, *, cache_dir: Path = DEFAULT_CACHE_DIR,
             f"loaded zero items for split={split!r} from {STORYCLOZE_DATASET}@{revision} -- "
             f"the dataset or revision may have changed")
     return items
+
+
+@dataclass(frozen=True)
+class EndingScore:
+    """Log-likelihood of an ending's tokens, conditioned on a context, in two normalizations."""
+
+    raw_sum_logprob: float
+    mean_logprob: float
+    n_tokens: int
+
+
+def tokenize_sentence(tokenizer, text: str) -> List[int]:
+    """Encode one sentence with no special tokens, one call per sentence.
+
+    Matches ``train/tokenization.py::encode_batch``'s per-line encoding convention -- this
+    tokenizer's ``PreTrainedTokenizerFast`` wrapper injects a leading space per encode call
+    (see CLAUDE.md's tokenizer-and-corpus entry), so encoding sentence-by-sentence rather than
+    concatenating raw strings before tokenizing reproduces the seam shape training data had.
+    """
+    return tokenizer(text, add_special_tokens=False)["input_ids"]
+
+
+def score_ending(model, context_ids: Sequence[int], ending_ids: Sequence[int]) -> EndingScore:
+    """Teacher-forced log-likelihood of ``ending_ids`` conditioned on ``context_ids``.
+
+    Computed directly from logits against next-token targets, with no ``labels=`` kwarg --
+    ``LlamaForCausalLM``'s internal loss shifts labels a second time if already-aligned
+    next-token labels are passed through it, which silently produces a near-uniform-ceiling
+    number regardless of model quality. See ``tests/test_hf_parity.py``'s docstring for the
+    concrete historical case (8.53 nats reported instead of ~3.20) this avoids, and
+    ``scripts/eval_per_source.py::per_window_losses`` for the same pattern already in use here.
+    """
+    import torch
+
+    full_ids = list(context_ids) + list(ending_ids)
+    if len(full_ids) < 2:
+        raise ValueError(
+            "need at least 2 tokens total (>=1 context token + >=1 ending token) to score "
+            "a next-token prediction")
+    input_ids = torch.tensor([full_ids[:-1]], dtype=torch.long)
+    with torch.no_grad():
+        logits = model(input_ids).logits[0].float()
+    log_probs = torch.log_softmax(logits, dim=-1)
+    targets = torch.tensor(full_ids[1:], dtype=torch.long)
+    token_logprobs = log_probs[torch.arange(len(targets)), targets]
+
+    ending_start = len(context_ids) - 1  # index into targets/token_logprobs
+    ending_logprobs = token_logprobs[ending_start:]
+    if ending_logprobs.numel() != len(ending_ids):
+        raise AssertionError(
+            f"expected {len(ending_ids)} ending log-probabilities, computed "
+            f"{ending_logprobs.numel()} -- context/ending token accounting is wrong")
+
+    raw_sum = float(ending_logprobs.sum())
+    n = int(ending_logprobs.numel())
+    return EndingScore(raw_sum_logprob=raw_sum, mean_logprob=raw_sum / n, n_tokens=n)
