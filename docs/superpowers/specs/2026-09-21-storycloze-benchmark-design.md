@@ -28,24 +28,42 @@ built here (see "Deliberately out of scope").
 
 ## Data source and licensing
 
-**`Muennighoff/xstory_cloze`, config `en`, on the HF Hub — CC BY-SA 4.0.** This is the
-professionally-released English portion of the original 2018 Story Cloze Test (SCT), openly
-licensed and ungated — unlike the original SCT distribution (research-use request form,
-license unclear), which this project's provenance discipline rules out (see CLAUDE.md's
-licensing section: every corpus/dependency's license goes in the README's provenance section in
-the same change that adds it, no "quietly upgrade a hedge" allowed).
+**Corrected during planning, not assumed:** the obvious first candidate,
+`Muennighoff/xstory_cloze`, turned out to be a dead end on direct inspection of its loading
+script — its `_LANG` list (`ru, zh, es, ar, hi, id, te, sw, eu, my`) does not include `"en"` at
+all, and every language it does support still requires a manual download via the same gated
+Google Form as the original 2016 SCT release (`http://goo.gl/forms/aQz39sdDrO`). An HF dataset
+card's own auto-generated summary claimed an ungated "en" config existed; it did not, and this
+was verified against the loading script's actual source rather than the card's prose before
+being written down here.
 
-Each item: 4 context sentences (`input_sentence_1..4`), two candidate 5th sentences
-(`sentence_quiz1`, `sentence_quiz2`), and `answer_right_ending` (1 or 2). Fetched at a **pinned
-HF revision**, cached under `artifacts/storycloze/` (gitignored, per existing convention), with
-the revision hash recorded in every output JSON — the same "a corpus generation is not implied
-by a model size" discipline this project already applies to its own tokenized corpora
-(`train/paths.py`'s docstring, and the tokens-v3-vs-v4 mistake in the ctx2048 retrain episode).
+**`juletxara/xstory_cloze`, config `en`, on the HF Hub — CC BY-SA 4.0.** This mirror **is**
+auto-converted to Parquet (confirmed via its dataset viewer) — loadable as
+`datasets.load_dataset("juletxara/xstory_cloze", "en")` with no `trust_remote_code` and no
+manual-download step, unlike both `Muennighoff/xstory_cloze` (gated, no `en`) and
+`Muennighoff/xstory_cloze_data` (explicitly gated behind an access-conditions click-through,
+and its own card states no English config is included — it points back at the original
+Rochester request form for English). Confirmed columns and one example row via the dataset
+viewer: `story_id`, `input_sentence_1..4`, `sentence_quiz1`, `sentence_quiz2`,
+`answer_right_ending` (1 or 2, int). **Splits are named `train` (360 rows) and `eval` (1,510
+rows)** — not `val`/`test` as an earlier draft of this spec assumed; both are real Story Cloze
+items (the `train` split is the 2018 shared-task's small labeled set, `eval` is the larger one),
+and both should be used since the model is not trained on either.
+
+Fetched at a **pinned HF revision** (resolved and hardcoded during Task 1 below), cached under
+`artifacts/storycloze/` (gitignored, per existing convention), with the revision hash recorded
+in every output JSON — the same "a corpus generation is not implied by a model size" discipline
+this project already applies to its own tokenized corpora (`train/paths.py`'s docstring, and the
+tokens-v3-vs-v4 mistake in the ctx2048 retrain episode).
 
 **README update, in the same change that adds this script**: a new provenance entry for
-`Muennighoff/xstory_cloze` (CC BY-SA 4.0, used for evaluation only — not redistributed, not
-mixed into any training corpus, so share-alike has no downstream obligation beyond attributing
-the eval data itself).
+`juletxara/xstory_cloze` (CC BY-SA 4.0, used for evaluation only — not redistributed, not mixed
+into any training corpus, so share-alike has no downstream obligation beyond attributing the
+eval data itself). Worth naming plainly in that entry: the original English Story Cloze Test is
+still nominally gated behind Rochester's request form; this mirror carries an "en" split anyway
+under its own declared CC BY-SA 4.0 license, inherited from the same license the multilingual
+XStoryCloze project (Lin et al.) applied to its whole release. This project is relying on that
+upstream project's licensing decision, stated here rather than left implicit.
 
 ## Scope
 
@@ -109,7 +127,7 @@ repeatedly under other names. Required controls, all computed in the same run:
 ## CLI and reproducibility
 
 ```
-scripts/eval_storycloze.py --model {tt-tnt,tt-tnt-1024} [--split val|test] [--out PATH]
+scripts/eval_storycloze.py --model {tt-tnt,tt-tnt-1024} [--split train|eval] [--out PATH]
 scripts/eval_storycloze.py --rescore-from PATH.json         # no model, tokenizer, or device
 scripts/eval_storycloze.py --compare A.json B.json          # paired McNemar, refuses a mismatched pair
 ```
@@ -133,7 +151,7 @@ scripts/eval_storycloze.py --compare A.json B.json          # paired McNemar, re
   scoring path must fail its own test — the control has to be provably blind, not just named
   blind (same shape as this project's repeated "a test that supplies what's missing tests
   nothing" lesson).
-- License/provenance test: README contains the CC BY-SA 4.0 entry for `Muennighoff/xstory_cloze`.
+- License/provenance test: README contains the CC BY-SA 4.0 entry for `juletxara/xstory_cloze`.
 - Import-purity test: `scripts/eval_storycloze.py` never imports `ttnn`/`ttml`.
 - `--compare`'s mismatched-revision/split refusal, tested directly (two files built to differ
   only in revision hash must be refused).
@@ -156,6 +174,13 @@ scripts/eval_storycloze.py --compare A.json B.json          # paired McNemar, re
 ## Self-review notes
 
 - No placeholders remain; every section states a concrete mechanism.
+- The dataset identifier was corrected mid-planning (`Muennighoff/xstory_cloze` → confirmed to
+  exclude English and remain gated → `juletxara/xstory_cloze`, confirmed ungated/parquet/CC
+  BY-SA 4.0/has an `en` split) by reading the loading script and dataset viewer directly rather
+  than trusting an HF card's prose summary — the same "verify the instrument" discipline this
+  project applies elsewhere. Every other section already used the generic phrase "openly
+  licensed mirror" rather than assuming the first name found was final, so no other section
+  needed a matching correction.
 - Internal consistency: the "both normalizations reported" decision in Scoring methodology and
   the length-bias control in Controls describe the same measurement from two angles and do not
   contradict each other.
