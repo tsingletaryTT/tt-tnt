@@ -296,3 +296,120 @@ def test_compare_reports_refuses_mismatched_split():
     b = _minimal_report("rev1", "train", [])
     with pytest.raises(ValueError, match="split"):
         compare_reports(a, b)
+
+
+def test_build_report_records_provenance_and_per_item_scores(tmp_path):
+    from scripts.eval_storycloze import StoryClozeItem, ItemResult, EndingScore, build_report
+
+    item = StoryClozeItem(
+        story_id="s1", context_sentences=("A.", "B.", "C.", "D."),
+        ending_1="ok", ending_2="bad", correct_ending=1)
+    result = ItemResult(
+        story_id="s1", correct_ending=1,
+        full_1=EndingScore(raw_sum_logprob=-1.0, mean_logprob=-0.5, n_tokens=2),
+        full_2=EndingScore(raw_sum_logprob=-4.0, mean_logprob=-2.0, n_tokens=2),
+        blind_1=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+        blind_2=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+    )
+    model_dir = tmp_path / "hf-fake"
+    model_dir.mkdir()
+    (model_dir / "model.safetensors").write_bytes(b"fake weights")
+
+    report = build_report(model_dir, [item], [result], split="eval", revision="rev1")
+
+    assert report["schema"] == "tt-tnt/storycloze/1"
+    assert report["dataset_revision"] == "rev1"
+    assert report["split"] == "eval"
+    assert report["model_dir"] == str(model_dir)
+    assert len(report["model_weights_sha256"]) == 64  # hex sha256 digest length
+    assert report["headline_normalization"] in ("raw_sum", "mean_per_token")
+    assert len(report["per_item"]) == 1
+    row = report["per_item"][0]
+    assert row["story_id"] == "s1"
+    assert row["correct_ending"] == 1
+    assert "chosen_raw_sum" in row and "chosen_mean_per_token" in row
+
+
+def test_rescore_from_report_reproduces_the_original_aggregate_stats(tmp_path):
+    from scripts.eval_storycloze import (
+        StoryClozeItem, ItemResult, EndingScore, build_report, rescore_from_report,
+    )
+
+    item = StoryClozeItem(
+        story_id="s1", context_sentences=("A.", "B.", "C.", "D."),
+        ending_1="ok", ending_2="bad", correct_ending=1)
+    result = ItemResult(
+        story_id="s1", correct_ending=1,
+        full_1=EndingScore(raw_sum_logprob=-1.0, mean_logprob=-0.5, n_tokens=2),
+        full_2=EndingScore(raw_sum_logprob=-4.0, mean_logprob=-2.0, n_tokens=2),
+        blind_1=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+        blind_2=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+    )
+    model_dir = tmp_path / "hf-fake"
+    model_dir.mkdir()
+    (model_dir / "model.safetensors").write_bytes(b"fake weights")
+
+    original = build_report(model_dir, [item], [result], split="eval", revision="rev1")
+    rescored = rescore_from_report(original)
+
+    assert rescored["normalizations"] == original["normalizations"]
+    assert rescored["headline_normalization"] == original["headline_normalization"]
+
+
+def test_rescore_from_cli_needs_no_torch_or_transformers_import(tmp_path):
+    """Verified in a subprocess, matching tests/test_ttml_forward.py's import-purity pattern --
+    this test session may have already imported torch/transformers elsewhere."""
+    import json
+    import subprocess
+
+    report = {
+        "schema": "tt-tnt/storycloze/1", "dataset_revision": "rev1", "split": "eval",
+        "dataset": "juletxara/xstory_cloze", "dataset_config": "en",
+        "model_dir": "fake", "model_weights_sha256": "0" * 64,
+        "normalizations": {}, "headline_normalization": "mean_per_token",
+        "headline_accuracy": 0.0,
+        "per_item": [{
+            "story_id": "s1", "correct_ending": 1,
+            "full_1_raw_sum": -1.0, "full_2_raw_sum": -4.0,
+            "full_1_mean": -0.5, "full_2_mean": -2.0,
+            "full_1_n_tokens": 2, "full_2_n_tokens": 2,
+            "blind_1_raw_sum": -3.0, "blind_2_raw_sum": -3.0,
+            "blind_1_mean": -1.5, "blind_2_mean": -1.5,
+            "chosen_raw_sum": 1, "chosen_mean_per_token": 1,
+        }],
+    }
+    in_path = tmp_path / "in.json"
+    out_path = tmp_path / "out.json"
+    in_path.write_text(json.dumps(report))
+
+    probe = (
+        "import sys; "
+        "from scripts.eval_storycloze import main; "
+        f"main(['--rescore-from', {str(in_path)!r}, '--out', {str(out_path)!r}]); "
+        "bad = [m for m in ('torch', 'transformers') if m in sys.modules]; "
+        "print(','.join(bad))"
+    )
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                           check=True, cwd=str(ROOT))
+    # NOTE: deliberately not .strip()'d before .splitlines() -- main()'s own
+    # "[rescore] wrote ..." print precedes the probe's print(','.join(bad)) line, and when
+    # bad is empty that second print emits a blank line; stripping the whole string first
+    # would eat that trailing blank line and silently compare against the wrong line.
+    assert result.stdout.splitlines()[-1] == "", (
+        f"--rescore-from pulled in: {result.stdout.strip()}")
+    assert out_path.is_file()
+
+
+def test_eval_storycloze_module_imports_no_tenstorrent():
+    """Matches tests/test_ttml_forward.py's pattern: checked in a subprocess since this test
+    session may already have imported plenty of things transitively."""
+    import subprocess
+
+    probe = (
+        "import sys; import scripts.eval_storycloze; "
+        "bad=[m for m in ('ttnn','ttml') if m in sys.modules]; "
+        "print(','.join(bad))"
+    )
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                        check=True, cwd=str(ROOT))
+    assert out.stdout.strip() == "", f"scripts.eval_storycloze pulled in: {out.stdout.strip()}"

@@ -340,3 +340,141 @@ def compare_reports(a: dict, b: dict) -> dict:
         "headline_normalization": norm,
         "sign_test": result.as_json(),
     }
+
+
+def sha256_of_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_report(model_dir: Path, items: Sequence[StoryClozeItem],
+                 results: Sequence[ItemResult], *, split: str, revision: str) -> dict:
+    """Assemble the full output JSON: provenance, per-normalization stats, per-item scores."""
+    stats = aggregate(results)
+    headline = choose_headline_normalization(stats)
+
+    per_item = []
+    for item, result in zip(items, results):
+        row = {
+            "story_id": result.story_id,
+            "correct_ending": result.correct_ending,
+            "full_1_raw_sum": result.full_1.raw_sum_logprob,
+            "full_2_raw_sum": result.full_2.raw_sum_logprob,
+            "full_1_mean": result.full_1.mean_logprob,
+            "full_2_mean": result.full_2.mean_logprob,
+            "full_1_n_tokens": result.full_1.n_tokens,
+            "full_2_n_tokens": result.full_2.n_tokens,
+            "blind_1_raw_sum": result.blind_1.raw_sum_logprob,
+            "blind_2_raw_sum": result.blind_2.raw_sum_logprob,
+            "blind_1_mean": result.blind_1.mean_logprob,
+            "blind_2_mean": result.blind_2.mean_logprob,
+            "chosen_raw_sum": 1 if result.full_1.raw_sum_logprob > result.full_2.raw_sum_logprob else 2,
+            "chosen_mean_per_token": 1 if result.full_1.mean_logprob > result.full_2.mean_logprob else 2,
+        }
+        per_item.append(row)
+
+    weights_path = model_dir / "model.safetensors"
+    return {
+        "schema": "tt-tnt/storycloze/1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "dataset": STORYCLOZE_DATASET,
+        "dataset_config": STORYCLOZE_CONFIG,
+        "dataset_revision": revision,
+        "split": split,
+        "model_dir": str(model_dir),
+        "model_weights_sha256": sha256_of_file(weights_path),
+        "normalizations": {name: s.as_json() for name, s in stats.items()},
+        "headline_normalization": headline,
+        "headline_accuracy": stats[headline].accuracy,
+        "per_item": per_item,
+    }
+
+
+def rescore_from_report(report: dict) -> dict:
+    """Recompute every aggregate number from ``report["per_item"]`` alone -- no model needed.
+
+    Reconstructs minimal ``EndingScore``/``ItemResult`` objects from the stored per-item
+    floats rather than re-deriving anything from text, so this is a pure re-analysis of
+    already-computed numbers, the same ``--rescore-from`` contract as
+    ``eval_reach.py``/``eval_skits.py``.
+    """
+    results = []
+    for row in report["per_item"]:
+        results.append(ItemResult(
+            story_id=row["story_id"],
+            correct_ending=row["correct_ending"],
+            full_1=EndingScore(row["full_1_raw_sum"], row["full_1_mean"], row["full_1_n_tokens"]),
+            full_2=EndingScore(row["full_2_raw_sum"], row["full_2_mean"], row["full_2_n_tokens"]),
+            blind_1=EndingScore(row["blind_1_raw_sum"], row["blind_1_mean"], row["full_1_n_tokens"]),
+            blind_2=EndingScore(row["blind_2_raw_sum"], row["blind_2_mean"], row["full_2_n_tokens"]),
+        ))
+    stats = aggregate(results)
+    headline = choose_headline_normalization(stats)
+    out = dict(report)
+    out["normalizations"] = {name: s.as_json() for name, s in stats.items()}
+    out["headline_normalization"] = headline
+    out["headline_accuracy"] = stats[headline].accuracy
+    return out
+
+
+def run_model(model_dir: Path, split: str, *, revision: str = STORYCLOZE_REVISION,
+             cache_dir: Path = DEFAULT_CACHE_DIR) -> dict:
+    """Load ``model_dir`` and score every item of ``split``. Needs torch/transformers."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    items = load_storycloze_items(split, cache_dir=cache_dir, revision=revision)
+    tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+    model = AutoModelForCausalLM.from_pretrained(str(model_dir)).eval()
+
+    results = [score_item(model, tokenizer, item) for item in items]
+    return build_report(model_dir, items, results, split=split, revision=revision)
+
+
+def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--model", type=Path, default=None,
+                    help="Path to a converted HF model directory, e.g. artifacts/hf-tt-tnt-v3")
+    ap.add_argument("--split", choices=STORYCLOZE_SPLITS, default="eval")
+    ap.add_argument("--out", type=Path, default=None, help="Where to write the result JSON")
+    ap.add_argument("--rescore-from", type=Path, default=None,
+                    help="Re-derive every number from a stored result JSON -- no model, "
+                         "tokenizer, or device needed")
+    ap.add_argument("--compare", nargs=2, type=Path, default=None, metavar=("A_JSON", "B_JSON"),
+                    help="Paired McNemar-equivalent comparison of two result JSONs")
+    return ap.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = _parse_args(argv)
+
+    if args.compare is not None:
+        a = json.loads(args.compare[0].read_text())
+        b = json.loads(args.compare[1].read_text())
+        result = compare_reports(a, b)
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.rescore_from is not None:
+        report = json.loads(args.rescore_from.read_text())
+        rescored = rescore_from_report(report)
+        out_path = args.out or args.rescore_from
+        out_path.write_text(json.dumps(rescored, indent=2) + "\n")
+        print(f"[rescore] wrote {out_path}")
+        return 0
+
+    if args.model is None:
+        raise SystemExit("--model is required unless --rescore-from or --compare is given")
+    report = run_model(args.model, args.split)
+    out_path = args.out or (ROOT / "docs" / "measurements" / f"storycloze-{args.model.name}.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"[eval_storycloze] wrote {out_path} -- headline accuracy "
+          f"({report['headline_normalization']}): {report['headline_accuracy']:.4f}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
