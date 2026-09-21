@@ -209,3 +209,90 @@ def test_aggregate_computes_accuracy_and_length_bias_per_normalization():
     assert stats["raw_sum"].n_items == 2
     assert 0 <= stats["raw_sum"].class_balance_fraction_answer_1 <= 1
     assert stats["raw_sum"].length_bias_correlation is not None
+
+
+def test_choose_headline_normalization_prefers_lower_absolute_length_bias():
+    from scripts.eval_storycloze import NormalizationStats, choose_headline_normalization
+
+    stats = {
+        "raw_sum": NormalizationStats(
+            n_items=10, accuracy=0.6, context_blind_accuracy=0.55,
+            class_balance_fraction_answer_1=0.5,
+            length_bias_correlation=0.7, context_blind_length_bias_correlation=0.6),
+        "mean_per_token": NormalizationStats(
+            n_items=10, accuracy=0.65, context_blind_accuracy=0.52,
+            class_balance_fraction_answer_1=0.5,
+            length_bias_correlation=-0.1, context_blind_length_bias_correlation=0.05),
+    }
+    assert choose_headline_normalization(stats) == "mean_per_token"
+
+
+def test_choose_headline_normalization_treats_none_bias_as_worst_case():
+    """A normalization whose length-bias could not even be computed (zero variance) is not
+    silently preferred just because None fails a naive comparison in its favor."""
+    from scripts.eval_storycloze import NormalizationStats, choose_headline_normalization
+
+    stats = {
+        "raw_sum": NormalizationStats(
+            n_items=10, accuracy=0.6, context_blind_accuracy=0.55,
+            class_balance_fraction_answer_1=0.5,
+            length_bias_correlation=None, context_blind_length_bias_correlation=None),
+        "mean_per_token": NormalizationStats(
+            n_items=10, accuracy=0.65, context_blind_accuracy=0.52,
+            class_balance_fraction_answer_1=0.5,
+            length_bias_correlation=0.2, context_blind_length_bias_correlation=0.05),
+    }
+    assert choose_headline_normalization(stats) == "mean_per_token"
+
+
+def _minimal_report(revision: str, split: str, per_item: list, headline_norm: str = "mean_per_token") -> dict:
+    return {
+        "schema": "tt-tnt/storycloze/1",
+        "dataset_revision": revision,
+        "split": split,
+        "headline_normalization": headline_norm,
+        "per_item": per_item,
+    }
+
+
+def test_compare_reports_runs_a_paired_sign_test_over_headline_correctness():
+    from scripts.eval_storycloze import compare_reports
+
+    # Both models score item 1 correctly (concordant), item 2: model A wrong, model B right
+    # (discordant, favors B), item 3: model A right, model B wrong (discordant, favors A).
+    per_item_a = [
+        {"story_id": "s1", "correct_ending": 1, "chosen_mean_per_token": 1},
+        {"story_id": "s2", "correct_ending": 1, "chosen_mean_per_token": 2},
+        {"story_id": "s3", "correct_ending": 1, "chosen_mean_per_token": 1},
+    ]
+    per_item_b = [
+        {"story_id": "s1", "correct_ending": 1, "chosen_mean_per_token": 1},
+        {"story_id": "s2", "correct_ending": 1, "chosen_mean_per_token": 1},
+        {"story_id": "s3", "correct_ending": 1, "chosen_mean_per_token": 2},
+    ]
+    a = _minimal_report("rev1", "eval", per_item_a)
+    b = _minimal_report("rev1", "eval", per_item_b)
+
+    result = compare_reports(a, b)
+    assert result["n_items_compared"] == 3
+    assert result["sign_test"]["n"] == 2  # two discordant pairs
+    assert result["sign_test"]["n_negative"] == 1  # favors A (item s3)
+    assert result["sign_test"]["n_positive"] == 1  # favors B (item s2)
+
+
+def test_compare_reports_refuses_mismatched_dataset_revision():
+    from scripts.eval_storycloze import compare_reports
+
+    a = _minimal_report("rev1", "eval", [])
+    b = _minimal_report("rev2", "eval", [])
+    with pytest.raises(ValueError, match="dataset_revision"):
+        compare_reports(a, b)
+
+
+def test_compare_reports_refuses_mismatched_split():
+    from scripts.eval_storycloze import compare_reports
+
+    a = _minimal_report("rev1", "eval", [])
+    b = _minimal_report("rev1", "train", [])
+    with pytest.raises(ValueError, match="split"):
+        compare_reports(a, b)

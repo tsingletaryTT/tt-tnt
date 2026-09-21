@@ -280,3 +280,63 @@ def aggregate(results: Sequence[ItemResult]) -> Dict[str, NormalizationStats]:
             context_blind_length_bias_correlation=blind_bias,
         )
     return out
+
+
+def choose_headline_normalization(stats: Dict[str, NormalizationStats]) -> str:
+    """The normalization with the lower |length_bias_correlation| is reported as headline.
+
+    A ``None`` bias (undefined, zero-variance case) is treated as the worst possible value
+    (``math.inf``) rather than compared with ``<`` directly against a real float, so an
+    undefined bias never wins by accident of Python's comparison rules.
+    """
+
+    def _key(name: str) -> float:
+        bias = stats[name].length_bias_correlation
+        return math.inf if bias is None else abs(bias)
+
+    return min(stats, key=_key)
+
+
+def compare_reports(a: dict, b: dict) -> dict:
+    """Paired McNemar-equivalent comparison of two ``--out`` result dicts.
+
+    McNemar's exact test over a 2x2 correct/incorrect table reduces to an exact two-sided
+    binomial (sign) test over the discordant pairs -- exactly what
+    ``scripts.evaluate.sign_test`` already computes, reused here rather than reimplemented.
+    Refuses a pair scored on different dataset revisions or splits, the same refusal shape as
+    ``evaluate.py``'s window guard and ``reach.py``'s cross-arm-set refusal -- a number
+    computed from two non-comparable inputs is worse than no number.
+    """
+    if a["dataset_revision"] != b["dataset_revision"]:
+        raise ValueError(
+            f"dataset_revision mismatch: {a['dataset_revision']!r} vs {b['dataset_revision']!r} "
+            f"-- refusing to compare results scored on different dataset snapshots")
+    if a["split"] != b["split"]:
+        raise ValueError(
+            f"split mismatch: {a['split']!r} vs {b['split']!r} -- refusing to compare results "
+            f"scored on different splits")
+
+    norm = a["headline_normalization"]
+    key = f"chosen_{norm}"
+    by_id_a = {row["story_id"]: row for row in a["per_item"]}
+    by_id_b = {row["story_id"]: row for row in b["per_item"]}
+    shared_ids = sorted(set(by_id_a) & set(by_id_b))
+
+    deltas: List[float] = []
+    for story_id in shared_ids:
+        row_a, row_b = by_id_a[story_id], by_id_b[story_id]
+        correct_a = row_a[key] == row_a["correct_ending"]
+        correct_b = row_b[key] == row_b["correct_ending"]
+        if correct_a == correct_b:
+            deltas.append(0.0)
+        elif correct_b and not correct_a:
+            deltas.append(1.0)   # favors b
+        else:
+            deltas.append(-1.0)  # favors a
+
+    result = sign_test(deltas)
+    return {
+        "n_items_compared": len(shared_ids),
+        "headline_normalization": norm,
+        "sign_test": result.as_json(),
+    }
