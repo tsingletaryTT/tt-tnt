@@ -608,24 +608,40 @@ Two length normalizations of the ending's total loglikelihood are computed for e
 absolute length-bias correlation, chosen per model rather than fixed in advance. For both
 models that is `mean_per_token`.
 
-| model | headline accuracy (`mean_per_token`) | context-blind accuracy | class balance (answer 1) |
-|---|---:|---:|---:|
-| `tt-tnt` (22M) | 0.5705 | 0.5222 | 0.5281 |
-| `tt-tnt-1024` (123M) | 0.6062 | 0.5268 | 0.5281 |
+**Chance on this task is the measured class balance, 0.5281** — 52.8% of the 1,511 items have
+ending 1 correct — not an assumed 0.50. One standard error at n=1,511 against that baseline is
+0.0128, and the verdict column below uses the same convention as the benchmark tables above.
 
-Chance on this task is 0.50. Both models clear it on the full-context score, and the class
-balance (52.8% of items have ending 1 correct) is close enough to even that a fixed-answer
-strategy would not explain the gap on its own. But the context-blind control — the same
-scorer, shown only the two candidate endings and never the four context sentences that precede
-them — is not far behind either full-context number: 0.5222 against 0.5705 for `tt-tnt`, 0.5268
-against 0.6062 for `tt-tnt-1024`. That control is a **ceiling on what the full-context score
-can claim to measure**: whatever an ending-only scorer can already recover — which ending
-merely *reads* more like typical continuation prose, independent of the actual story context —
-is not evidence of narrative coherence, and both full-context scores sit only a little above
-that ceiling. Read plainly, most of each model's forced-choice accuracy is explainable without
-looking at the story at all; the context-blind gap (0.0483 for `tt-tnt`, 0.0794 for
-`tt-tnt-1024`) is the most either model's full-context score can be credited as genuinely
-context-driven, and even that gap is not itself proven free of confounds by this control alone.
+| model | condition | accuracy | chance | s.e. from chance | verdict |
+|---|---|---:|---:|---:|---|
+| `tt-tnt` (22M) | full context | 0.5705 | 0.5281 | +3.3 | ABOVE CHANCE |
+| `tt-tnt` (22M) | context-blind | 0.5222 | 0.5281 | −0.5 | **AT CHANCE** |
+| `tt-tnt-1024` (123M) | full context | 0.6062 | 0.5281 | +6.1 | ABOVE CHANCE |
+| `tt-tnt-1024` (123M) | context-blind | 0.5268 | 0.5281 | −0.1 | **AT CHANCE** |
+
+**The published Story Cloze shortcut was looked for and essentially not found, which is the
+most useful thing in that table.** Schwartz et al. (arXiv 1703.04330) showed classifiers scoring
+well above chance on this dataset using *only* the candidate endings, because the wrong endings
+were authored separately and carry stylistic tells. The context-blind control is that attack,
+run against these models: the same scorer, shown the two endings and never the four context
+sentences. It lands at 0.5222 and 0.5268 — both **fractionally below** the 0.5281 baseline, at
+−0.5 and −0.1 standard errors. Neither model can pick the real ending from ending style alone.
+So nearly all of each model's above-chance accuracy is attributable to actually reading the
+context, not to an artifact of how the dataset was written.
+
+That is a claim about each model against itself, and it is tested that way too — a paired
+sign test over the items where a model's full-context choice and its own context-blind choice
+disagree. `tt-tnt`: 325 discordant items, 199 favoring full context against 126 favoring blind,
+**p = 6.1e-05**. `tt-tnt-1024`: 370 discordant, 245 against 125, **p = 4.4e-10**. Both models
+are significantly better with the story than without it.
+
+One honest limitation on the control's *absolute* value: "no context" is implemented as a
+one-token `<s>` (bos, id 1) prefix, so the first ending token has something to condition on —
+but these models were tokenized with `add_special_tokens=False` throughout training and use
+`</s>` (id 2) as the document separator, so a bare `<s>` is somewhat off-distribution as a
+"blank" prefix. Read the blind number as a rough ceiling on the ending-only shortcut rather
+than a precise measurement of it; the two full-vs-blind paired tests above do not depend on
+that absolute value, only on the two conditions being scored the same way.
 
 The paired comparison (`--compare`, an exact McNemar-equivalent sign test over the 202 items
 where the two models' headline-normalization correctness disagreed, out of 1,511 scored) is
@@ -634,13 +650,31 @@ convention, positive favors the second model passed to `--compare` — `tt-tnt-1
 the 202 discordant items favor `tt-tnt-1024` against 74 favoring `tt-tnt`. At p=0.000177, well
 under the usual 0.05 threshold, this is **SIGNIFICANT, favoring `tt-tnt-1024`** — the larger
 (123M vs 22M parameter) model resolves more of these forced choices correctly than `tt-tnt`
-does, on items where the two models actually disagree. What this does not establish: how much of
-that edge is capacity, how much is context window (`tt-tnt` trains at a 2048-token window,
-`tt-tnt-1024` at 512 — the larger model actually sees *less* context here, so the comparison is
-not a clean capacity-only contrast in either direction), and how much either model's edge over
-the other is itself downstream of
-the same context-blind confound described above, which was not decomposed out of this
-comparison.
+does, on items where the two models actually disagree. What this does not establish is how much
+of that edge is capacity and how much is everything else that differs between the two
+checkpoints: they are trained at different context lengths (`tt-tnt` at 2048 tokens,
+`tt-tnt-1024` at 512), on different corpus generations, with a dialogue slice only the 1024 line
+saw. None of that is a truncation caveat *here* — the longest scored sequence in the whole
+split is **76 tokens** (context plus the longer ending, re-tokenized and measured with each
+model's own tokenizer), so both models see every item complete and identical, well inside even
+the 512-token window.
+
+**The smaller `train` split agrees on the headline and disagrees on one control.** The same run
+over the 360-item `train` split
+([`storycloze-tt-tnt-train.json`](docs/measurements/storycloze-tt-tnt-train.json),
+[`storycloze-tt-tnt-1024-train.json`](docs/measurements/storycloze-tt-tnt-1024-train.json)) —
+also never trained on, and with its own class balance of 0.4556, not `eval`'s 0.5281 — gives
+full-context accuracy 0.5694 for `tt-tnt` (+4.3 s.e.) and 0.6028 for `tt-tnt-1024` (+5.6 s.e.),
+reproducing both the ordering and roughly the magnitude of the `eval` result. Two differences
+worth stating rather than smoothing over. First, the context-blind control is **not** at chance
+here: 0.5194 and 0.5167 against the 0.4556 baseline, +2.4 and +2.3 standard errors — so on this
+much smaller split the ending-only shortcut is faintly visible, which is a reason to treat the
+`eval` split's cleaner result as the better-powered one rather than the only one. Second, the
+`tt-tnt`-vs-`tt-tnt-1024` comparison on `train` is **not significant** (48 discordant items,
+30 favoring `tt-tnt-1024`, p = 0.111) — the same direction as `eval`, at a quarter of the
+sample, which is what an underpowered replication of a real effect looks like. Both numbers are
+reproducible with no model from the committed artifacts: `--rescore-from` for the per-model
+figures, `--compare` on the two `train` JSONs for the paired test.
 
 ## Embedding geography
 

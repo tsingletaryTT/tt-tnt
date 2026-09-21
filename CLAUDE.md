@@ -3419,3 +3419,90 @@ something the local tooling cannot read is precisely what happened.
   stand-ins, and my own `--public` test that would have exited for the wrong reason.
 - **Publishing needs a named target.** A default that points at the model you are *not* working
   on is a loaded gun.
+
+## 2026-09-21 — StoryCloze: the shortcut we went looking for isn't there, and the README said the opposite
+
+Prompt: run the "StoryBench" model benchmark against the two published models. Spec:
+`docs/superpowers/specs/2026-09-21-storycloze-benchmark-design.md`. New:
+`scripts/eval_storycloze.py`, `tests/test_eval_storycloze.py`, four measurement artifacts.
+
+**The literal paper does not fit, and substituting was the whole first decision.** StoryBench
+(arXiv 2506.13356) evaluates 200k-context frontier LLMs playing branching interactive fiction:
+read a scene, pick a labelled option, absorb correction feedback, name the turn where a mistake
+first occurred. Neither `episod/tt-tnt` (22M) nor `episod/tt-tnt-1024` (123M) has instruction
+tuning — this log already records the 1024 line answering "capital of France" with a repetition
+loop — so running the paper's protocol would have measured "does this model follow
+instructions" (no, categorically) at a floor with no diagnostic value. Substituted the **Story
+Cloze Test** (Mostafazadeh et al. 2016): forced-choice log-likelihood ranking between a story's
+real fifth sentence and a plausible wrong one, the LAMBADA/HellaSwag family a base LM can
+actually be scored on, and the closest thing to StoryBench's stated concern (narrative
+coherence) that these models can do at all. The substitution was surfaced in brainstorming, not
+assumed.
+
+**The dataset name was wrong twice before it was right, and reading the card would not have
+caught it.** `Muennighoff/xstory_cloze`'s `_LANG` list has no `"en"` in it *and* every language
+it does carry still needs the gated Rochester form — found by reading the loading script, while
+the HF card's auto-generated summary claimed an ungated English config. `juletxara/xstory_cloze`
+config `en` is the real ungated parquet mirror, CC BY-SA 4.0, pinned at revision
+`c4c2d88a1e…` and recorded in every output JSON.
+
+**Headline: the 123M model wins, significantly.** Paired McNemar-equivalent exact sign test over
+the identical 1,511 `eval` items — items being the exchangeable unit, the same pairing discipline
+as prompts in `score_behaviour.py` — **202 discordant, 128 favouring `tt-tnt-1024` against 74,
+p = 0.000177**. Accuracies 0.5705 (`tt-tnt`) and 0.6062 (`tt-tnt-1024`) under `mean_per_token`,
+which both runs selected as headline because its length-bias correlation (0.171 / 0.184) is a
+third of `raw_sum`'s (−0.623 / −0.598); both normalizations stay in the artifact.
+
+**The interesting finding is the control, and the first draft of the README inverted it.**
+Schwartz et al. (arXiv 1703.04330) showed classifiers beating chance on this dataset from the
+*endings alone*, because the wrong endings were authored separately and carry stylistic tells.
+The context-blind control is that attack run against our models, and it comes back **empty**:
+0.5222 and 0.5268 against the measured 0.5281 class balance — **−0.5 and −0.1 standard errors,
+AT CHANCE**. Nearly all of each model's above-chance accuracy is context-driven. Tested
+within-model too, paired over items where a model's full-context and blind choices disagree:
+`tt-tnt` 199/325 favouring full context, p = 6.1e-05; `tt-tnt-1024` 245/370, p = 4.4e-10.
+
+The README shipped saying the opposite — "most of each model's forced-choice accuracy is
+explainable without looking at the story at all" — and the mechanism is worth keeping. **The
+ceiling argument was made by comparing the blind number to the headline instead of to chance.**
+0.5222 against 0.5705 does look like "not far behind"; 0.5222 against 0.5281 is *below the
+baseline*. The StoryCloze table was also the only one in that section of the README without the
+s.e.-from-chance and verdict columns its two neighbouring benchmark tables already carry, which
+is precisely the column that makes that comparison impossible to skip. Adding it is Fix 1 of
+this wave. **A control is read against the null, never against the number it is controlling.**
+
+**The measured chance baseline is not decoration either, and it errs in both directions.**
+0.5281 on `eval`, **0.4556** on `train`. Against an assumed 0.50 the `eval` blind control reads
+**+1.7 and +2.1 s.e.** — manufacturing the very shortcut we concluded was absent — while the
+`train` blind control reads **+0.7 and +0.6** where its real baseline puts it at +2.4 and +2.3,
+hiding the one place the shortcut *is* faintly visible. The spec's insistence on the empirical
+split earned itself back twice, in opposite directions.
+
+**Both splits were run, and they disagree about the control.** The 360-item `train` split
+reproduces the ordering (0.5694 / 0.6028, +4.3 / +5.6 s.e.) but its blind control is **+2.4 and
++2.3 s.e. above its own baseline** — the ending-only shortcut is faintly visible there. Its
+model-vs-model comparison is **not significant** (48 discordant, 30 favouring 1024, p = 0.111):
+same direction, a quarter of the sample, what an underpowered replication looks like. Published
+as-is rather than dropped for disagreeing with the better-powered split.
+
+**Two caveats that are real and were nearly stated wrong.** (1) "No context" is a one-token
+`<s>` prefix, but these models trained with `add_special_tokens=False` and use `</s>` as the
+document separator, so `<s>` is off-distribution as a blank — the blind *absolute* value is a
+rough ceiling, though the paired full-vs-blind tests do not depend on it. (2) A draft claimed
+`tt-tnt-1024` "sees less context here" because it trains at 512 against v3's 2048. Nothing is
+truncated for either model in this eval: re-tokenized with each model's own tokenizer, the
+**longest scored sequence in the split is 76 tokens**. The two models train at different
+context lengths; in *this* measurement they see identical, complete items.
+
+Fix wave also: one `pick_ending` helper so the argmax rule cannot diverge between `aggregate`'s
+accuracy and the stored `chosen_*` fields (mutation-tested — inverting it must move both), a
+length check in `build_report` so a short `results` cannot silently `zip`-truncate the report, a
+refusal when `--compare`'s two reports selected *different* headline normalizations (it scores
+both with A's choice, so a mismatch judged B by a normalization its own run rejected), two dead
+imports, and a docstring that said 1,510 rows where the split has 1,511.
+
+Suite: **1,857 passed, 75 skipped** (`tests/test_eval_storycloze.py`: 22, up from 19). Two
+failures in `test_eval_reach.py`/`test_evaluate.py` are this worktree's partial artifact copy —
+their skip guards key on `artifacts/hf-tt-tnt-v3`, which was deliberately copied in for this
+work, while the `artifacts/reach-skits/` and `artifacts/tokens-v3/` data they actually read was
+not. CPU only: no ttnn, no ttml, no device, no lease.
