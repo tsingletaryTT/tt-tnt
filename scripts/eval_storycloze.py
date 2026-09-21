@@ -8,8 +8,11 @@ why this replaces the literal "StoryBench" (arXiv 2506.13356) paper, which targe
 instruction-tuned frontier LLMs neither model here can imitate.
 
 Dataset: juletxara/xstory_cloze, config "en", CC BY-SA 4.0 (see README's Provenance and
-licensing section). Splits are named "train" (360 rows) and "eval" (1,510 rows) -- confirmed
-directly against the dataset viewer, not assumed from the more common val/test naming.
+licensing section). Splits are named "train" (360 rows) and "eval" (1,511 rows) -- confirmed
+directly against the dataset viewer, not assumed from the more common val/test naming. The
+"eval" count is 1,511 unique story_ids, counted from the loaded split itself; an earlier draft
+of this docstring said 1,510, which was a miscount and is corrected here rather than left to
+contradict every artifact this script writes.
 """
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ import hashlib
 import json
 import math
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -26,7 +29,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.evaluate import sign_test, SignTest  # noqa: E402
+from scripts.evaluate import sign_test  # noqa: E402
 
 STORYCLOZE_DATASET = "juletxara/xstory_cloze"
 STORYCLOZE_CONFIG = "en"
@@ -228,6 +231,19 @@ def pearson_correlation(xs: Sequence[float], ys: Sequence[float]) -> Optional[fl
     return cov / math.sqrt(var_x * var_y)
 
 
+def pick_ending(score_1: float, score_2: float) -> int:
+    """The forced choice: ending 1 wins only if it strictly outscores ending 2.
+
+    One definition, two call sites (``_accuracy_and_length_bias``'s accuracy count and
+    ``build_report``'s stored ``chosen_*`` fields). Those two computed the identical rule
+    inline before, which meant the accuracy in a report's ``normalizations`` block and the
+    per-item ``chosen_*`` fields that ``--rescore-from`` and ``--compare`` read could have
+    silently disagreed after an edit to either one. A tie goes to ending 2 -- arbitrary, but
+    fixed here rather than in two places that are free to drift apart.
+    """
+    return 1 if score_1 > score_2 else 2
+
+
 def _accuracy_and_length_bias(
     picks: Sequence[Tuple[float, float, int, int]], correct: Sequence[int],
 ) -> Tuple[float, Optional[float]]:
@@ -241,7 +257,7 @@ def _accuracy_and_length_bias(
     score_diffs: List[float] = []
     len_diffs: List[float] = []
     for (s1, s2, len1, len2), correct_ending in zip(picks, correct):
-        chosen = 1 if s1 > s2 else 2
+        chosen = pick_ending(s1, s2)
         if chosen == correct_ending:
             n_correct += 1
         score_diffs.append(s1 - s2)
@@ -315,6 +331,12 @@ def compare_reports(a: dict, b: dict) -> dict:
         raise ValueError(
             f"split mismatch: {a['split']!r} vs {b['split']!r} -- refusing to compare results "
             f"scored on different splits")
+    if a["headline_normalization"] != b["headline_normalization"]:
+        raise ValueError(
+            f"headline_normalization mismatch: {a['headline_normalization']!r} vs "
+            f"{b['headline_normalization']!r} -- this function scores BOTH reports with A's "
+            f"headline choice, so a mismatch would silently judge B by a normalization its own "
+            f"run did not select; refusing rather than computing that number")
 
     norm = a["headline_normalization"]
     key = f"chosen_{norm}"
@@ -352,7 +374,16 @@ def sha256_of_file(path: Path) -> str:
 
 def build_report(model_dir: Path, items: Sequence[StoryClozeItem],
                  results: Sequence[ItemResult], *, split: str, revision: str) -> dict:
-    """Assemble the full output JSON: provenance, per-normalization stats, per-item scores."""
+    """Assemble the full output JSON: provenance, per-normalization stats, per-item scores.
+
+    ``items`` is not read for its text -- the per-item rows are built entirely from
+    ``results`` -- but it is required to be the same length, because the ``zip`` below would
+    otherwise silently truncate to the shorter of the two and write a report missing items
+    with no error anywhere.
+    """
+    if len(items) != len(results):
+        raise ValueError(
+            f"items and results must be the same length, got {len(items)} and {len(results)}")
     stats = aggregate(results)
     headline = choose_headline_normalization(stats)
 
@@ -371,8 +402,10 @@ def build_report(model_dir: Path, items: Sequence[StoryClozeItem],
             "blind_2_raw_sum": result.blind_2.raw_sum_logprob,
             "blind_1_mean": result.blind_1.mean_logprob,
             "blind_2_mean": result.blind_2.mean_logprob,
-            "chosen_raw_sum": 1 if result.full_1.raw_sum_logprob > result.full_2.raw_sum_logprob else 2,
-            "chosen_mean_per_token": 1 if result.full_1.mean_logprob > result.full_2.mean_logprob else 2,
+            "chosen_raw_sum": pick_ending(
+                result.full_1.raw_sum_logprob, result.full_2.raw_sum_logprob),
+            "chosen_mean_per_token": pick_ending(
+                result.full_1.mean_logprob, result.full_2.mean_logprob),
         }
         per_item.append(row)
 

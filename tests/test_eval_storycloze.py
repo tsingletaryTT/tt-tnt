@@ -298,6 +298,87 @@ def test_compare_reports_refuses_mismatched_split():
         compare_reports(a, b)
 
 
+def test_compare_reports_refuses_mismatched_headline_normalization():
+    """A and B must have SELECTED the same normalization, not merely be scorable under one.
+
+    ``compare_reports`` reads A's ``headline_normalization`` and applies it to both reports.
+    Before this refusal, a B whose own run chose ``raw_sum`` would have been silently judged
+    by ``mean_per_token`` with nothing in the output recording that substitution.
+    """
+    from scripts.eval_storycloze import compare_reports
+
+    a = _minimal_report("rev1", "eval", [], headline_norm="mean_per_token")
+    b = _minimal_report("rev1", "eval", [], headline_norm="raw_sum")
+    with pytest.raises(ValueError, match="headline_normalization"):
+        compare_reports(a, b)
+
+
+def test_build_report_refuses_items_and_results_of_different_lengths(tmp_path):
+    """``zip`` would truncate silently; the report would be short with no error raised."""
+    from scripts.eval_storycloze import StoryClozeItem, ItemResult, EndingScore, build_report
+
+    items = [
+        StoryClozeItem(story_id=f"s{i}", context_sentences=("A.", "B.", "C.", "D."),
+                       ending_1="ok", ending_2="bad", correct_ending=1)
+        for i in range(2)
+    ]
+    result = ItemResult(
+        story_id="s0", correct_ending=1,
+        full_1=EndingScore(raw_sum_logprob=-1.0, mean_logprob=-0.5, n_tokens=2),
+        full_2=EndingScore(raw_sum_logprob=-4.0, mean_logprob=-2.0, n_tokens=2),
+        blind_1=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+        blind_2=EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+    )
+    model_dir = tmp_path / "hf-fake"
+    model_dir.mkdir()
+    (model_dir / "model.safetensors").write_bytes(b"fake weights")
+
+    with pytest.raises(ValueError, match="same length, got 2 and 1"):
+        build_report(model_dir, items, [result], split="eval", revision="rev1")
+
+
+def test_pick_ending_is_the_single_rule_both_call_sites_use(tmp_path):
+    """The stored ``chosen_*`` fields and the accuracy count must come from one definition.
+
+    Monkeypatching ``pick_ending`` to the inverted rule has to move BOTH the per-item
+    ``chosen_*`` values and ``aggregate``'s accuracy -- if either kept an inline copy of the
+    rule, one of these assertions fails.
+    """
+    import scripts.eval_storycloze as mod
+
+    assert mod.pick_ending(-1.0, -2.0) == 1
+    assert mod.pick_ending(-2.0, -1.0) == 2
+    assert mod.pick_ending(-1.0, -1.0) == 2  # tie goes to ending 2
+
+    item = mod.StoryClozeItem(
+        story_id="s1", context_sentences=("A.", "B.", "C.", "D."),
+        ending_1="ok", ending_2="bad", correct_ending=1)
+    result = mod.ItemResult(
+        story_id="s1", correct_ending=1,
+        full_1=mod.EndingScore(raw_sum_logprob=-1.0, mean_logprob=-0.5, n_tokens=2),
+        full_2=mod.EndingScore(raw_sum_logprob=-4.0, mean_logprob=-2.0, n_tokens=2),
+        blind_1=mod.EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+        blind_2=mod.EndingScore(raw_sum_logprob=-3.0, mean_logprob=-1.5, n_tokens=2),
+    )
+    model_dir = tmp_path / "hf-fake"
+    model_dir.mkdir()
+    (model_dir / "model.safetensors").write_bytes(b"fake weights")
+
+    baseline = mod.build_report(model_dir, [item], [result], split="eval", revision="rev1")
+    assert baseline["per_item"][0]["chosen_mean_per_token"] == 1
+    assert baseline["normalizations"]["mean_per_token"]["accuracy"] == pytest.approx(1.0)
+
+    original = mod.pick_ending
+    try:
+        mod.pick_ending = lambda s1, s2: 2 if s1 > s2 else 1
+        inverted = mod.build_report(model_dir, [item], [result], split="eval", revision="rev1")
+    finally:
+        mod.pick_ending = original
+
+    assert inverted["per_item"][0]["chosen_mean_per_token"] == 2
+    assert inverted["normalizations"]["mean_per_token"]["accuracy"] == pytest.approx(0.0)
+
+
 def test_build_report_records_provenance_and_per_item_scores(tmp_path):
     from scripts.eval_storycloze import StoryClozeItem, ItemResult, EndingScore, build_report
 
