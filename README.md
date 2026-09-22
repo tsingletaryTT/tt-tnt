@@ -591,6 +591,91 @@ Four honest deflations belong with the above, and the reports carry all four:
   have never been run on the same checkpoint: there is no context probe for `tt-tnt-1024a`. So
   this is an open question rather than a contradiction, and it is recorded as one.
 
+### StoryCloze (forced-choice narrative coherence)
+
+`scripts/eval_storycloze.py` scores both published models on the full 1,511-item `eval` split
+of `juletxara/xstory_cloze`'s English config (pinned revision `c4c2d88a1ec8b37fe22166d2a610f272726724b6`)
+— a forced two-way choice between a story's real ending and a plausible-but-wrong one, scored by
+loglikelihood ranking rather than generation. Full reports:
+[`docs/measurements/storycloze-tt-tnt.json`](docs/measurements/storycloze-tt-tnt.json) (`tt-tnt`,
+22M params), [`docs/measurements/storycloze-tt-tnt-1024.json`](docs/measurements/storycloze-tt-tnt-1024.json)
+(`tt-tnt-1024`, 123M params),
+[`docs/measurements/storycloze-tt-tnt-vs-tt-tnt-1024.json`](docs/measurements/storycloze-tt-tnt-vs-tt-tnt-1024.json)
+(the paired comparison).
+
+Two length normalizations of the ending's total loglikelihood are computed for every item
+(`raw_sum`, `mean_per_token`); the one reported as headline is whichever has the smaller
+absolute length-bias correlation, chosen per model rather than fixed in advance. For both
+models that is `mean_per_token`.
+
+**Chance on this task is the measured class balance, 0.5281** — 52.8% of the 1,511 items have
+ending 1 correct — not an assumed 0.50. One standard error at n=1,511 against that baseline is
+0.0128, and the verdict column below uses the same convention as the benchmark tables above.
+
+| model | condition | accuracy | chance | s.e. from chance | verdict |
+|---|---|---:|---:|---:|---|
+| `tt-tnt` (22M) | full context | 0.5705 | 0.5281 | +3.3 | ABOVE CHANCE |
+| `tt-tnt` (22M) | context-blind | 0.5222 | 0.5281 | −0.5 | **AT CHANCE** |
+| `tt-tnt-1024` (123M) | full context | 0.6062 | 0.5281 | +6.1 | ABOVE CHANCE |
+| `tt-tnt-1024` (123M) | context-blind | 0.5268 | 0.5281 | −0.1 | **AT CHANCE** |
+
+**The published Story Cloze shortcut was looked for and essentially not found, which is the
+most useful thing in that table.** Schwartz et al. (arXiv 1703.04330) showed classifiers scoring
+well above chance on this dataset using *only* the candidate endings, because the wrong endings
+were authored separately and carry stylistic tells. The context-blind control is that attack,
+run against these models: the same scorer, shown the two endings and never the four context
+sentences. It lands at 0.5222 and 0.5268 — both **fractionally below** the 0.5281 baseline, at
+−0.5 and −0.1 standard errors. Neither model can pick the real ending from ending style alone.
+So nearly all of each model's above-chance accuracy is attributable to actually reading the
+context, not to an artifact of how the dataset was written.
+
+That is a claim about each model against itself, and it is tested that way too — a paired
+sign test over the items where a model's full-context choice and its own context-blind choice
+disagree. `tt-tnt`: 325 discordant items, 199 favoring full context against 126 favoring blind,
+**p = 6.1e-05**. `tt-tnt-1024`: 370 discordant, 245 against 125, **p = 4.4e-10**. Both models
+are significantly better with the story than without it.
+
+One honest limitation on the control's *absolute* value: "no context" is implemented as a
+one-token `<s>` (bos, id 1) prefix, so the first ending token has something to condition on —
+but these models were tokenized with `add_special_tokens=False` throughout training and use
+`</s>` (id 2) as the document separator, so a bare `<s>` is somewhat off-distribution as a
+"blank" prefix. Read the blind number as a rough ceiling on the ending-only shortcut rather
+than a precise measurement of it; the two full-vs-blind paired tests above do not depend on
+that absolute value, only on the two conditions being scored the same way.
+
+The paired comparison (`--compare`, an exact McNemar-equivalent sign test over the 202 items
+where the two models' headline-normalization correctness disagreed, out of 1,511 scored) is
+**n=202, n_negative=74, n_positive=128, p_two_sided=0.000177**. By this script's sign
+convention, positive favors the second model passed to `--compare` — `tt-tnt-1024` — so 128 of
+the 202 discordant items favor `tt-tnt-1024` against 74 favoring `tt-tnt`. At p=0.000177, well
+under the usual 0.05 threshold, this is **SIGNIFICANT, favoring `tt-tnt-1024`** — the larger
+(123M vs 22M parameter) model resolves more of these forced choices correctly than `tt-tnt`
+does, on items where the two models actually disagree. What this does not establish is how much
+of that edge is capacity and how much is everything else that differs between the two
+checkpoints: they are trained at different context lengths (`tt-tnt` at 2048 tokens,
+`tt-tnt-1024` at 512), on different corpus generations, with a dialogue slice only the 1024 line
+saw. None of that is a truncation caveat *here* — the longest scored sequence in the whole
+split is **76 tokens** (context plus the longer ending, re-tokenized and measured with each
+model's own tokenizer), so both models see every item complete and identical, well inside even
+the 512-token window.
+
+**The smaller `train` split agrees on the headline and disagrees on one control.** The same run
+over the 360-item `train` split
+([`storycloze-tt-tnt-train.json`](docs/measurements/storycloze-tt-tnt-train.json),
+[`storycloze-tt-tnt-1024-train.json`](docs/measurements/storycloze-tt-tnt-1024-train.json)) —
+also never trained on, and with its own class balance of 0.4556, not `eval`'s 0.5281 — gives
+full-context accuracy 0.5694 for `tt-tnt` (+4.3 s.e.) and 0.6028 for `tt-tnt-1024` (+5.6 s.e.),
+reproducing both the ordering and roughly the magnitude of the `eval` result. Two differences
+worth stating rather than smoothing over. First, the context-blind control is **not** at chance
+here: 0.5194 and 0.5167 against the 0.4556 baseline, +2.4 and +2.3 standard errors — so on this
+much smaller split the ending-only shortcut is faintly visible, which is a reason to treat the
+`eval` split's cleaner result as the better-powered one rather than the only one. Second, the
+`tt-tnt`-vs-`tt-tnt-1024` comparison on `train` is **not significant** (48 discordant items,
+30 favoring `tt-tnt-1024`, p = 0.111) — the same direction as `eval`, at a quarter of the
+sample, which is what an underpowered replication of a real effect looks like. Both numbers are
+reproducible with no model from the committed artifacts: `--rescore-from` for the per-model
+figures, `--compare` on the two `train` JSONs for the paired test.
+
 ## Embedding geography
 
 A proposed sampler would lay the 32,000-token vocabulary onto Blackhole's Tensix grid and sample
@@ -789,6 +874,17 @@ stripped as markup; only the HTML tags wrapping the page are removed. As with ev
 source here, this project does not redistribute the text; it is fetched at request time from
 the live NASA page listed above. `target_share` is `0.0` at registration — the share is set
 once the blend is re-settled to include it (see `docs/corpus_blend.md`).
+
+Evaluation data — Story Cloze. `scripts/eval_storycloze.py` scores both published models
+against the Story Cloze Test (Mostafazadeh et al. 2016) via
+[`juletxara/xstory_cloze`](https://huggingface.co/datasets/juletxara/xstory_cloze)'s English
+config, under **CC BY-SA 4.0** (the license the multilingual XStoryCloze project applied to its
+whole release, inherited here rather than re-derived). This is evaluation data only — never
+mixed into any training corpus — and is fetched from the Hugging Face Hub at a pinned revision,
+not redistributed. Worth stating plainly: the original English Story Cloze Test is nominally
+gated behind a research-use request form at the University of Rochester; this project is
+relying on the upstream XStoryCloze project's own CC BY-SA 4.0 licensing decision for the
+mirror it uses, not re-requesting the original release.
 
 Long-context corpus — a pulp science-fiction slice, gated and currently empty. A twelfth
 source, `pulp_sf` (`scripts/fetch_pulp_sf.py`; see `train/corpus.py`), targets 1950-63
