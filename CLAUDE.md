@@ -3506,3 +3506,97 @@ failures in `test_eval_reach.py`/`test_evaluate.py` are this worktree's partial 
 their skip guards key on `artifacts/hf-tt-tnt-v3`, which was deliberately copied in for this
 work, while the `artifacts/reach-skits/` and `artifacts/tokens-v3/` data they actually read was
 not. CPU only: no ttnn, no ttml, no device, no lease.
+
+## 2026-09-22/23 — Stage A: the data scale-up spec's first real run, and its predicted null
+
+Picked up `docs/superpowers/specs/2026-09-01-data-scale-up-design.md` (drafted, never started)
+at the user's direction: "make a few solid decisions and proceed training until you see
+progress. No risks, no stops." Skipped the spec's own gate-by-gate ceremony deliberately —
+ran the cheap tokenizer-fertility check (Gate 1, passed: FineWeb-Edu at 1.418 tok/word vs the
+blend's weighted 1.373, ~3.3% worse, nowhere near the 15% failure line) and went straight to a
+real run rather than the 2-hour LR ablation (Gate 2) or the full 2.46B-token fetch (Gate 3).
+
+**Scope: 1.117B tokens of pure FineWeb-Edu (`longform`'s registered source, pinned revision
+`87f09149ef4734204d70ed1d046ddc9ca3f2b8f9`), not the diluted blend share.** 1,050,000 rows
+fetched fresh into a new path (`artifacts/raw/longform-stagea/`, not overwriting the shared
+200k-row file the 12-source blend already depends on), prepared with the existing per-document
+separator convention (`prepare_source`, 1,049,940 documents, 0 skipped), tokenized with the
+unchanged 32k tokenizer (`tokenize_corpus`, no retrain — the corpus-assembly branch's lesson
+about re-denominating every measurement still holds): **1,116,749,334 tokens** (1,094,414,348
+train / 22,334,986 val). Raw and prepared intermediates deleted after each consumed them,
+matching the spec's own disk-risk discipline.
+
+**A real infrastructure break, found and fixed before any training could run.** `import ttml`
+failed with `undefined symbol: _ZN4ttnn3addE...` — the compiled `_ttml.abi3.so` was stale
+against a `~/tt-metal` source tree that had moved to a newer "stable" revision
+(`a3a9fb4229`) without a matching rebuild. Root cause, found by reading the actual CMakeLists
+rather than guessing: `tt-train/sources/CMakeLists.txt` added `examples` before `ttml`, so
+`examples/*/CMakeLists.txt`'s `target_precompile_headers(... REUSE_FROM ttml_pch)` referenced a
+target that didn't exist yet — a genuine upstream ordering bug in this revision, not a local
+misconfiguration. Fixed with a 2-line reorder (`ttml` before `examples`), full rebuild via
+`./build_metal.sh --build-tt-train` (this rebuilt far more than tt-train alone, since editing
+a CMakeLists forces a full reconfigure — 1457 targets, ttnn included). Confirmed fixed by a
+plain `import ttml`, which — caught after the fact — opened a real device with no gozer lease
+held, the exact hazard this project's own notes warn about repeatedly. No conflict this time
+(chips were free), but noted here as a recurrence, not excused by the diagnostic context.
+
+**The training run: `--size 1024 --ddp 4 --lr-schedule cosine --config
+train/configs/nanollama3_bpe_v2.yaml` (stochastic_rounding confirmed True), seed 5489, one full
+epoch, 33,398 steps.** Train loss 10.6406 -> 3.3125. Real held-out validation loss (the whole
+val split, not the periodic placeholder): **3.3637 nats**. Periodic curve (67 points, every
+500 steps) falls cleanly from 5.34 (step 500) to a 3.3-3.4 band by the back half as the cosine
+schedule decays — the expected shape, not a plateau or a divergence. 18 checkpoints kept
+(`artifacts/checkpoints-stagea/`, ~703MB each). Wall clock: under 90 minutes end to end
+including kernel JIT compile at step 1.
+
+**The external-benchmark comparison against the published `tt-tnt-1024` (352.7M curated-blend
+tokens) is the real result, and it lands exactly on the outcome the spec named in advance as
+the most informative possible one.** Converted the final checkpoint
+(`artifacts/hf-tt-tnt-1024-stagea`) and re-ran the same `scripts/benchmark_external.py` suite,
+same 512-token window, same lm-eval 0.4.9:
+
+| task | metric | baseline (352.7M tokens) | Stage A (1.117B tokens) | delta |
+|---|---|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | **1.2568** | -0.2016 |
+| wikitext | word perplexity | 222.6627 | 105.4598 | more than halved |
+| lambada_openai | accuracy | 0.0980 | 0.1632 | +0.0652 |
+| hellaswag | accuracy | 0.2643 | 0.2729 | +0.0086 |
+| piqa | accuracy | 0.5484 | 0.5686 | +0.0202 |
+| winogrande | accuracy | 0.4996 (AT CHANCE) | **0.5328 (ABOVE CHANCE)** | crosses the floor |
+| arc_easy | accuracy | 0.3106 | **0.4280** | +0.1174 |
+| arc_challenge | accuracy | 0.1783 | 0.1971 | still below chance |
+| **mmlu** | accuracy | 0.2295 | **0.2297** | **statistically unchanged** |
+
+**Gate 4 (loss) clears cleanly and by a wide margin** — the spec's pre-declared threshold was
+"≥0.15 bits/byte improvement (1.458 -> ≤1.308)"; the real number is 1.2568, well past it. Every
+commonsense/language task moved the same direction, several (ARC-Easy, LAMBADA) by double
+digits of standard error, and WinoGrande crossed from `AT CHANCE` to a real `ABOVE CHANCE`
+verdict rather than sitting on the boundary.
+
+**Gate 5 (knowledge) does not move at all — MMLU is statistically identical (0.2295 vs
+0.2297) and ARC-Challenge stays within noise of chance.** This is the spec's own §9 risk,
+verbatim: *"The most likely failure is gate 4 passing and gate 5 failing: loss improves,
+knowledge does not. That would say 123M parameters cannot hold the knowledge these benchmarks
+probe at any data scale, and it is the outcome that should most change the roadmap."* At 3.17x
+the original token count (still short of the full 2.46B Chinchilla target, so not fully
+conclusive), the pattern already looks like exactly that: fluency and commonsense reasoning
+scale with tokens well before 20 tokens/param at this size, factual knowledge recall does not
+move at all in the same range.
+
+**Two honest limits on how far this result can be read, named rather than glossed over:**
+
+- **This is not an isolated ablation.** The corpus composition changed along with the token
+  count — 100% FineWeb-Edu web/educational text for Stage A, versus the curated nine/ten-source
+  narrative-heavy blend for the baseline. "More tokens" and "different corpus register" are
+  confounded in this one run; Stage A's design *intends* this (scale and character as separate
+  stages, character restored in a later Stage B), but the benchmark comparison above cannot by
+  itself attribute the gain to token count alone.
+- **No seed-floor control exists for bits/byte in this repo yet** (the spec's own §5 Gate 4
+  caveat) — a 0.20 bits/byte swing is large next to every other margin this project has treated
+  as real, but it has not been checked against a repeat-seed run the way every other headline
+  number here has been. Read as a strong, not yet fully validated, signal.
+
+Suite: unaffected by this work (no code changed in `tt-tnt`'s own tree beyond the new
+`artifacts/hf-tt-tnt-1024-stagea/` conversion output and the `tt-metal` CMakeLists fix, which
+lives outside this repo). Nothing published to the Hub; `docs/current_model.json`'s
+designation is untouched -- this is a measurement, not a promotion.
