@@ -3600,3 +3600,60 @@ Suite: unaffected by this work (no code changed in `tt-tnt`'s own tree beyond th
 `artifacts/hf-tt-tnt-1024-stagea/` conversion output and the `tt-metal` CMakeLists fix, which
 lives outside this repo). Nothing published to the Hub; `docs/current_model.json`'s
 designation is untouched -- this is a measurement, not a promotion.
+
+## 2026-09-24 — Stage A extended to the full Chinchilla budget: the knowledge gate holds
+
+Continued the 2026-09-22/23 Stage A run to the full target. Fetched 1,350,000 additional
+FineWeb-Edu rows (skipping the 1,050,000 already used, via a manual generator-skip -- no
+`fetch_corpus.py` offset support exists, so this was done directly against
+`iter_source_rows`), tokenized to `artifacts/tokens-stagea-inc/` (1,441,348,128 tokens),
+and resumed the checkpoint for one more epoch over the increment (`--resume
+tt_tnt_step00033398.pkl --steps 43105`, cosine LR **warm-restarted** 3e-4->3e-5 across the
+new steps rather than continuing the prior decay -- watched for a restart spike; none
+appeared, loss stayed in the 3.2-3.3 band throughout). Final: **step 76,503, cumulative
+2,529,270,500 tokens (102.8% of the spec's 2.46B target), val loss 3.2672 nats.**
+
+**The three-point comparison is the real result:**
+
+| task | metric | baseline (352.7M) | Stage A p1 (1.117B) | Stage A full (2.53B) |
+|---|---|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | 1.2568 | **1.2356** |
+| wikitext | word perplexity | 222.6627 | 105.4598 | 97.4822 |
+| lambada_openai | accuracy | 0.0980 | 0.1632 | 0.1780 |
+| hellaswag | accuracy | 0.2643 | 0.2729 | 0.2773 |
+| piqa | accuracy | 0.5484 | 0.5686 | 0.5919 |
+| winogrande | accuracy | 0.4996 (AT CHANCE) | 0.5328 (ABOVE CHANCE) | 0.4901 (**AT CHANCE again**) |
+| arc_easy | accuracy | 0.3106 | 0.4280 | 0.4339 |
+| arc_challenge | accuracy | 0.1783 | 0.1971 | 0.2116 |
+| **mmlu** | accuracy | 0.2295 | 0.2297 | **0.2292** |
+
+**MMLU is dead flat across the full range: 0.2295 -> 0.2297 -> 0.2292, a net -0.0003 over a
+7.2x increase in training tokens.** Loss and most commonsense tasks kept improving the whole
+way (bits/byte 1.4584 -> 1.2568 -> 1.2356, diminishing but real; PIQA and ARC-Easy both still
+climbing at the full budget) while MMLU never moved past noise at any point along the curve.
+This is the spec's own named highest-value outcome, now **confirmed rather than merely
+suggested by a partial run**: 123M parameters cannot hold MMLU-style factual knowledge at any
+data scale up to the Chinchilla-optimal budget for this size. "Just add data" is retired as
+this project's standing explanation for a knowledge gap at this parameter count.
+
+**WinoGrande's non-monotone bounce is an honest caveat, not a second finding.** AT CHANCE
+(0.4996) -> ABOVE CHANCE (0.5328) at 1.117B -> back to AT CHANCE (0.4901) at 2.53B. No seed
+floor exists for this instrument (same standing gap the spec's Gate 4 caveat already named for
+bits/byte), so the middle point's "ABOVE CHANCE" reading is the one to distrust here, not the
+other two -- a single-seed signal that reverses direction with more of the same training is
+the shape noise takes, not a regression to chase.
+
+**The qualitative canary agrees.** `episod-log.md`'s faster-than-light prompt, run again on
+the full checkpoint: still zero "lightning" (confirming the 1.117B finding wasn't a fluke of
+that specific checkpoint), and the t=1.0 fabricated-authority pattern ("A study of the brain's
+eye movements... 'Sound speed is a process that we call mental flexibility'") is more
+elaborate and more confident-sounding than the 1.117B version, not less -- the register keeps
+sharpening exactly where the benchmarks say it should, while the content stays invented.
+
+Full report: `docs/measurements/external-tt-tnt-1024-stagea-full.md`. Checkpoint:
+`artifacts/checkpoints-stagea/tt_tnt_step00076503.pkl`. Not published to the Hub;
+`docs/current_model.json`'s designation is untouched -- this is a measurement, not a
+promotion. Coordinated over cross-session messaging with a peer session (`tt-tnt-84`) sharing
+the same box and the same training job (a real shared OS-level process, confirmed via
+`gozer status` and `ps`) -- no lease conflicts, one duplicate `lm_eval` subprocess from a
+botched kill was found and cleaned up by the peer mid-run.
