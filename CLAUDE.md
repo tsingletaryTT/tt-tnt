@@ -3657,3 +3657,33 @@ promotion. Coordinated over cross-session messaging with a peer session (`tt-tnt
 the same box and the same training job (a real shared OS-level process, confirmed via
 `gozer status` and `ps`) -- no lease conflicts, one duplicate `lm_eval` subprocess from a
 botched kill was found and cleaned up by the peer mid-run.
+
+## StoryCloze against the Stage A checkpoint (2026-09-24)
+
+Ran `scripts/eval_storycloze.py` against `artifacts/hf-tt-tnt-1024-stagea-full` (the
+2.529B-token, full-Chinchilla-budget Stage A checkpoint) on both real splits, to see whether
+the external-benchmark story (loss and commonsense way up, MMLU dead flat) also held for
+narrative-continuation specifically.
+
+**It goes the other way.** Headline accuracy (`mean_per_token`): **0.5725** (eval split,
+n=1511), against the published `tt-tnt-1024` dialogue checkpoint's **0.6062** and barely above
+the tiny 22M `tt-tnt-v3`'s **0.5705** — despite 7.2x more pretraining tokens and the same
+123M-parameter architecture as the published checkpoint it's being compared to. Paired
+McNemar-equivalent comparison against the published `tt-tnt-1024`: eval split **185 vs 134
+discordant pairs, p = 0.00504 (significant)**, favoring the published checkpoint; train split
+**45 vs 34, p = 0.260 (not significant, n=79 is underpowered)** — same direction on both
+splits, only the larger one has the power to confirm it.
+
+**Read plainly, not as a contradiction of the external-benchmark result.** Stage A is 100%
+FineWeb-Edu (web/educational prose); the published `tt-tnt-1024` trained on the curated
+nine/ten-source narrative-heavy blend plus a dialogue slice. StoryCloze specifically measures
+narrative continuation — exactly the register the curated blend and dialogue tuning bought,
+and exactly what pure web text does not supply. This is the two-stage design's own premise
+holding up under a real check: Stage A buys scale and general fluency (confirmed by the
+external-benchmark loss/commonsense gains), it does not buy narrative register, and Stage B
+(a curated-blend continued-training pass on top of Stage A, not yet run) is what the spec
+always said would be needed to restore that.
+
+Both splits' full result files and both comparisons committed under `docs/measurements/`:
+`storycloze-tt-tnt-1024-stagea-full{,-train}.json`,
+`storycloze-tt-tnt-1024-vs-stagea-full{,-train}.json`.
