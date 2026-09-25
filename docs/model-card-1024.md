@@ -12,10 +12,14 @@
 
   Currently packaged as v6 THIN (4-chip P300x2, ring mesh), not v5 fat.
 
-  The `datasets` list is the TEN sources these weights actually trained on
-  (tokens-v4, corpus_tokens 391,823,393, verified from the checkpoint header) -- NOT
-  train/corpus.py's current registry, which has since gained three sources this model
-  has never seen. See docs/current_model.json's `corpus` field.
+  UPDATED 2026-09-24: these weights are now Stage A + Stage B (data-scale-up spec) --
+  the dialogue checkpoint continued on 2,529,270,500 tokens of FineWeb-Edu (Stage A,
+  fetched directly, NOT through train/corpus.py's registry -- see docs/current_model.json's
+  `corpus` field for why), then continued for one more epoch over tokens-v4 (Stage B, the
+  same ten curated sources already listed below). `HuggingFaceFW/fineweb-edu` is added to
+  `datasets` below because that is a real, substantial (2.53B-token) training source now,
+  even though it never went through train/corpus.py's registry/blend mechanism -- see the
+  Corpus section further down for the honest accounting of both stages.
 -->
 ---
 license: apache-2.0
@@ -27,6 +31,7 @@ datasets:
   - roneneldan/TinyStories
   - sedthh/gutenberg_english
   - wikimedia/wikipedia
+  - HuggingFaceFW/fineweb-edu
 tags:
   - tenstorrent
   - blackhole
@@ -51,25 +56,34 @@ through the Tenstorrent vLLM plugin, and packaged with
 It is small on purpose. One epoch takes about an hour on a single p300c, which is
 what makes it useful as an instrument rather than a product.
 
-**New in this revision (2026-08-29): a chat template ships with the model**, baked into
-`tokenizer_config.json`, capping rendered conversation history at the last 5 messages. That
-guard is what makes multi-turn chat safe here: a growing conversation otherwise crashes the
-vLLM engine outright, which is a **generic tt-metal/vLLM defect, not this model** —
-reproduced identically on stock `meta-llama/Llama-3.2-1B-Instruct` at the same context size
-(`docs/upstream-tt-metal-asks.md` entry 6). Measured with the guard active at 512 context:
-**14 growing turns, zero crashes**, prompt tokens plateauing at ~102 while messages sent grew
-to 27 — against a hard crash at turn 3 without it.
+**New in this revision (2026-09-24): Stage A + Stage B, the data-scale-up spec.** These
+weights continue the 2026-08-29 dialogue checkpoint through two more training stages: **Stage
+A** — 2,529,270,500 tokens of pure FineWeb-Edu, reaching the Chinchilla-matched budget for
+123M parameters — then **Stage B** — one more epoch over the same curated ten-source blend
+this checkpoint already trained on, run specifically because Stage A alone measurably
+*regressed* narrative coherence (StoryCloze accuracy 0.6062 → 0.5725, paired sign test
+p=0.00504). Stage B fixes that regression (→ 0.6161, p=6.2e-05 vs. Stage A alone) while
+carrying through Stage A's real gains: wikitext bits/byte 1.4584 → 1.2551, LAMBADA accuracy
+0.0980 → 0.2135, PIQA 0.5484 → 0.5925, ARC-Easy/Challenge both up. **MMLU never moves**
+across this whole line (0.2295 → 0.2297 → 0.2292) — more fluent, better at commonsense
+reasoning, *not* more knowledgeable. Full numbers: `docs/current_model.json`,
+`README.md`'s "Stage A + Stage B" and "StoryCloze" sections.
 
-*Weights themselves are unchanged from the 2026-08-18 checkpoint this card describes.* A
-2048-context replacement was trained, published, measured to answer questions **worse**, and
-reverted the same day; the context raise had been motivated entirely by that crash, and the
-guard turned out to fix the crash by itself. The reason 2048 degraded question answering was
-**not isolated** — the obvious epoch-inflation explanation was tested by a six-checkpoint
-sweep and *not* supported. Full data, including what the instruments failed to show:
-`docs/measurements/ctx2048-regression-and-guard-efficacy.json`.
+⚠️ **Everything under "Experiments this checkpoint is the base for" below (tool calling,
+MoE, die-region routing, thinking, skits, the reach dial) was measured against the *prior*
+(2026-08-29 dialogue) checkpoint, not re-verified against these Stage A/B weights.** Treat
+those sections as history about this model's lineage, not as claims about the weights
+currently published. The chat-template/context-crash-guard section immediately below still
+describes the current weights (the guard is unchanged by Stage A/B).
 
-Everything below — the feature-support table, the experiments, the good and bad examples —
-describes these weights, which are the ones published.
+**The chat template guard (2026-08-29, still current):** baked into `tokenizer_config.json`,
+capping rendered conversation history at the last 5 messages. That guard is what makes
+multi-turn chat safe here: a growing conversation otherwise crashes the vLLM engine outright,
+which is a **generic tt-metal/vLLM defect, not this model** — reproduced identically on stock
+`meta-llama/Llama-3.2-1B-Instruct` at the same context size (`docs/upstream-tt-metal-asks.md`
+entry 6). Measured with the guard active at 512 context: **14 growing turns, zero crashes**,
+prompt tokens plateauing at ~102 while messages sent grew to 27 — against a hard crash at
+turn 3 without it.
 
 ## What it does best
 
@@ -116,8 +130,8 @@ not useful. It is not a claim that the model is good.
 | hidden size / layers / heads | 1024 / 8 / 16 (4 KV heads) |
 | context | 512 |
 | vocabulary | 32,000 (BPE, trained on this corpus) |
-| training | 10,764 steps, batch 64, seq 512, 4-chip DDP on one p300c |
-| final validation loss | 2.8230 |
+| training | 10,764 steps (dialogue) + 76,503 steps (Stage A, FineWeb-Edu) + 10,761 steps (Stage B, curated blend), batch 64, seq 512, 4-chip DDP on one p300c per stage |
+| final validation loss | 2.5373 (Stage B, real held-out val over the full val split — better than the 2.8230 the dialogue checkpoint alone reported) |
 | chat history cap | last 5 messages (chat template, see above) |
 
 4 KV heads means it shards across 1, 2 or 4 chips without violating
@@ -126,23 +140,29 @@ head-divisibility.
 ## What it does
 
 It continues text, and — unlike earlier checkpoints in this project — it will
-answer a question in the shape of an answer. Under greedy decoding:
+answer a question in the shape of an answer. Under greedy decoding, re-verified
+against these Stage A/B weights (2026-09-24), not carried forward from an earlier card:
 
-> **Q: What is the capital of France?** → Answer: The capital of France is the city of Paris.
+> **Q: What is the capital of France?** → Answer: The capital of France is Paris.
 >
-> **Q: What is the capital of Italy?** → Answer: The capital of Italy is the city of Rome.
+> **Q: What is the capital of Italy?** → Answer: The capital of Italy is Rome.
+>
+> **Q: How many legs does a spider have?** → Answer: The spider has eight legs.
+>
+> **Q: What color is the sky?** → Answer: Blue.
 
-Both correct. The corpus carries `wikipedia_simple` at 15%, which is where facts
-of that kind live.
+All four correct — the last two were wrong on the prior (dialogue-only) checkpoint this
+card previously quoted (a frog with legs; a circular "blue because it is blue" non-answer).
+All four completions still degenerate into the model's persistent repetition-loop tail after
+the first correct sentence (e.g. "The capital of France is Paris. It is the capital of
+France. It is the capital of France…") — greedy decoding's known failure mode here, unchanged
+by Stage A/B.
 
 ## What it gets wrong
 
-> **Q: How many legs does a spider have?** → Answer: The body of a spider is a frog.
->
-> **Q: What color is the sky?** → Answer: The sky is a blue color that is blue because it is blue because it is blue…
-
-The second is a measured regression, not an anecdote. Against `tt-tnt-1024a`
-(same architecture, same steps, corpus without the dialogue slice):
+The repetition loop above is the standing limitation, not a new one. The regression table
+below is historical — measured on the *prior* (dialogue) checkpoint against `tt-tnt-1024a`,
+kept for its own record rather than re-verified here:
 
 | signal | delta | vs seed floor | verdict |
 |---|---|---|---|
@@ -298,21 +318,32 @@ byte-identical, with gold distances reproducing at max absolute error 0.0.
 ## What it cannot do
 
 No instruction tuning beyond a 2% slice of `databricks-dolly-15k`. No chat
-template. No system prompt. It repeats under greedy decoding. It has 512 tokens
-of context. It is a small model trained for one epoch on 352.6M tokens, and it
-should be treated as an artifact of a hardware-and-tooling project rather than as
-a useful assistant.
+template with a *system* role — structurally absent from anything this training regimen
+could produce, not merely unimplemented (see README's discussion of why a system prompt
+needs instruction-tuning this model never received). It repeats under greedy decoding, and
+2.5B+ additional pretraining tokens (Stage A) did not fix that. It has 512 tokens of context.
+**MMLU/ARC-Challenge accuracy has not moved at any point across a 7.2x increase in training
+tokens** — this model is measurably more fluent than earlier checkpoints, not measurably more
+knowledgeable, and should be treated as an artifact of a hardware-and-tooling project rather
+than as a useful assistant.
 
 ## Corpus
 
-Nine sources, blended to a 400M-token budget and shipped as a **recipe** rather
-than as text, because 46% of it is share-alike under two mutually incompatible
-copyleft terms. Reconstruct it from
-[`episod/tt-tnt-corpus`](https://huggingface.co/datasets/episod/tt-tnt-corpus).
+Two stages, two very different corpora. **Stage B (the curated register)** is the same
+nine/ten sources this card has always described, blended to a 400M-token budget and shipped
+as a **recipe** rather than as text, because 46% of it is share-alike under two mutually
+incompatible copyleft terms. Reconstruct it from
+[`episod/tt-tnt-corpus`](https://huggingface.co/datasets/episod/tt-tnt-corpus). The dialogue
+slice within it is `databricks-dolly-15k` (CC-BY-SA-3.0) at 2%, rendered as plain
+`Question: … / Answer: …` prose with no role markers — the tokenizer has no vocabulary for
+chat scaffolding.
 
-The dialogue slice is `databricks-dolly-15k` (CC-BY-SA-3.0) at 2%, rendered as
-plain `Question: … / Answer: …` prose with no role markers — the tokenizer has no
-vocabulary for chat scaffolding.
+**Stage A (the bulk pretraining)** is 2,529,270,500 tokens of `HuggingFaceFW/fineweb-edu`
+(`sample-10BT` config, ODC-By 1.0, pinned revision `87f09149ef4734204d70ed1d046ddc9ca3f2b8f9`),
+fetched directly rather than through this project's usual corpus-blend registry — see
+`docs/current_model.json`'s `corpus.note` for exactly why. This is real, substantial web and
+educational prose, not a small registered slice: it is the large majority of what these
+weights have read, by a wide margin over the curated blend above.
 
 ## Serving
 

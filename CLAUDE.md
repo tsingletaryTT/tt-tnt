@@ -3506,3 +3506,266 @@ failures in `test_eval_reach.py`/`test_evaluate.py` are this worktree's partial 
 their skip guards key on `artifacts/hf-tt-tnt-v3`, which was deliberately copied in for this
 work, while the `artifacts/reach-skits/` and `artifacts/tokens-v3/` data they actually read was
 not. CPU only: no ttnn, no ttml, no device, no lease.
+
+## 2026-09-22/23 — Stage A: the data scale-up spec's first real run, and its predicted null
+
+Picked up `docs/superpowers/specs/2026-09-01-data-scale-up-design.md` (drafted, never started)
+at the user's direction: "make a few solid decisions and proceed training until you see
+progress. No risks, no stops." Skipped the spec's own gate-by-gate ceremony deliberately —
+ran the cheap tokenizer-fertility check (Gate 1, passed: FineWeb-Edu at 1.418 tok/word vs the
+blend's weighted 1.373, ~3.3% worse, nowhere near the 15% failure line) and went straight to a
+real run rather than the 2-hour LR ablation (Gate 2) or the full 2.46B-token fetch (Gate 3).
+
+**Scope: 1.117B tokens of pure FineWeb-Edu (`longform`'s registered source, pinned revision
+`87f09149ef4734204d70ed1d046ddc9ca3f2b8f9`), not the diluted blend share.** 1,050,000 rows
+fetched fresh into a new path (`artifacts/raw/longform-stagea/`, not overwriting the shared
+200k-row file the 12-source blend already depends on), prepared with the existing per-document
+separator convention (`prepare_source`, 1,049,940 documents, 0 skipped), tokenized with the
+unchanged 32k tokenizer (`tokenize_corpus`, no retrain — the corpus-assembly branch's lesson
+about re-denominating every measurement still holds): **1,116,749,334 tokens** (1,094,414,348
+train / 22,334,986 val). Raw and prepared intermediates deleted after each consumed them,
+matching the spec's own disk-risk discipline.
+
+**A real infrastructure break, found and fixed before any training could run.** `import ttml`
+failed with `undefined symbol: _ZN4ttnn3addE...` — the compiled `_ttml.abi3.so` was stale
+against a `~/tt-metal` source tree that had moved to a newer "stable" revision
+(`a3a9fb4229`) without a matching rebuild. Root cause, found by reading the actual CMakeLists
+rather than guessing: `tt-train/sources/CMakeLists.txt` added `examples` before `ttml`, so
+`examples/*/CMakeLists.txt`'s `target_precompile_headers(... REUSE_FROM ttml_pch)` referenced a
+target that didn't exist yet — a genuine upstream ordering bug in this revision, not a local
+misconfiguration. Fixed with a 2-line reorder (`ttml` before `examples`), full rebuild via
+`./build_metal.sh --build-tt-train` (this rebuilt far more than tt-train alone, since editing
+a CMakeLists forces a full reconfigure — 1457 targets, ttnn included). Confirmed fixed by a
+plain `import ttml`, which — caught after the fact — opened a real device with no gozer lease
+held, the exact hazard this project's own notes warn about repeatedly. No conflict this time
+(chips were free), but noted here as a recurrence, not excused by the diagnostic context.
+
+**The training run: `--size 1024 --ddp 4 --lr-schedule cosine --config
+train/configs/nanollama3_bpe_v2.yaml` (stochastic_rounding confirmed True), seed 5489, one full
+epoch, 33,398 steps.** Train loss 10.6406 -> 3.3125. Real held-out validation loss (the whole
+val split, not the periodic placeholder): **3.3637 nats**. Periodic curve (67 points, every
+500 steps) falls cleanly from 5.34 (step 500) to a 3.3-3.4 band by the back half as the cosine
+schedule decays — the expected shape, not a plateau or a divergence. 18 checkpoints kept
+(`artifacts/checkpoints-stagea/`, ~703MB each). Wall clock: under 90 minutes end to end
+including kernel JIT compile at step 1.
+
+**The external-benchmark comparison against the published `tt-tnt-1024` (352.7M curated-blend
+tokens) is the real result, and it lands exactly on the outcome the spec named in advance as
+the most informative possible one.** Converted the final checkpoint
+(`artifacts/hf-tt-tnt-1024-stagea`) and re-ran the same `scripts/benchmark_external.py` suite,
+same 512-token window, same lm-eval 0.4.9:
+
+| task | metric | baseline (352.7M tokens) | Stage A (1.117B tokens) | delta |
+|---|---|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | **1.2568** | -0.2016 |
+| wikitext | word perplexity | 222.6627 | 105.4598 | more than halved |
+| lambada_openai | accuracy | 0.0980 | 0.1632 | +0.0652 |
+| hellaswag | accuracy | 0.2643 | 0.2729 | +0.0086 |
+| piqa | accuracy | 0.5484 | 0.5686 | +0.0202 |
+| winogrande | accuracy | 0.4996 (AT CHANCE) | **0.5328 (ABOVE CHANCE)** | crosses the floor |
+| arc_easy | accuracy | 0.3106 | **0.4280** | +0.1174 |
+| arc_challenge | accuracy | 0.1783 | 0.1971 | still below chance |
+| **mmlu** | accuracy | 0.2295 | **0.2297** | **statistically unchanged** |
+
+**Gate 4 (loss) clears cleanly and by a wide margin** — the spec's pre-declared threshold was
+"≥0.15 bits/byte improvement (1.458 -> ≤1.308)"; the real number is 1.2568, well past it. Every
+commonsense/language task moved the same direction, several (ARC-Easy, LAMBADA) by double
+digits of standard error, and WinoGrande crossed from `AT CHANCE` to a real `ABOVE CHANCE`
+verdict rather than sitting on the boundary.
+
+**Gate 5 (knowledge) does not move at all — MMLU is statistically identical (0.2295 vs
+0.2297) and ARC-Challenge stays within noise of chance.** This is the spec's own §9 risk,
+verbatim: *"The most likely failure is gate 4 passing and gate 5 failing: loss improves,
+knowledge does not. That would say 123M parameters cannot hold the knowledge these benchmarks
+probe at any data scale, and it is the outcome that should most change the roadmap."* At 3.17x
+the original token count (still short of the full 2.46B Chinchilla target, so not fully
+conclusive), the pattern already looks like exactly that: fluency and commonsense reasoning
+scale with tokens well before 20 tokens/param at this size, factual knowledge recall does not
+move at all in the same range.
+
+**Two honest limits on how far this result can be read, named rather than glossed over:**
+
+- **This is not an isolated ablation.** The corpus composition changed along with the token
+  count — 100% FineWeb-Edu web/educational text for Stage A, versus the curated nine/ten-source
+  narrative-heavy blend for the baseline. "More tokens" and "different corpus register" are
+  confounded in this one run; Stage A's design *intends* this (scale and character as separate
+  stages, character restored in a later Stage B), but the benchmark comparison above cannot by
+  itself attribute the gain to token count alone.
+- **No seed-floor control exists for bits/byte in this repo yet** (the spec's own §5 Gate 4
+  caveat) — a 0.20 bits/byte swing is large next to every other margin this project has treated
+  as real, but it has not been checked against a repeat-seed run the way every other headline
+  number here has been. Read as a strong, not yet fully validated, signal.
+
+Suite: unaffected by this work (no code changed in `tt-tnt`'s own tree beyond the new
+`artifacts/hf-tt-tnt-1024-stagea/` conversion output and the `tt-metal` CMakeLists fix, which
+lives outside this repo). Nothing published to the Hub; `docs/current_model.json`'s
+designation is untouched -- this is a measurement, not a promotion.
+
+## 2026-09-24 — Stage A extended to the full Chinchilla budget: the knowledge gate holds
+
+Continued the 2026-09-22/23 Stage A run to the full target. Fetched 1,350,000 additional
+FineWeb-Edu rows (skipping the 1,050,000 already used, via a manual generator-skip -- no
+`fetch_corpus.py` offset support exists, so this was done directly against
+`iter_source_rows`), tokenized to `artifacts/tokens-stagea-inc/` (1,441,348,128 tokens),
+and resumed the checkpoint for one more epoch over the increment (`--resume
+tt_tnt_step00033398.pkl --steps 43105`, cosine LR **warm-restarted** 3e-4->3e-5 across the
+new steps rather than continuing the prior decay -- watched for a restart spike; none
+appeared, loss stayed in the 3.2-3.3 band throughout). Final: **step 76,503, cumulative
+2,529,270,500 tokens (102.8% of the spec's 2.46B target), val loss 3.2672 nats.**
+
+**The three-point comparison is the real result:**
+
+| task | metric | baseline (352.7M) | Stage A p1 (1.117B) | Stage A full (2.53B) |
+|---|---|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | 1.2568 | **1.2356** |
+| wikitext | word perplexity | 222.6627 | 105.4598 | 97.4822 |
+| lambada_openai | accuracy | 0.0980 | 0.1632 | 0.1780 |
+| hellaswag | accuracy | 0.2643 | 0.2729 | 0.2773 |
+| piqa | accuracy | 0.5484 | 0.5686 | 0.5919 |
+| winogrande | accuracy | 0.4996 (AT CHANCE) | 0.5328 (ABOVE CHANCE) | 0.4901 (**AT CHANCE again**) |
+| arc_easy | accuracy | 0.3106 | 0.4280 | 0.4339 |
+| arc_challenge | accuracy | 0.1783 | 0.1971 | 0.2116 |
+| **mmlu** | accuracy | 0.2295 | 0.2297 | **0.2292** |
+
+**MMLU is dead flat across the full range: 0.2295 -> 0.2297 -> 0.2292, a net -0.0003 over a
+7.2x increase in training tokens.** Loss and most commonsense tasks kept improving the whole
+way (bits/byte 1.4584 -> 1.2568 -> 1.2356, diminishing but real; PIQA and ARC-Easy both still
+climbing at the full budget) while MMLU never moved past noise at any point along the curve.
+This is the spec's own named highest-value outcome, now **confirmed rather than merely
+suggested by a partial run**: 123M parameters cannot hold MMLU-style factual knowledge at any
+data scale up to the Chinchilla-optimal budget for this size. "Just add data" is retired as
+this project's standing explanation for a knowledge gap at this parameter count.
+
+**WinoGrande's non-monotone bounce is an honest caveat, not a second finding.** AT CHANCE
+(0.4996) -> ABOVE CHANCE (0.5328) at 1.117B -> back to AT CHANCE (0.4901) at 2.53B. No seed
+floor exists for this instrument (same standing gap the spec's Gate 4 caveat already named for
+bits/byte), so the middle point's "ABOVE CHANCE" reading is the one to distrust here, not the
+other two -- a single-seed signal that reverses direction with more of the same training is
+the shape noise takes, not a regression to chase.
+
+**The qualitative canary agrees.** `episod-log.md`'s faster-than-light prompt, run again on
+the full checkpoint: still zero "lightning" (confirming the 1.117B finding wasn't a fluke of
+that specific checkpoint), and the t=1.0 fabricated-authority pattern ("A study of the brain's
+eye movements... 'Sound speed is a process that we call mental flexibility'") is more
+elaborate and more confident-sounding than the 1.117B version, not less -- the register keeps
+sharpening exactly where the benchmarks say it should, while the content stays invented.
+
+Full report: `docs/measurements/external-tt-tnt-1024-stagea-full.md`. Checkpoint:
+`artifacts/checkpoints-stagea/tt_tnt_step00076503.pkl`. Not published to the Hub;
+`docs/current_model.json`'s designation is untouched -- this is a measurement, not a
+promotion. Coordinated over cross-session messaging with a peer session (`tt-tnt-84`) sharing
+the same box and the same training job (a real shared OS-level process, confirmed via
+`gozer status` and `ps`) -- no lease conflicts, one duplicate `lm_eval` subprocess from a
+botched kill was found and cleaned up by the peer mid-run.
+
+## StoryCloze against the Stage A checkpoint (2026-09-24)
+
+Ran `scripts/eval_storycloze.py` against `artifacts/hf-tt-tnt-1024-stagea-full` (the
+2.529B-token, full-Chinchilla-budget Stage A checkpoint) on both real splits, to see whether
+the external-benchmark story (loss and commonsense way up, MMLU dead flat) also held for
+narrative-continuation specifically.
+
+**It goes the other way.** Headline accuracy (`mean_per_token`): **0.5725** (eval split,
+n=1511), against the published `tt-tnt-1024` dialogue checkpoint's **0.6062** and barely above
+the tiny 22M `tt-tnt-v3`'s **0.5705** — despite 7.2x more pretraining tokens and the same
+123M-parameter architecture as the published checkpoint it's being compared to. Paired
+McNemar-equivalent comparison against the published `tt-tnt-1024`: eval split **185 vs 134
+discordant pairs, p = 0.00504 (significant)**, favoring the published checkpoint; train split
+**45 vs 34, p = 0.260 (not significant, n=79 is underpowered)** — same direction on both
+splits, only the larger one has the power to confirm it.
+
+**Read plainly, not as a contradiction of the external-benchmark result.** Stage A is 100%
+FineWeb-Edu (web/educational prose); the published `tt-tnt-1024` trained on the curated
+nine/ten-source narrative-heavy blend plus a dialogue slice. StoryCloze specifically measures
+narrative continuation — exactly the register the curated blend and dialogue tuning bought,
+and exactly what pure web text does not supply. This is the two-stage design's own premise
+holding up under a real check: Stage A buys scale and general fluency (confirmed by the
+external-benchmark loss/commonsense gains), it does not buy narrative register, and Stage B
+(a curated-blend continued-training pass on top of Stage A, not yet run) is what the spec
+always said would be needed to restore that.
+
+Both splits' full result files and both comparisons committed under `docs/measurements/`:
+`storycloze-tt-tnt-1024-stagea-full{,-train}.json`,
+`storycloze-tt-tnt-1024-vs-stagea-full{,-train}.json`.
+
+## 2026-09-24 — Stage B: the curated blend fixes Stage A's confirmed regression
+
+**Prompt.** After the previous entry's StoryCloze check found Stage A alone significantly
+regressed narrative coherence, "push forward" — Stage B, the data-scale-up spec's own
+second half: "the existing curated nine/ten-source blend as a smaller continued-training
+stage on top" of Stage A, specifically to restore register without giving back Stage A's
+loss/commonsense gains.
+
+**The run.** `--resume tt_tnt_step00076503.pkl` (the full-budget Stage A checkpoint) for one
+more epoch, 10,761 steps, over `artifacts/tokens-v4` (352.6M train tokens — the same
+ten-source curated blend the checkpoint being replaced trained on), `--lr-schedule cosine`
+warm-restarted again, `stochastic_rounding: True` confirmed. Final: step 87,264, train loss
+3.5938 -> 2.6250, **real held-out val loss 2.5373 nats** — better than the published
+`tt-tnt-1024-dialogue` checkpoint's own matched-window figure (2.7726), before any
+apples-to-apples benchmark was even run.
+
+**Along the way: a stale lease from an unrelated session, cleared the right way.** `gozer
+status` showed all 4 chips `STALE`, held by a different session's dead pid (confirmed via
+`ps` first, then `gozer reconcile` — never a bare `tt-smi -r`, per this project's own
+standing rule that release/reconcile does the reset, scoped to exactly the chips in
+question). Followed by an explicit `gozer acquire` + `gozer release` cycle to perform a
+real, clean hardware reset before Stage B's own lease, rather than resetting by hand.
+
+**The four-point comparison (baseline / Stage A p1 / Stage A full / Stage B), all from the
+same instruments used throughout this line:**
+
+| task | metric | baseline (352.7M) | Stage A p1 (1.117B) | Stage A full (2.53B) | **Stage B** |
+|---|---|---:|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | 1.2568 | 1.2356 | 1.2551 |
+| lambada_openai | accuracy | 0.0980 | 0.1632 | 0.1780 | **0.2135** |
+| piqa | accuracy | 0.5484 | 0.5686 | 0.5919 | 0.5925 |
+| arc_easy | accuracy | 0.3106 | 0.4280 | 0.4339 | 0.4272 |
+| arc_challenge | accuracy | 0.1783 | 0.1971 | 0.2116 | 0.2133 |
+| mmlu | accuracy | 0.2295 | 0.2297 | 0.2292 | 0.2292 |
+| **storycloze** | accuracy | 0.6062 | — | 0.5725 | **0.6161** |
+
+**MMLU stays flat across the whole line (0.2295 -> 0.2297 -> 0.2292 -> 0.2292)** — Stage B
+did not accidentally teach knowledge either, which is the expected and correct outcome, not
+a new finding: a one-epoch pass over 352.6M tokens of the same corpus family the earlier
+regression-free checkpoints already saw was never going to move a metric that stayed flat
+across 2.5B tokens of fresh web text.
+
+**StoryCloze is the real result, and it needs the paired test to state honestly.** Raw
+accuracy went 0.6062 (baseline) -> 0.5725 (Stage A, confirmed regression, p=0.00504 from the
+prior entry) -> 0.6161 (Stage B). Two paired comparisons, both run and saved
+(`docs/measurements/storycloze-stagea-full-vs-stageb.json`,
+`docs/measurements/storycloze-tt-tnt-1024-vs-stageb.json`):
+
+- **Stage B vs Stage A full: highly significant, p = 6.2e-05** (166 of 266 discordant pairs
+  favour Stage B). Stage B unambiguously fixed the regression Stage A introduced.
+- **Stage B vs the published baseline: NOT significant, p = 0.326** (109 of 203 discordant
+  pairs favour Stage B). The honest claim is "restored to parity, no longer significantly
+  worse" — not "beats baseline." The point estimate is higher, but 203 discordant pairs
+  cannot distinguish that from noise, and this project's own rule is not to round a p=0.326
+  result up into a win because the raw number looks nice.
+
+**The qualitative canary agrees with the quantitative recovery, and shows something the
+benchmarks can't.** Same faster-than-light prompt as every entry in this line: Stage A's
+answer was flat instructional/pseudo-academic prose with a fabricated citation; Stage B's
+brings back real narrative structure — a scene with a driver and a tower, a character who
+"sat down and gave her hands a long push," and at t=1.0 an image of light appearing and
+vanishing ("a little light comes to the earth, but it is gone!"). Notably it does NOT
+reproduce the old checkpoint's specific "lightning" word-association — the curated blend
+that produced that association was `tokens-v3`/`tokens-v4` trained from scratch, and Stage B
+is a *continuation* on top of 2.5B tokens of web text, so the model reaches for narrative
+form and light-imagery generally rather than the one specific word a from-scratch run on a
+smaller corpus happened to settle on. Register recovered; the exact prior habit did not need
+to, and didn't.
+
+**Promoted.** `docs/current_model.json` now designates this checkpoint
+(`artifacts/checkpoints-stageb/tt_tnt_step00087264.pkl`, converted into the canonical
+`artifacts/hf-tt-tnt-1024`), replacing the 2026-08-29 dialogue-only designation. Q&A spot
+check before trusting anything else: greedy `Q: What is the capital of France?\nAnswer:` ->
+`The capital of France is Paris.` — correct, matching (not regressing from) the checkpoint
+being replaced. Full designation, reasoning, and — critically — the qualification section
+naming what this does NOT establish (StoryCloze is parity not a proven win; MMLU is flat,
+not gained; Stage A's token-count and corpus-register changes are confounded with each
+other) are in `docs/current_model.json` itself.
+
+Nothing published yet as of this entry; publication (HF Hub, tt-model-manager, README/model
+card updates) is the immediate next step, tracked in the same commit sequence.

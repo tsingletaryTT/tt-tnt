@@ -1,0 +1,11 @@
+{
+  "n_items_compared": 1511,
+  "headline_normalization": "mean_per_token",
+  "sign_test": {
+    "n": 319,
+    "n_negative": 185,
+    "n_positive": 134,
+    "n_zero": 1192,
+    "p_two_sided": 0.005039374422089629
+  }
+}
