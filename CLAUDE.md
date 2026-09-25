@@ -3687,3 +3687,85 @@ always said would be needed to restore that.
 Both splits' full result files and both comparisons committed under `docs/measurements/`:
 `storycloze-tt-tnt-1024-stagea-full{,-train}.json`,
 `storycloze-tt-tnt-1024-vs-stagea-full{,-train}.json`.
+
+## 2026-09-24 — Stage B: the curated blend fixes Stage A's confirmed regression
+
+**Prompt.** After the previous entry's StoryCloze check found Stage A alone significantly
+regressed narrative coherence, "push forward" — Stage B, the data-scale-up spec's own
+second half: "the existing curated nine/ten-source blend as a smaller continued-training
+stage on top" of Stage A, specifically to restore register without giving back Stage A's
+loss/commonsense gains.
+
+**The run.** `--resume tt_tnt_step00076503.pkl` (the full-budget Stage A checkpoint) for one
+more epoch, 10,761 steps, over `artifacts/tokens-v4` (352.6M train tokens — the same
+ten-source curated blend the checkpoint being replaced trained on), `--lr-schedule cosine`
+warm-restarted again, `stochastic_rounding: True` confirmed. Final: step 87,264, train loss
+3.5938 -> 2.6250, **real held-out val loss 2.5373 nats** — better than the published
+`tt-tnt-1024-dialogue` checkpoint's own matched-window figure (2.7726), before any
+apples-to-apples benchmark was even run.
+
+**Along the way: a stale lease from an unrelated session, cleared the right way.** `gozer
+status` showed all 4 chips `STALE`, held by a different session's dead pid (confirmed via
+`ps` first, then `gozer reconcile` — never a bare `tt-smi -r`, per this project's own
+standing rule that release/reconcile does the reset, scoped to exactly the chips in
+question). Followed by an explicit `gozer acquire` + `gozer release` cycle to perform a
+real, clean hardware reset before Stage B's own lease, rather than resetting by hand.
+
+**The four-point comparison (baseline / Stage A p1 / Stage A full / Stage B), all from the
+same instruments used throughout this line:**
+
+| task | metric | baseline (352.7M) | Stage A p1 (1.117B) | Stage A full (2.53B) | **Stage B** |
+|---|---|---:|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | 1.2568 | 1.2356 | 1.2551 |
+| lambada_openai | accuracy | 0.0980 | 0.1632 | 0.1780 | **0.2135** |
+| piqa | accuracy | 0.5484 | 0.5686 | 0.5919 | 0.5925 |
+| arc_easy | accuracy | 0.3106 | 0.4280 | 0.4339 | 0.4272 |
+| arc_challenge | accuracy | 0.1783 | 0.1971 | 0.2116 | 0.2133 |
+| mmlu | accuracy | 0.2295 | 0.2297 | 0.2292 | 0.2292 |
+| **storycloze** | accuracy | 0.6062 | — | 0.5725 | **0.6161** |
+
+**MMLU stays flat across the whole line (0.2295 -> 0.2297 -> 0.2292 -> 0.2292)** — Stage B
+did not accidentally teach knowledge either, which is the expected and correct outcome, not
+a new finding: a one-epoch pass over 352.6M tokens of the same corpus family the earlier
+regression-free checkpoints already saw was never going to move a metric that stayed flat
+across 2.5B tokens of fresh web text.
+
+**StoryCloze is the real result, and it needs the paired test to state honestly.** Raw
+accuracy went 0.6062 (baseline) -> 0.5725 (Stage A, confirmed regression, p=0.00504 from the
+prior entry) -> 0.6161 (Stage B). Two paired comparisons, both run and saved
+(`docs/measurements/storycloze-stagea-full-vs-stageb.json`,
+`docs/measurements/storycloze-tt-tnt-1024-vs-stageb.json`):
+
+- **Stage B vs Stage A full: highly significant, p = 6.2e-05** (166 of 266 discordant pairs
+  favour Stage B). Stage B unambiguously fixed the regression Stage A introduced.
+- **Stage B vs the published baseline: NOT significant, p = 0.326** (109 of 203 discordant
+  pairs favour Stage B). The honest claim is "restored to parity, no longer significantly
+  worse" — not "beats baseline." The point estimate is higher, but 203 discordant pairs
+  cannot distinguish that from noise, and this project's own rule is not to round a p=0.326
+  result up into a win because the raw number looks nice.
+
+**The qualitative canary agrees with the quantitative recovery, and shows something the
+benchmarks can't.** Same faster-than-light prompt as every entry in this line: Stage A's
+answer was flat instructional/pseudo-academic prose with a fabricated citation; Stage B's
+brings back real narrative structure — a scene with a driver and a tower, a character who
+"sat down and gave her hands a long push," and at t=1.0 an image of light appearing and
+vanishing ("a little light comes to the earth, but it is gone!"). Notably it does NOT
+reproduce the old checkpoint's specific "lightning" word-association — the curated blend
+that produced that association was `tokens-v3`/`tokens-v4` trained from scratch, and Stage B
+is a *continuation* on top of 2.5B tokens of web text, so the model reaches for narrative
+form and light-imagery generally rather than the one specific word a from-scratch run on a
+smaller corpus happened to settle on. Register recovered; the exact prior habit did not need
+to, and didn't.
+
+**Promoted.** `docs/current_model.json` now designates this checkpoint
+(`artifacts/checkpoints-stageb/tt_tnt_step00087264.pkl`, converted into the canonical
+`artifacts/hf-tt-tnt-1024`), replacing the 2026-08-29 dialogue-only designation. Q&A spot
+check before trusting anything else: greedy `Q: What is the capital of France?\nAnswer:` ->
+`The capital of France is Paris.` — correct, matching (not regressing from) the checkpoint
+being replaced. Full designation, reasoning, and — critically — the qualification section
+naming what this does NOT establish (StoryCloze is parity not a proven win; MMLU is flat,
+not gained; Stage A's token-count and corpus-register changes are confounded with each
+other) are in `docs/current_model.json` itself.
+
+Nothing published yet as of this entry; publication (HF Hub, tt-model-manager, README/model
+card updates) is the immediate next step, tracked in the same commit sequence.

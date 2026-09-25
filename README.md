@@ -536,6 +536,12 @@ the JSON any future `--reference-json` should use.
 
 ### What the benchmarks said
 
+⚠️ **This subsection describes `tt-tnt-1024a`, a superseded checkpoint** (352.7M pretraining
+tokens, no dialogue slice, no Stage A/B) — kept for its own historical value (the GPT-2
+cross-check below still stands), not as a description of the currently designated model.
+See "Stage A + Stage B" immediately after it for the checkpoint `docs/current_model.json`
+actually designates today.
+
 `tt-tnt-1024a`, 512-token window, CPU, fp32, eight tasks, 3,465 s. Full report with all 15
 metric rows, the per-task truncation audit and the caveats:
 [`docs/measurements/external-tt-tnt-1024a.md`](docs/measurements/external-tt-tnt-1024a.md).
@@ -590,6 +596,45 @@ Four honest deflations belong with the above, and the reports carry all four:
   `tt-tnt-v4` at a 2048 window, and around ~64 on the older separator-less `tt-tnt-v1`. The two
   have never been run on the same checkpoint: there is no context probe for `tt-tnt-1024a`. So
   this is an open question rather than a contradiction, and it is recorded as one.
+
+### Stage A + Stage B — the currently designated checkpoint (2026-09-24)
+
+The data-scale-up spec (`docs/superpowers/specs/2026-09-01-data-scale-up-design.md`) in two
+moves: **Stage A** continued the dialogue checkpoint on 2,529,270,500 tokens of pure
+FineWeb-Edu (7.2x the prior training-token count, reaching the spec's Chinchilla-matched
+target for 123M parameters), then **Stage B** continued that for one more epoch on the
+curated ten-source blend (`tokens-v4` — the same corpus the checkpoint being replaced
+trained on), specifically because Stage A alone significantly regressed narrative coherence
+(see the StoryCloze section below). Full reports:
+[`external-tt-tnt-1024-stagea.md`](docs/measurements/external-tt-tnt-1024-stagea.md),
+[`external-tt-tnt-1024-stagea-full.md`](docs/measurements/external-tt-tnt-1024-stagea-full.md),
+[`external-tt-tnt-1024-stageb.md`](docs/measurements/external-tt-tnt-1024-stageb.md).
+
+| task | metric | baseline (352.7M tok) | Stage A (2.53B tok) | **Stage B (current)** |
+|---|---|---:|---:|---:|
+| wikitext | bits/byte | 1.4584 | 1.2356 | 1.2551 |
+| lambada_openai | accuracy | 0.0980 | 0.1780 | **0.2135** |
+| piqa | accuracy | 0.5484 | 0.5919 | 0.5925 |
+| arc_easy | accuracy | 0.3106 | 0.4339 | 0.4272 |
+| arc_challenge | accuracy | 0.1783 | 0.2116 | 0.2133 |
+| mmlu | accuracy | 0.2295 | 0.2292 | 0.2292 (flat — see below) |
+
+**MMLU never moved, across a 7.2x increase in pretraining tokens** (0.2295 -> 0.2297 -> 0.2292
+at the three checkpoints along this line) while loss and most commonsense tasks kept
+improving the whole way. Read plainly: this is more fluent, better at commonsense reasoning,
+and **no more knowledgeable** than before — "add data" bought capability along axes that
+scale with tokens at this size, and MMLU-style factual recall is not one of them, at least
+not up to 20 tokens/param for 123M parameters. See the StoryCloze section for what Stage B
+specifically bought back.
+
+⚠️ Same caveat as the section above: this is a 512-token-window model, so none of these
+numbers are comparable to `tt-tnt-v3`'s 2048-window figures, only to each other and to
+`tt-tnt-1024a`'s row above (all measured at the same 512-token window).
+
+⚠️ Stage A's corpus register changed along with its token count (100% FineWeb-Edu web text,
+not an isolated ablation), so "more tokens" and "more web-register text" are confounded in
+the Stage A column above; Stage B's own comparison against Stage A (same corpus, one more
+epoch) is the clean single-variable read.
 
 ### StoryCloze (forced-choice narrative coherence)
 
@@ -675,6 +720,22 @@ much smaller split the ending-only shortcut is faintly visible, which is a reaso
 sample, which is what an underpowered replication of a real effect looks like. Both numbers are
 reproducible with no model from the committed artifacts: `--rescore-from` for the per-model
 figures, `--compare` on the two `train` JSONs for the paired test.
+
+**Update (2026-09-24) — this is what motivated Stage B, and it needs the paired test to be
+read honestly.** Scoring Stage A alone (2.53B tokens of pure FineWeb-Edu, no curated blend)
+against the same `eval` split found a real, **significant regression**: 0.5725 accuracy
+against `tt-tnt-1024`'s 0.6062, paired sign test **p = 0.00504**
+([`storycloze-tt-tnt-1024-vs-stagea-full.json`](docs/measurements/storycloze-tt-tnt-1024-vs-stagea-full.json)).
+Stage B (one more epoch on the curated blend, on top of Stage A) reverses that: 0.6161,
+**significantly better than Stage A alone** (paired sign test **p = 6.2e-05**, 166 of 266
+discordant pairs,
+[`storycloze-stagea-full-vs-stageb.json`](docs/measurements/storycloze-stagea-full-vs-stageb.json))
+— but **not significantly different from the original `tt-tnt-1024` baseline** (paired sign
+test **p = 0.326**, 109 of 203 discordant pairs,
+[`storycloze-tt-tnt-1024-vs-stageb.json`](docs/measurements/storycloze-tt-tnt-1024-vs-stageb.json)).
+Read plainly: Stage B is a confirmed *fix* of Stage A's regression, restoring narrative
+coherence to parity with the checkpoint it replaces — not a confirmed *improvement* over it,
+whatever the raw accuracy numbers (0.6161 vs 0.6062) suggest on their own.
 
 ## Embedding geography
 
@@ -833,17 +894,22 @@ weights trained on share-alike data constitute a "Data Derivative" (CDLA-Sharing
 publishing weights trained with this code should reach their own conclusion rather than
 inheriting ours.
 
-Long-context corpus — FineWeb-Edu. A tenth source, `longform`
+Long-context corpus, and now the currently-designated model's bulk pretraining source —
+FineWeb-Edu. Registered in `train/corpus.py` as a tenth source, `longform`
 ([`HuggingFaceFW/fineweb-edu`](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu),
-`sample-10BT` config, pinned revision `87f0914` — see `train/corpus.py`), registered to fix a
-real gap: the corpus's median document is 112 tokens and only 1.08% reach 2048, so a
-2048-token training window holds roughly 18 unrelated documents and the model cannot learn to
-use distant context. It is licensed **ODC-By 1.0**, which covers the *database* FineWeb-Edu
-assembles — the underlying web pages it draws from carry their own, separate rights, and
-FineWeb-Edu is itself a filtered Common Crawl derivative. As with every other source here,
-this project does not redistribute the corpus; it is fetched from the Hugging Face Hub at the
-pinned revision above. `target_share` is `0.0` at registration — the share is set once the
-blend is re-settled to include it (see `docs/corpus_blend.md`).
+`sample-10BT` config, pinned revision `87f0914`), originally to fix a real gap: the curated
+corpus's median document is 112 tokens and only 1.08% reach 2048, so a 2048-token training
+window holds roughly 18 unrelated documents and the model cannot learn to use distant
+context. Within the *registered blend* it is still nominal (`target_share` `0.0` — see
+`docs/corpus_blend.md`), but the currently designated `tt-tnt-1024` checkpoint's **Stage A**
+pretraining stage (see "Stage A + Stage B" under External benchmarks) trained on
+**2,529,270,500 tokens** of this same source, fetched directly (not through
+`train/corpus.py`'s share/blend mechanism — see `docs/current_model.json`'s `corpus.note`
+for exactly why that pipeline wasn't used for this). It is licensed **ODC-By 1.0**, which
+covers the *database* FineWeb-Edu assembles — the underlying web pages it draws from carry
+their own, separate rights, and FineWeb-Edu is itself a filtered Common Crawl derivative. As
+with every other source here, this project does not redistribute the corpus; it is fetched
+from the Hugging Face Hub at the pinned revision above.
 
 Long-context corpus — a NASA mission transcript. An eleventh source, `mission`
 (`scripts/fetch_mission.py::MISSION_DOCUMENTS`; see `train/corpus.py`), the only
