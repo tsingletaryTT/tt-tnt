@@ -638,3 +638,46 @@ in both arms was frozen — `stochastic_rounding` defaults off on the SFT path, 
 the warning the pretraining path prints. A tensor diff found it: seventeen weights
 bit-identical to where they started after three thousand steps. Unfreeze them and 0%
 becomes 98%. The model was never the thing that was broken.
+
+## 2026-09-22/23 — Stage A: the lightning never shows up, because it was never in the room
+
+First entry since 2026-08-21 — the ritual lapsed across skits v2, editor training, LoRA,
+4-chip serving, ctx2048, disk pruning, the v0.78.0 review, long-context-corpus, and StoryCloze.
+Picking it back up here because this change is the most register-relevant one since the
+dialogue slice: `tt-tnt-1024-stagea`, 1.117B tokens of pure FineWeb-Edu — the first checkpoint
+in this project trained on zero TinyStories, zero curated fiction, zero of the nine/ten-source
+narrative blend. Full numbers in `docs/measurements/external-tt-tnt-1024-stagea.md` and
+CLAUDE.md; this is what it sounds like.
+
+### The model, asked
+
+Same self-nullifying prompt, `artifacts/hf-tt-tnt-1024-stagea`, greedy and sampled:
+
+> **greedy** — I have a few things to do. First, I have to make sure I have the right
+> light. I have to make sure I have the right light. I have to make sure I have the
+>
+> **t=0.8** — If I have trouble with your eye, do not turn on the TV. When you turn on
+> the television, turn it off and the rest of the night. When you turn on the TV, turn
+>
+> **t=1.0** — A study of the brain's activity has long been suggested as an important
+> means to get kids engaged with a new, exciting world. "Splitting it's not always easy,"
+> said Robert
+
+No lightning. Not one checkpoint before this one has answered this prompt without reaching
+for it — the corpus-full-of-weather association that first showed up at 1024a and was still
+there through the dialogue slice and the die-region work. It is gone because the thing it was
+reaching *from* is gone: FineWeb-Edu is educational web prose, and this model has never read
+a story where light and thunder share a paragraph. What it reaches for instead is exactly its
+new diet — task instructions ("make sure I have the right light", looping the way this model's
+greedy decoding always loops), household/appliance prose (the TV, verbatim FineWeb-Edu
+register), and at t=1.0 something no prior checkpoint has ever produced: a citation. "A study
+of ... has long been suggested", a quoted researcher named "Robert" — the shape of an
+explainer article, register perfectly reproduced, content invented, exactly the "form before
+knowledge" pattern this log already named for the tool-calling and dialogue work, now visible
+in a completely different register.
+
+This is the same finding as the external-benchmark comparison from the other side. MMLU did
+not move; the model still does not know anything. But its *prose* moved completely, in exactly
+the direction its new training data points — which is the qualitative confirmation that Gate 4
+passing and Gate 5 failing is a real, specific thing and not a wash: the model got measurably
+more fluent in a register it had never touched a day before, without getting any more correct.

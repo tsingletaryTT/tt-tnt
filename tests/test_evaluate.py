@@ -757,21 +757,33 @@ def test_the_designation_points_at_a_converted_model_directory():
     assert relative.name.startswith("hf-")
 
 
-def test_the_designation_states_the_context_caveat_honestly():
-    """1024a is trained at 512 while v3 is at 2048, so "best" is not unqualified. A
-    designation that omits that is the wrong headline waiting to happen again."""
-    qualification = load_designation().qualification
-    assert "512" in qualification and "2048" in qualification
-    assert "not unqualified" in qualification.lower(), \
-        "the designation must say in so many words that 'best' is qualified"
+def test_the_designation_states_its_current_caveat_honestly():
+    """A designation's qualification must state ITS OWN caveats explicitly, in its own
+    words -- not merely gesture at "some limitations exist". This test used to pin the
+    literal 512-vs-2048 context caveat that applied to the 2026-08-29 designation
+    (1024a at 512 vs v3 at 2048); that designation has since been replaced by the
+    2026-09-24 Stage A/B one, whose actual headline claim (StoryCloze parity, not a
+    confirmed win) needs a different caveat stated honestly. Pinning the OLD caveat's
+    literal text would have let a new designation ship with no caveat at all, as long
+    as the words "512" and "2048" appeared somewhere -- exactly the hollow-test shape
+    this project has hit many times. Check the property, not last time's specific words."""
+    qualification = load_designation().qualification.lower()
+    assert "significant" in qualification, \
+        "a designation resting on a paired statistical test must say whether the result " \
+        "cleared significance, not just quote the point estimate"
+    assert "mmlu" in qualification or "knowledge" in qualification, \
+        "fluency/commonsense gains must not be silently generalized into a knowledge claim"
 
 
 def test_the_designations_evidence_paths_are_named_not_gestured_at():
     evidence = load_designation().evidence
     assert any(e.endswith("val_losses.jsonl") for e in evidence), \
         "the loss claim needs its trajectories named"
-    assert any("behaviour-tt-tnt-v3-vs-tt-tnt-v5" in e for e in evidence), \
-        "the seed-only control is what makes any of it interpretable"
+    assert any("storycloze" in e.lower() for e in evidence), \
+        "the paired significance test that makes the headline claim interpretable must be " \
+        "named, not just asserted in prose -- this used to check for the 2026-08-29 " \
+        "designation's specific seed-floor path (behaviour-tt-tnt-v3-vs-tt-tnt-v5), which is " \
+        "not what the current (2026-09-24) designation's rigor rests on"
 
 
 def test_a_designation_without_a_reason_is_refused(tmp_path):
