@@ -1,0 +1,12 @@
+# v6 thin bundle for tt-tnt, kind="vllm" -- same wheels/pins already hardware-verified
+# for the v5 fat bundle today (1-chip P150 and 4-chip P300x2).
+ttnn==0.77.0                      # real PyPI release, matches this bundle's tt-metal version
+tt-tnt-models-closure==0.77.0     # vendored models/common + models/tt_transformers/tt --
+                                   # NOT the real upstream tt-metal-models (tenstorrent/tt-metal#54478),
+                                   # a narrower local stand-in named to avoid colliding with it
+transformers==5.5.3                # vLLM 0.25.1's bundled pixtral.py needs this floor
+                                    # (PixtralRotaryEmbedding renamed/removed in later transformers)
+pytest                             # models/common/utility_functions.py imports pytest at module level
+torchvision==0.29.0+cpu           # generator_vllm.py -> vllm.model_executor.models.gemma3_mm ->
+                                   # transformers gemma3 image processor imports torchvision.transforms.v2
+                                   # at module level, even though tt-tnt itself is text-only

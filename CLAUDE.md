@@ -3834,3 +3834,14 @@ regression did not reproduce on Stage B weights; 10 prompts cannot rule it out.
 (`import ttml` opens the device, and this python can import both) -- 9 pre-existing PRNG tests
 error on the stub, as they import ttnn; everything else passes. Versions: project 0.2.0,
 adapter 1.1.0.
+
+### 2026-09-27 — the v6 packaging recipe is checked in (PR #3 review)
+Review on PR #3 found that the repo alone could not produce a working 1-chip bundle: the
+descriptor lived under train/configs/mesh/ with no rule copying it next to the adapter, and
+the env wiring (TT_MESH_GRAPH_DESC_PATH, narrowing TT_VISIBLE_DEVICES to the first leased
+chip) existed only in a scratch staging script. Added `packaging/package-thin.sh` (both
+bundles, stage-only) and `packaging/requirements.txt`, and `tests/test_packaging_recipe.py`,
+which runs the real script with a stub tt-model and checks the staged layout and the exported
+env (it goes red with the copy or the pin removed). Staging tt-tnt with the fixed tt-model
+reproduces the hardware-verified bundle exactly (run.sh identical; manifest identical but for
+its timestamp). `manifests/` gets a README marking the v5 manifests as legacy.
