@@ -377,7 +377,8 @@ def test_chat_template_is_written_to_out_dir_only(tmp_path):
     """The chat template must ship with the converted model (so no server needs a
     --chat-template CLI flag pointed at an external file) but must never touch
     artifacts/tokenizer/ -- same separation-of-artifacts rule as tokenizer_class above."""
-    from convert.to_hf import _CHAT_TEMPLATE, convert_checkpoint
+    from convert.chat_templates import DOLLY_QA_TEMPLATE
+    from convert.to_hf import convert_checkpoint
 
     header = _synth_header(weight_tying=True)
     tensors = _synth_tensors(weight_tying=True)
@@ -385,10 +386,10 @@ def test_chat_template_is_written_to_out_dir_only(tmp_path):
     tok_dir = _write_fake_tokenizer_dir(tmp_path / "tokenizer")
 
     out = tmp_path / "hf_out"
-    convert_checkpoint(ckpt, tok_dir, out)
+    convert_checkpoint(ckpt, tok_dir, out, chat_format="dolly_qa")
 
     written = json.loads((out / "tokenizer_config.json").read_text(encoding="utf-8"))
-    assert written["chat_template"] == _CHAT_TEMPLATE
+    assert written["chat_template"] == DOLLY_QA_TEMPLATE
 
     source = json.loads((tok_dir / "tokenizer_config.json").read_text(encoding="utf-8"))
     assert "chat_template" not in source
@@ -403,26 +404,32 @@ def test_chat_template_windows_history_to_the_documented_cap():
     through would not actually guard against the defect it exists for."""
     import jinja2
 
-    from convert.to_hf import MAX_CHAT_TEMPLATE_MESSAGES, _CHAT_TEMPLATE
+    from convert.chat_templates import CHAT_TEMPLATES
+    from convert.to_hf import MAX_CHAT_TEMPLATE_MESSAGES
 
     env = jinja2.Environment()
-    template = env.from_string(_CHAT_TEMPLATE)
-
-    # One more message than the cap allows -- the oldest one must be dropped.
+    # Two more messages than the cap allows -- the two oldest must be dropped. The window then
+    # opens on turn-1, an assistant reply whose question was cut off; dolly_qa may skip such
+    # an orphan (by design), so only turns 2.. are required to survive in every template.
     n = MAX_CHAT_TEMPLATE_MESSAGES + 1
     messages = [
         {"role": "user" if i % 2 == 0 else "assistant", "content": f"turn-{i}"}
         for i in range(n)
     ]
-    rendered = template.render(messages=messages)
+    messages = [{"role": "user", "content": "turn-pre"}] + messages  # window cuts 2
+    for name, source in CHAT_TEMPLATES.items():
+        rendered = env.from_string(source).render(messages=messages)
+        assert "turn-pre" not in rendered and "turn-0" not in rendered, name
+        for i in range(2, n):
+            assert f"turn-{i}" in rendered, f"{name}: turn-{i} is within the cap and must survive"
 
-    assert "turn-0" not in rendered, "the oldest message must be dropped once over the cap"
-    for i in range(1, n):
-        assert f"turn-{i}" in rendered, f"turn-{i} is within the cap and must survive"
 
+def test_tool_call_sft_template_renders_the_format_the_sft_checkpoints_were_trained_on():
+    """The SFT template must render Q:/Answer:, not user:/assistant:.
 
-def test_chat_template_renders_the_format_the_model_was_actually_trained_on():
-    """The template must render Q:/Answer:, not user:/assistant:.
+    Scope (2026-09-27): this is the ``tool_call_sft`` template, for the tool-calling SFT
+    checkpoints only. The pretraining checkpoints never saw ``Q:\nAnswer:``; their templates
+    are proven token-for-token in tests/test_chat_templates.py.
 
     Measured cost of getting this wrong, not a style preference: the tool-calling checkpoint
     emits a well-formed tool call in 100% of raw completions at Q:/Answer: and 0% through
@@ -433,9 +440,9 @@ def test_chat_template_renders_the_format_the_model_was_actually_trained_on():
     """
     import jinja2
 
-    from convert.to_hf import _CHAT_TEMPLATE
+    from convert.chat_templates import TOOL_CALL_SFT_TEMPLATE
 
-    t = jinja2.Environment().from_string(_CHAT_TEMPLATE)
+    t = jinja2.Environment().from_string(TOOL_CALL_SFT_TEMPLATE)
     single = t.render(messages=[{"role": "user", "content": "What is the capital of France?"}])
     assert single == "Q: What is the capital of France?\nAnswer:"
     assert "user:" not in single and "assistant:" not in single
@@ -451,14 +458,14 @@ def test_chat_template_prompt_prefix_matches_build_training_text_exactly():
     Two places construct this; a drift between them is invisible until capability drops."""
     import jinja2
 
-    from convert.to_hf import _CHAT_TEMPLATE
+    from convert.chat_templates import TOOL_CALL_SFT_TEMPLATE
     from train.tool_calling import ToolCallExample, build_training_text
 
     q = "What is the capital of France?"
     trained = build_training_text(ToolCallExample(
         question=q, tool="factual_response",
         arguments={"answer": "Paris.", "confidence": "high"}))
-    rendered = jinja2.Environment().from_string(_CHAT_TEMPLATE).render(
+    rendered = jinja2.Environment().from_string(TOOL_CALL_SFT_TEMPLATE).render(
         messages=[{"role": "user", "content": q}])
     assert trained.startswith(rendered), (
         f"template renders {rendered!r} but training text starts {trained[:60]!r}"
@@ -680,24 +687,38 @@ def test_both_conversion_paths_apply_the_tokenizer_fixups(tmp_path):
     to_hf = _P("convert/to_hf.py").read_text()
     eval_improv = _P("scripts/eval_improv.py").read_text()
     assert "def apply_tokenizer_fixups" in to_hf
-    assert "apply_tokenizer_fixups(out_dir)" in to_hf, "convert_checkpoint must call it"
-    assert "apply_tokenizer_fixups(out_dir)" in eval_improv, "sft_checkpoint_to_hf must call it"
+    assert "apply_tokenizer_fixups(out_dir, chat_format)" in to_hf, "convert_checkpoint must call it"
+    assert 'apply_tokenizer_fixups(out_dir, "tool_call_sft")' in eval_improv, (
+        "sft_checkpoint_to_hf must call it, with the SFT format")
 
 
 def test_apply_tokenizer_fixups_installs_template_and_corrects_class(tmp_path):
     import json as _json
 
-    from convert.to_hf import _CHAT_TEMPLATE, apply_tokenizer_fixups
+    from convert.chat_templates import PLAIN_TEMPLATE
+    from convert.to_hf import apply_tokenizer_fixups
 
     cfg = tmp_path / "tokenizer_config.json"
     cfg.write_text(_json.dumps({"tokenizer_class": "PreTrainedTokenizer"}), encoding="utf-8")
-    apply_tokenizer_fixups(tmp_path)
+    apply_tokenizer_fixups(tmp_path, "plain")
     written = _json.loads(cfg.read_text(encoding="utf-8"))
     assert written["tokenizer_class"] == "PreTrainedTokenizerFast"
-    assert written["chat_template"] == _CHAT_TEMPLATE
+    assert written["chat_template"] == PLAIN_TEMPLATE
+
+
+def test_unknown_chat_format_removes_a_stale_template(tmp_path):
+    """None = no measured format: a template left over from another model must not survive."""
+    import json as _json
+
+    from convert.to_hf import apply_tokenizer_fixups
+
+    cfg = tmp_path / "tokenizer_config.json"
+    cfg.write_text(_json.dumps({"chat_template": "Q: {{ x }}"}), encoding="utf-8")
+    apply_tokenizer_fixups(tmp_path, None)
+    assert "chat_template" not in _json.loads(cfg.read_text(encoding="utf-8"))
 
 
 def test_apply_tokenizer_fixups_is_a_noop_when_there_is_no_tokenizer_config(tmp_path):
     from convert.to_hf import apply_tokenizer_fixups
 
-    apply_tokenizer_fixups(tmp_path)  # must not raise
+    apply_tokenizer_fixups(tmp_path, "dolly_qa")  # must not raise

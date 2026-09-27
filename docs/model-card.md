@@ -145,8 +145,13 @@ which is the honest way to read the greedy loops: greedy decoding on a 22M-param
 manufactures repetition attractors that sampling largely avoids. Treat the promising examples
 as evidence of what the blend can nudge toward, not as evidence the voice has arrived.
 
-It is a base completion model. No instruction tuning, no chat template. Give it the opening
-of a simple story; do not ask it questions.
+It is a base completion model with no instruction tuning. Give it the opening of a simple
+story; do not ask it questions. Its training corpus (`tokens-v3`) contains no dialogue or
+question-answer data at all, so the chat template it ships (2026-09-27) invents no roles:
+`/v1/chat/completions` renders the conversation as one continuous piece of text — a user
+message is the story opening, the reply is the model's continuation — token-for-token the way
+its training documents looked (`docs/measurements/chat-template-proof.json`). It exists so chat
+clients get a completion instead of an HTTP 400, not because the model can converse.
 
 Its context is 2048 tokens (256 → 512 → 2048 across the three checkpoints — see Lineage).
 Note that `tokenizer_config.json` carries the conventional `model_max_length` sentinel

@@ -288,7 +288,11 @@ def sft_checkpoint_to_hf(step_pkl: Path, *, warm_start_ckpt: Path, tokenizer_dir
     # tool-calling checkpoint on 2026-08-29 (see CLAUDE.md).
     from convert.to_hf import apply_tokenizer_fixups
 
-    apply_tokenizer_fixups(out_dir)
+    # "tool_call_sft" = the Q:/Answer: template this path has always installed, unchanged:
+    # the SFT checkpoints converted here were trained on train.tool_calling's
+    # `Q: ...\nAnswer:` text (see convert/chat_templates.py). Pretraining checkpoints go
+    # through convert_checkpoint instead, which picks the template from the corpus.
+    apply_tokenizer_fixups(out_dir, "tool_call_sft")
     return config
 
 

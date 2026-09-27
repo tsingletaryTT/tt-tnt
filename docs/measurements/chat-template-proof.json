@@ -1,0 +1,32 @@
+{
+  "tokenizer": "artifacts/tokenizer",
+  "how_vllm_tokenizes_chat": "apply_chat_template(tokenize=False) then tokenizer(prompt, add_special_tokens=False)",
+  "dolly_qa": {
+    "pairs_checked": 15006,
+    "identical": 15006,
+    "open_prompt_is_prefix_of_doc": 15006,
+    "legacy_tool_call_sft_identical": 0,
+    "first_mismatches": []
+  },
+  "plain": {
+    "docs_checked": 19167,
+    "identical": 19167,
+    "first_mismatches": []
+  },
+  "dolly_qa_stream": {
+    "stream": "artifacts/tokens-v4/train_ids.npy",
+    "stream_present": true,
+    "rendered": "Question: When did Virgin Australia start operating? Virgin Australia, the trading name of Virgin Australia Airlines Pty Ltd, is an Australian-based airline. It is the largest airline by fleet size to use the Virgin brand. It commenced services on 31 August 2000 as Virgin Blue, with two aircraft on a single route. It suddenly found itself as a major airline in Australia's domestic market after the collapse of Ansett Australia in September 2001. The airline has since grown to directly serve 32 cities in Australia, from hubs in Brisbane, Melbourne and Sydney. Answer: Virgin Australia commenced services on 31 August 2000 as Virgin Blue, with two aircraft on a single route.</s>Question: Which is a species of fish? Tope or Rope Answer: Tope</s>Question: Why can camels survive for long without water? Answer:",
+    "n_tokens": 173,
+    "found_at_offset": 0,
+    "legacy_tool_call_sft_found_at_offset": null
+  },
+  "plain_stream": {
+    "stream": "artifacts/tokens-v3/train_ids.npy",
+    "stream_present": true,
+    "rendered": "One day, a little girl named Lily found a needle in her room. She knew it was difficult to play with it because it was sharp. Lily wanted to share the needle with her mom, so she could sew a button on her shirt. Lily went to her mom and said, \"Mom, I found this needle. Can you share it with me and sew my shirt?\" Her mom smiled and said, \"Yes, Lily, we can share the needle and fix your shirt.\" Together, they shared the needle and sewed the button on Lily's shirt. It was not difficult for them because they were sharing and helping each other. After they finished, Lily thanked her mom for sharing the needle and fixing her shirt. They both felt happy because they had shared and worked together.",
+    "n_tokens": 156,
+    "found_at_offset": 176311297,
+    "legacy_tool_call_sft_found_at_offset": null
+  }
+}

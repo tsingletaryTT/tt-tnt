@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
 
-"""vLLM entrypoint for tt-tnt — stock Llama, plus two runtime patches.
+"""vLLM entrypoint for tt-tnt — stock Llama, plus four runtime patches.
 
 WHAT THIS IS
 ------------
@@ -15,12 +15,18 @@ carries only what tt-metal gets wrong or defaults badly for a model this small:
    on a harvested Blackhole -- see "THE find_grid BUG" below),
 2. a runtime **patch** to ``ModelArgs.weight_cache_path`` that scopes the converted-weight
    cache by a fingerprint of the *source* weights, so republishing a model under the same
-   HF repo id cannot silently serve the previous weights (see "THE STALE-CACHE BUG"), and
-3. a **precision default** of ``accuracy`` rather than ``performance`` (see
+   HF repo id cannot silently serve the previous weights (see "THE STALE-CACHE BUG"),
+3. a runtime **patch** to ``generator.get_padded_prefill_len`` that never pads a prefill
+   past the model's own ``max_seq_len`` (without it, any prompt over 128 tokens crashed the
+   engine for a 512-context model -- see "Patch 3" below),
+4. a one-line **environment fixup** that gives a single-chip process on a multi-chip
+   board the bundled 1x1 mesh descriptor (without it, vLLM data-parallel ranks on a p300c
+   die at mesh open -- see "Patch 4" below), and
+5. a **precision default** of ``accuracy`` rather than ``performance`` (see
    ``DEFAULT_OPTIMIZATIONS``).
 
 The point being demonstrated: **a model can carry the tt-metal change it needs, in its
-own distribution bundle, without that change having to land upstream first.** All three
+own distribution bundle, without that change having to land upstream first.** All five
 travel with the bundle, apply at import time in the serving process, and are inert
 everywhere else.
 
@@ -216,6 +222,12 @@ from models.tt_transformers.tt.model_config import ModelArgs
 #: so this is the mechanism upstream uses, not a trick played on it. Outside a vLLM process
 #: the name is an ordinary unconfigured logger and behaves exactly as before.
 logger = logging.getLogger(f"vllm.{__name__}")
+
+#: Adapter revision, bumped on every behavioural change so a serve log (and a bundle diff)
+#: says which adapter it ran. 1.0.0 = find_grid + cache fingerprint + precision default
+#: (the 2026-09-15 bundles); 1.1.0 = adds Patch 3 (prefill-bucket clamp) and Patch 4
+#: (single-chip mesh descriptor for data-parallel ranks).
+ADAPTER_VERSION = "1.1.0"
 
 #: Set once the patch is installed, holding the original unbound method so the
 #: installation is reversible and detectably idempotent.
@@ -577,15 +589,227 @@ def _patch_weight_cache_path():
     )
 
 
+# ---------------------------------------------------------------------------
+# Patch 4 -- give a single-chip process on a multi-chip board its mesh descriptor.
+#
+# THE PROBLEM
+# On a TT-QuietBox 2 (two dual-chip p300c cards), a process that can see exactly ONE chip
+# of a p300 board is a cluster shape tt-metal has no built-in descriptor for, and the
+# first device open dies with
+#
+#     TT_FATAL @ tt_cluster.cpp:281: is_custom_fabric_mesh_graph_desc_path_specified()
+#     "Custom fabric mesh graph descriptor path must be specified for CUSTOM cluster type"
+#
+# For the ordinary 1-chip bundle the manifest env already points TT_MESH_GRAPH_DESC_PATH at
+# the bundled ``mesh-1x1.textproto``. That cannot work for vLLM **data parallelism**
+# (``--data_parallel_size N``), where one serve spans several chips as N independent
+# 1-chip replicas: the API server first opens the WHOLE visible system mesh to discover the
+# device groups (a 1x1 descriptor there fails with "Requested mesh shape [1, N] requires N
+# devices, but only 1 ... in the system mesh"), and only then does the plugin bind each
+# worker's ``TT_VISIBLE_DEVICES`` to its own chip (``vllm_tt_plugin/worker.py:
+# _bind_visible_devices_env``). So the right descriptor is different in different processes
+# of the same serve, and no single env value set in ``run.sh`` is right for both.
+#
+# THE FIX
+# This module is imported by every process that builds the model -- including each DP
+# worker, AFTER the plugin has narrowed its ``TT_VISIBLE_DEVICES`` and BEFORE it opens its
+# mesh (verified in the serve log order: "Bound TT_VISIBLE_DEVICES=1 for local DP rank 0",
+# then this module's import, then "Attempting to open mesh device with grid shape (1, 1)").
+# At import, if the process sees exactly one device and nobody set a descriptor, point
+# TT_MESH_GRAPH_DESC_PATH at the ``mesh-1x1.textproto`` shipped next to this file. The API
+# server (which sees all N chips) is left alone, so discovery still sees the full mesh.
+#
+# SCOPE AND SAFETY
+# * Never overrides an operator- or manifest-set TT_MESH_GRAPH_DESC_PATH.
+# * Only fires for exactly one visible device, and only if the bundled file exists.
+# * The descriptor is byte-for-byte tt-metal's own p150 one (1x1, no fabric links), i.e.
+#   the built-in answer on a real P150 -- so setting it where it was not needed is inert.
+# * Measured 2026-09-27: tt-tnt ``--data_parallel_size 2`` on one p300c and tt-tnt-1024
+#   ``--data_parallel_size 4`` across both cards came up and served only with this in place.
+# ---------------------------------------------------------------------------
+
+#: The bundled single-chip descriptor (``train/configs/mesh/mesh-1x1.textproto`` in the repo).
+MESH_1X1_NAME = "mesh-1x1.textproto"
+
+
+def _single_chip_mesh_descriptor(environ=os.environ, here=None):
+    """Set TT_MESH_GRAPH_DESC_PATH for a one-chip process if unset. Returns what was set."""
+    if environ.get("TT_MESH_GRAPH_DESC_PATH"):
+        return None
+    visible = [d for d in environ.get("TT_VISIBLE_DEVICES", "").split(",") if d.strip()]
+    if len(visible) != 1:
+        return None
+    path = Path(here or Path(__file__).resolve().parent) / MESH_1X1_NAME
+    if not path.is_file():
+        return None
+    environ["TT_MESH_GRAPH_DESC_PATH"] = str(path)
+    logger.info(
+        "tt-tnt: this process sees one chip (%s) and no mesh descriptor was set; using the "
+        "bundled %s (Patch 4 -- needed for data-parallel ranks on a p300 board).",
+        visible[0],
+        MESH_1X1_NAME,
+    )
+    return str(path)
+
+
+# ---------------------------------------------------------------------------
+# Patch 3 -- never pad a prefill past the model's own context.
+#
+# THE BUG
+# ``models/tt_transformers/tt/common.py:get_padded_prefill_len`` rounds every prompt up to
+# a fixed ladder of buckets -- 128, then straight to 1024, then powers of two -- with no
+# knowledge of the model it is padding for:
+#
+#     if seq_len <= 128:  return 128
+#     if seq_len <= 1024: return 1024
+#
+# ``generator.py:prefill_forward_text`` calls it once per user and hands the padded length
+# to the model, whose RoPE tables are only ``max_seq_len`` long. For a model whose context
+# is shorter than a bucket, the padding alone overruns them and ``model.py:389`` asserts:
+#
+#     AssertionError: Sequence length 1024 exceeds max seq len 512
+#
+# That is exactly tt-tnt-1024 (max_seq_len 512): every prompt of 129-512 tokens -- all of
+# them legal, vLLM accepted them -- was padded to 1024 and killed the EngineCore, taking
+# every in-flight request down with it (HTTP 500 for all users, server exits). Measured
+# 2026-09-27: the random-dataset benchmark tripped it with one 130-token prompt, and a
+# single ~200-token prompt reproduced it on a fresh server. The usable prompt length was
+# therefore 128, not 512, and one long prompt was a denial of service.
+#
+# THE FIX
+# Clamp the bucket to the model's own ``max_seq_len`` whenever the *unpadded* prompt fits
+# in it. A 200-token prompt on a 512-context model is padded to 512 instead of 1024; a
+# prompt that already fits in a bucket <= max_seq_len is untouched, so tt-tnt (2048
+# context: buckets 128 / 1024 / 2048 all fit) gets byte-identical behaviour. A prompt
+# *longer* than ``max_seq_len`` is deliberately left alone: vLLM's own ``max_model_len``
+# check rejects it with HTTP 400 before it ever reaches here, and if something upstream
+# ever lets one through, stock tt-metal's assert is the right failure -- we must never pad
+# a prompt DOWN, which would silently truncate it.
+#
+# WHY HERE, AND WHY THIS SHAPE
+# * The function is looked up as a module global of ``generator.py`` at call time, so
+#   rebinding that one name reroutes the vLLM prefill path and nothing else (the
+#   multimodal module's own import is untouched -- this model is text-only).
+# * The cap is ``max_seq_len`` as vLLM passes it to ``initialize_vllm_model`` -- i.e.
+#   ``max_model_len`` -- which is exactly the length the RoPE tables and the per-user page
+#   table are sized for. One process serves one model, so a module-level cap is enough;
+#   it is set before the first prefill (warmup included) can run.
+# * A clamped length that is not a whole number of 32-row tiles would be a new failure,
+#   so the cap is only installed when ``max_seq_len`` is tile-aligned (512 and 2048 are);
+#   otherwise we decline loudly and stock behaviour stands.
+# * The clamped length is NOT in ``trace_prefill_supported_seq_lens`` ([128, 1024] on
+#   Blackhole), so ``ModelArgs.can_enable_trace`` returns False for it and that prefill
+#   runs eagerly. That is the stock path for any untraced length, not something new.
+#
+# Like the other two patches this is a shim: upstream's bucket ladder should take
+# ``max_seq_len`` into account (tenstorrent/tt-metal#34117 is the TODO on that function).
+# ---------------------------------------------------------------------------
+
+#: The original ``generator.get_padded_prefill_len``, held so the patch is reversible.
+_ORIGINAL_GET_PADDED_PREFILL_LEN = None
+
+#: The module whose global we rebound, held so ``restore_patches`` can put it back.
+_PATCHED_GENERATOR_MODULE = None
+
+#: The model's context length, i.e. the largest bucket a prompt may be padded to. ``None``
+#: until ``LlamaForCausalLM.initialize_vllm_model`` records it; while ``None`` the patched
+#: function behaves exactly like the original.
+_PREFILL_CAP = None
+
+#: Tile height in ttnn. A prefill length must be a whole number of tiles.
+_TILE = 32
+
+
+def _capped_padded_prefill_len(seq_len):
+    """``get_padded_prefill_len``, but never past the model's own context.
+
+    Only a bucket that would overshoot ``_PREFILL_CAP`` while the prompt itself fits is
+    changed; every other case returns exactly what stock tt-metal returns.
+    """
+    padded = _ORIGINAL_GET_PADDED_PREFILL_LEN(seq_len)
+    cap = _PREFILL_CAP
+    if cap is not None and padded > cap and seq_len <= cap:
+        _warn_once(
+            "tt-tnt: capping prefill padding at the model's max_seq_len (%d); stock "
+            "tt-metal would have padded this prompt to %d and asserted "
+            "(Patch 3 in tt_tnt_adapter.py). Logged once per serve.",
+            cap,
+            padded,
+        )
+        return cap
+    return padded
+
+
+def _patch_prefill_bucket():
+    """Install the bucket clamp on ``generator.py``. Idempotent; declines loudly."""
+    global _ORIGINAL_GET_PADDED_PREFILL_LEN, _PATCHED_GENERATOR_MODULE
+    if _ORIGINAL_GET_PADDED_PREFILL_LEN is not None:
+        return
+    try:
+        from models.tt_transformers.tt import generator as _generator
+    except ImportError as exc:
+        logger.warning(
+            "tt-tnt: could not import models.tt_transformers.tt.generator (%r); the "
+            "prefill-bucket clamp is NOT installed -- a prompt longer than 128 tokens on a "
+            "model whose context is under 1024 will crash the engine.",
+            exc,
+        )
+        return
+    original = getattr(_generator, "get_padded_prefill_len", None)
+    if not callable(original):
+        logger.warning(
+            "tt-tnt: generator.get_padded_prefill_len is missing (%r); tt_transformers has "
+            "moved and the prefill-bucket clamp is NOT installed.",
+            original,
+        )
+        return
+    _ORIGINAL_GET_PADDED_PREFILL_LEN = original
+    _PATCHED_GENERATOR_MODULE = _generator
+    _generator.get_padded_prefill_len = _capped_padded_prefill_len
+    logger.info("tt-tnt: installed the prefill-bucket clamp (buckets never exceed max_seq_len).")
+
+
+def set_prefill_cap(max_seq_len):
+    """Record the model's context as the prefill-bucket ceiling; return the cap in force.
+
+    Called from ``LlamaForCausalLM.initialize_vllm_model``. Declines (leaving stock
+    behaviour, and saying so) when the length is not a positive multiple of the tile height,
+    because a clamped bucket must itself be a legal prefill length.
+    """
+    global _PREFILL_CAP
+    try:
+        cap = int(max_seq_len)
+    except (TypeError, ValueError):
+        cap = None
+    if cap is None or cap <= 0 or cap % _TILE:
+        logger.warning(
+            "tt-tnt: max_seq_len=%r is not a positive multiple of %d; the prefill-bucket "
+            "clamp is disabled for this serve.",
+            max_seq_len,
+            _TILE,
+        )
+        _PREFILL_CAP = None
+        return None
+    _PREFILL_CAP = cap
+    logger.info("tt-tnt: prefill buckets capped at max_seq_len=%d.", cap)
+    return cap
+
+
 def restore_patches():
     """Undo the patches. Provided so a host can leave the process as it found it."""
     global _ORIGINAL_FIND_GRID, _ORIGINAL_WEIGHT_CACHE_PATH
+    global _ORIGINAL_GET_PADDED_PREFILL_LEN, _PATCHED_GENERATOR_MODULE, _PREFILL_CAP
     if _ORIGINAL_FIND_GRID is not None:
         ModelArgs.find_grid = _ORIGINAL_FIND_GRID
         _ORIGINAL_FIND_GRID = None
     if _ORIGINAL_WEIGHT_CACHE_PATH is not None:
         ModelArgs.weight_cache_path = _ORIGINAL_WEIGHT_CACHE_PATH
         _ORIGINAL_WEIGHT_CACHE_PATH = None
+    if _ORIGINAL_GET_PADDED_PREFILL_LEN is not None:
+        _PATCHED_GENERATOR_MODULE.get_padded_prefill_len = _ORIGINAL_GET_PADDED_PREFILL_LEN
+        _ORIGINAL_GET_PADDED_PREFILL_LEN = None
+        _PATCHED_GENERATOR_MODULE = None
+    _PREFILL_CAP = None
 
 
 # Applied at import time: the plugin imports this module to resolve ``main_class``, which
@@ -648,8 +872,10 @@ def _check_plugin_freshness():
     )
 
 
+_single_chip_mesh_descriptor()
 _patch_find_grid()
 _patch_weight_cache_path()
+_patch_prefill_bucket()
 _check_plugin_freshness()
 
 from models.tt_transformers.tt.generator_vllm import (  # noqa: E402
@@ -754,6 +980,9 @@ class LlamaForCausalLM(_StockLlamaForCausalLM):
                 "which serves MLP w1/w3 at BFLOAT4_B -- too coarse for a 384-dim model).",
                 optimizations,
             )
+        # Patch 3's ceiling: the context vLLM is serving (max_model_len). Recorded before
+        # super() builds the generator, so even the warmup prefills see it.
+        set_prefill_cap(max_seq_len)
         return super().initialize_vllm_model(
             hf_config,
             mesh_device,
@@ -772,4 +1001,7 @@ __all__ = [
     "source_fingerprint",
     "fingerprinting_enabled",
     "CACHE_STAMP_NAME",
+    "ADAPTER_VERSION",
+    "set_prefill_cap",
+    "MESH_1X1_NAME",
 ]
