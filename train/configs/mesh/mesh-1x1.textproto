@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
+#
+# Mesh graph descriptor for a single-chip [1, 1] vLLM serve of tt-tnt (384-dim, 3 KV heads),
+# shipped in the episod/tt-tnt bundle and pointed at by its manifest env
+# (TT_MESH_GRAPH_DESC_PATH=$HERE/mesh-1x1.textproto).
+#
+# WHY A 1-CHIP MODEL NEEDS ONE AT ALL. On a real P150 card UMD sees one chip and picks the
+# P150 cluster type, which has a built-in descriptor. On a TT-QuietBox 2 (two dual-chip p300
+# cards) a gozer lease narrows TT_VISIBLE_DEVICES to one chip of a p300c, and UMD then reports
+#
+#   TT_FATAL @ tt_cluster.cpp:281: is_custom_fabric_mesh_graph_desc_path_specified()
+#   "Using CUSTOM cluster type for P300 board with 1 chips"
+#
+# -- a p300 board with one visible chip is not a cluster type tt-metal knows, so it insists on
+# an explicit descriptor. This file is the answer to that question: one Blackhole chip, a 1x1
+# mesh, no fabric links. Measured 2026-09-27 (docs: scratchpad BENCH for episod/tt-tnt): with it
+# the server opens a (1,1) mesh and serves; without it the serve dies at mesh open.
+#
+# CONTENT. Byte-for-byte the mesh/instantiation blocks of tt-metal 0.77.0's own
+# tt_metal/fabric/mesh_graph_descriptors/p150_mesh_graph_descriptor.textproto (only this header
+# is added). The bundle ships its own copy rather than pointing into the venv because the venv
+# path is install-specific and a manifest env value must be expressible relative to $HERE.
+#
+# The companion half of the fix is the chip pin in the same manifest env
+# (TT_VISIBLE_DEVICES = first device of the lease): without it a 1-chip lease on a p300c still
+# exports BOTH chips of the board, the plugin resizes MESH_DEVICE=P150 to (1, 2), and the model
+# asserts "n_kv_heads must be divisible by num_devices" (3 KV heads cannot shard over 2 chips).
+
+mesh_descriptors {
+  name: "M0"
+  arch: BLACKHOLE
+  device_topology { dims: [ 1, 1 ] }
+  host_topology   { dims: [ 1, 1 ] }
+  channels { count: 1 policy: RELAXED }
+}
+
+top_level_instance { mesh { mesh_descriptor: "M0" mesh_id: 0 } }

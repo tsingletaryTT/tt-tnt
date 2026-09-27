@@ -3769,3 +3769,79 @@ other) are in `docs/current_model.json` itself.
 
 Nothing published yet as of this entry; publication (HF Hub, tt-model-manager, README/model
 card updates) is the immediate next step, tracked in the same commit sequence.
+
+## 2026-09-27 — Serving tune: the chat template was never the trained format, and three start/crash fixes
+
+**Prompt (orchestrator, after PR #2 merged).** Improve serving for both published bundles:
+(1) a chat template that reproduces the training format byte-for-byte, proven by diffing
+against the pipeline; (2) stop tt-tnt-1024 dying on prompts over 128 tokens, and set
+`max_model_len` so over-length requests get a 400; (3) tune `max_num_seqs` (try 64/128);
+(4) make the 1-chip tt-tnt bundle start under a normal `gozer run --chips 1`. Branch
+`feat/serving-chat-and-context`; no merge, no HF push. Numbers:
+`docs/measurements/serving-tune-2026-09-27.md`.
+
+**The chat template finding is the headline.** The pipeline encodes the corpus one LINE at a
+time, so newlines are never tokens (zero of the 8 newline-bearing vocab tokens in 705M
+training tokens across tokens-v3 and tokens-v4), and `add_prefix_space` gives every line a
+leading space. The only Q/A data Stage B ever saw is the dolly slice, rendered
+`Question: …\n\nAnswer: …\n</s>` -- in token space `" Question: … Answer: …" + [2]`. The
+shipped template rendered `Q: …\nAnswer:`, which tokenizes as `ĠQ : … Ċ An s wer :`, a
+sequence that occurs **zero** times in tokens-v4. It was the correct template for the
+tool-calling SFT checkpoint (SFT encodes whole strings, newline included) and got carried onto
+every pretraining checkpoint since. New `convert/chat_templates.py`: `dolly_qa` for
+tt-tnt-1024, `plain` (no roles; one running text) for tt-tnt, whose tokens-v3 has no dialogue
+data at all (10 incidental " Question:" in 352.7M tokens), `tool_call_sft` kept for the SFT
+path. Proof (`scripts/verify_chat_templates.py`, `docs/measurements/chat-template-proof.json`):
+15,006/15,006 consecutive dolly document pairs and 19,167/19,167 TinyStories stories render to
+the pipeline's own ids, and a rendered 3-turn conversation occurs verbatim at offset 0 of
+tokens-v4 (dialogue sorts first in the blend). The old template matched 0. Cost of the old
+one, measured on CPU: 30 fresh questions end with `</s>` 77% of the time under dolly_qa vs 7%
+under the old template, and the old prompt costs 0.41 nats/token of answer likelihood (paired,
+300 docs, t = 14.9). The first full-corpus run caught 59 real mismatches -- a bare `rstrip()`
+in the template ate U+202F/U+00A0 that `normalise` keeps (it strips only `[ \t]`); fixed, and a
+fixture now pins it (mutation-checked). `publish_to_hub.py` refuses to upload an artifact whose
+template is not its target's measured format.
+
+**Prefill crash (tt-tnt-1024).** `get_padded_prefill_len` jumps 128 -> 1024 regardless of the
+model, and 1024 > max_seq_len 512 asserts inside the EngineCore. Adapter Patch 3 rebinds that
+name in `generator.py` to clamp the bucket to `max_seq_len` when the prompt fits (never pads a
+prompt down). Plus explicit `--max-model-len` (2048 / 512) so vLLM 400s over-length requests.
+Verified on hardware: 513-token prompt -> 400, server alive; 384- and 496-token prompts serve.
+
+**1-chip start (tt-tnt).** Two failures with one cause: a p300 board with one visible chip is a
+CUSTOM cluster (needs a descriptor), and gozer's 1-chip grant exports both chips of the board
+(-> plugin mesh (1,2) -> kv=3 assert). Bundle now ships `mesh-1x1.textproto` and pins
+`TT_VISIBLE_DEVICES` to the first device of the lease in the manifest env; served under a plain
+`gozer run --chips 1` on both boards.
+
+**Batch size: stays 32, and the reason is structural.** tt_transformers 0.77 rejects any
+per-instance batch above 32. The only route past it is vLLM data parallelism, which first
+needed Patch 4 (a DP worker sees one chip and needs the 1x1 descriptor, but the API server's
+discovery must see the whole mesh, so no run.sh env value works for both; the adapter sets it
+per process). DP then lost on the criterion for both models (DP replicas decode ~2-3x slower
+per sequence than the model alone): tt-tnt DP2 7.5k vs 11.9k tok/s at c32; tt-tnt-1024 DP4 3.7k
+vs 7.8k at c32, +13% c1 TPOT, winning only at c128.
+
+**Instrument lesson, again.** The first sweep reported tt-tnt c32 = 2,239 tok/s and tt-tnt-1024
+ISL-384 TPOT = 8.8 ms. Both were one-time compiles inside a 7 s run; warm, they are 11,926 tok/s
+and 2.87 ms. Every final row is now the second of two identical runs.
+
+**4-chip quality.** Greedy TP4 vs TP1 vs CPU fp32 on 10 prompts: similar drift from CPU (17.4 vs
+15.1 matching tokens), fluent English on both, no invented non-words. The documented 4-chip
+regression did not reproduce on Stage B weights; 10 prompts cannot rule it out.
+
+**Hardware hygiene.** Full offline suite run with `ttnn`/`ttml` shadowed by raising stubs
+(`import ttml` opens the device, and this python can import both) -- 9 pre-existing PRNG tests
+error on the stub, as they import ttnn; everything else passes. Versions: project 0.2.0,
+adapter 1.1.0.
+
+### 2026-09-27 — the v6 packaging recipe is checked in (PR #3 review)
+Review on PR #3 found that the repo alone could not produce a working 1-chip bundle: the
+descriptor lived under train/configs/mesh/ with no rule copying it next to the adapter, and
+the env wiring (TT_MESH_GRAPH_DESC_PATH, narrowing TT_VISIBLE_DEVICES to the first leased
+chip) existed only in a scratch staging script. Added `packaging/package-thin.sh` (both
+bundles, stage-only) and `packaging/requirements.txt`, and `tests/test_packaging_recipe.py`,
+which runs the real script with a stub tt-model and checks the staged layout and the exported
+env (it goes red with the copy or the pin removed). Staging tt-tnt with the fixed tt-model
+reproduces the hardware-verified bundle exactly (run.sh identical; manifest identical but for
+its timestamp). `manifests/` gets a README marking the v5 manifests as legacy.

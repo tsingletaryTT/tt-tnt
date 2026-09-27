@@ -40,47 +40,14 @@ _BOS_TOKEN_ID = 1
 _EOS_TOKEN_ID = 2
 _PAD_TOKEN_ID = 3
 
-#: Conservative cap on how many trailing chat messages the shipped chat template renders,
-#: regardless of how much history a client sends. Motivated by a real, reproduced serving
-#: defect (docs/upstream-tt-metal-asks.md entry 6): a generic tt-metal/vLLM KV-cache bug --
-#: confirmed on stock meta-llama/Llama-3.2-1B-Instruct too, so it is not specific to this
-#: project's model -- crashes the whole engine on a growing multi-turn conversation well
-#: before the rendered prompt approaches the model's own declared context. Reproduced
-#: directly: 5 trailing messages (2 completed exchanges + 1 new turn, ~106 tokens on a
-#: 512-token model) served successfully; 7 messages crashed. This constant is deliberately
-#: set BELOW that observed failure point, not merely "some finite number" -- raising it
-#: without re-verifying against the current serving stack would silently reopen the crash.
-#: A raised context (config["max_position_embeddings"]) makes the crash boundary itself much
-#: harder to reach, but this backstop stays in place regardless: it costs nothing on an
-#: ordinary short exchange and protects any future context size the same way.
-MAX_CHAT_TEMPLATE_MESSAGES = 5
-
-#: Jinja2 chat template shipped in tokenizer_config.json's ``chat_template`` field, so every
-#: server that loads this tokenizer renders chat requests through the SAME windowing guard
-#: without needing a `--chat-template` CLI flag pointed at some external file. ``messages``
-#: is sliced to the last MAX_CHAT_TEMPLATE_MESSAGES entries before rendering -- this is not
-#: a token-accurate truncation, but it is a hard ceiling on how much history the model ever
-#: has to process per request, which is the actual quantity the crash this guards against is
-#: sensitive to.
-#:
-#: IT RENDERS ``Q:``/``Answer:``, NOT ``user:``/``assistant:``, AND THAT IS LOAD-BEARING.
-#: Every question-answering thing this model has ever been trained on uses the Q/Answer
-#: convention: the dialogue slice writes ``Question: ... Answer: ...``
-#: (``artifacts/corpus/dialogue.txt``), and ``train.tool_calling.build_training_text`` renders
-#: ``Q: {question}\nAnswer:{tool_call}``. The first version of this template emitted
-#: ``user: ...\nassistant:``, a prompt shape NO checkpoint in this project has ever seen, and
-#: the cost was measured rather than guessed: the tool-calling checkpoint emits a well-formed
-#: tool call in 100% of raw completions at ``Q:``/``Answer:`` and **0%** through
-#: ``/v1/chat/completions`` under the ``user:``/``assistant:`` template. Same weights, same
-#: server, same request -- only the rendered prompt differed. A chat template is not
-#: cosmetic; it is the interface between what a client sends and what the model was trained
-#: to continue, and a mismatched one silently costs the capability entirely.
-_CHAT_TEMPLATE = (
-    "{% set messages = messages[-" + str(MAX_CHAT_TEMPLATE_MESSAGES) + ":] %}"
-    "{% for message in messages %}"
-    "{% if message['role'] == 'user' %}Q: {{ message['content'] }}\nAnswer:"
-    "{% else %} {{ message['content'] }}\n{% endif %}"
-    "{% endfor %}"
+#: The chat templates and their window cap live in ``convert/chat_templates.py`` -- one
+#: template per training format actually used, each proven against the training pipeline's
+#: own token ids (tests/test_chat_templates.py). Re-exported here because callers and tests
+#: have always imported ``MAX_CHAT_TEMPLATE_MESSAGES`` from this module.
+from convert.chat_templates import (  # noqa: E402
+    MAX_CHAT_TEMPLATE_MESSAGES,
+    infer_chat_format,
+    template_for,
 )
 
 
@@ -191,8 +158,17 @@ def build_config(
     return config
 
 
-def convert_checkpoint(ckpt: Path, tokenizer_dir: Path, out_dir: Path) -> Dict[str, Any]:
-    """Write a loadable HF model directory. Returns the config that was written."""
+def convert_checkpoint(
+    ckpt: Path, tokenizer_dir: Path, out_dir: Path, chat_format: Optional[str] = None
+) -> Dict[str, Any]:
+    """Write a loadable HF model directory. Returns the config that was written.
+
+    ``chat_format`` names the chat template to ship (see ``convert/chat_templates.py``).
+    ``None`` infers it from the checkpoint header's training corpus
+    (:func:`convert.chat_templates.infer_chat_format`); a corpus whose format has not been
+    measured gets NO template, so the server answers chat requests with an honest HTTP 400
+    instead of a prompt shape the model never saw.
+    """
     from safetensors.numpy import save_file
 
     ckpt, tokenizer_dir, out_dir = Path(ckpt), Path(tokenizer_dir), Path(out_dir)
@@ -367,12 +343,14 @@ def convert_checkpoint(ckpt: Path, tokenizer_dir: Path, out_dir: Path) -> Dict[s
     # separate artifact published on its own schedule; patching it here (post-copy, in the HF
     # output directory only) fixes what `transformers` reports for this specific model
     # directory without touching that other artifact or invalidating its own tests.
-    apply_tokenizer_fixups(out_dir)
+    if chat_format is None:
+        chat_format = infer_chat_format(header)
+    apply_tokenizer_fixups(out_dir, chat_format)
 
     return config
 
 
-def apply_tokenizer_fixups(out_dir: Path) -> None:
+def apply_tokenizer_fixups(out_dir: Path, chat_format: Optional[str]) -> None:
     """Correct ``tokenizer_class`` and install the chat template, in an HF output directory.
 
     Extracted so EVERY conversion path applies it, not just this module's. There are two
@@ -394,7 +372,10 @@ def apply_tokenizer_fixups(out_dir: Path) -> None:
       quirk), while the tokenizer actually loads back as ``PreTrainedTokenizerFast``.
     * ``chat_template``: without it ``transformers`` v4.44+ refuses to render chat requests
       at all; with the WRONG one it renders a prompt shape the model was never trained on,
-      which silently costs the capability rather than erroring (see :data:`_CHAT_TEMPLATE`).
+      which silently costs the capability rather than erroring. ``chat_format`` is REQUIRED
+      (no default) precisely so every caller has to say which training format its checkpoint
+      saw -- see ``convert/chat_templates.py``. ``None`` means "no known format": any
+      template already present is REMOVED rather than left to describe some other model.
     """
     tok_config_dst = Path(out_dir) / "tokenizer_config.json"
     if not tok_config_dst.is_file():
@@ -402,5 +383,8 @@ def apply_tokenizer_fixups(out_dir: Path) -> None:
     tok_config = json.loads(tok_config_dst.read_text(encoding="utf-8"))
     if tok_config.get("tokenizer_class") == "PreTrainedTokenizer":
         tok_config["tokenizer_class"] = "PreTrainedTokenizerFast"
-    tok_config["chat_template"] = _CHAT_TEMPLATE
+    if chat_format is None:
+        tok_config.pop("chat_template", None)
+    else:
+        tok_config["chat_template"] = template_for(chat_format)
     tok_config_dst.write_text(json.dumps(tok_config, indent=2) + "\n", encoding="utf-8")

@@ -155,6 +155,9 @@ TARGETS = {
         # that would go stale the day visibility legitimately changes again.
         "expected_private": False,
         "manifest": ROOT / "manifests" / "tt_kernel_manifest-384.json",
+        # tokens-v3 has no dialogue slice: the only honest template is plain continuation
+        # (convert/chat_templates.py). Checked before upload, like the context length.
+        "chat_format": "plain",
         "note": "tt-tnt-v3, 384-dim at a 2048 context. The protected baseline.",
     },
     "episod/tt-tnt-1024": {
@@ -177,6 +180,10 @@ TARGETS = {
         "expected_private": False,
         "card": ROOT / "docs" / "model-card-1024.md",
         "manifest": ROOT / "manifests" / "tt_kernel_manifest-1024.json",
+        # Stage B trained on tokens-v4, whose only Q/A data is the dolly slice rendered
+        # `Question: ... Answer: ...` (convert/chat_templates.py, proven token-for-token by
+        # scripts/verify_chat_templates.py). NOT the old `Q: ...\nAnswer:` template.
+        "chat_format": "dolly_qa",
         "note": (
             "tt-tnt-1024, raised to a 2048-token context (from 512) to push the "
             "growing-conversation KV-cache crash (docs/upstream-tt-metal-asks.md "
@@ -261,6 +268,24 @@ def _assert_local_artifact_is_publishable(hf_dir=None, expected=None) -> None:
             f"under the same repo id. Point HF_DIR at the right artifact, or update "
             f"EXPECTED_MAX_POSITION_EMBEDDINGS if the published context really is changing."
         )
+
+    # The chat template is part of what a serving stack gets silently wrong: an artifact
+    # converted before convert/chat_templates.py existed carries either no template (chat
+    # completions -> HTTP 400) or the old `Q:\nAnswer:` one (a prompt shape pretraining never
+    # produced). Refuse to upload anything but the target's measured format.
+    chat_format = None if expected is None else expected.get("chat_format")
+    if chat_format is not None:
+        from convert.chat_templates import template_for
+
+        tok_cfg_path = hf_dir / "tokenizer_config.json"
+        tok_cfg = json.loads(tok_cfg_path.read_text()) if tok_cfg_path.is_file() else {}
+        if tok_cfg.get("chat_template") != template_for(chat_format):
+            raise ValueError(
+                f"{tok_cfg_path} does not carry the {chat_format!r} chat template this target "
+                f"ships. Refusing to upload. Regenerate it with "
+                f"`python scripts/write_tokenizer_config.py --chat-format {chat_format} "
+                f"--src {tok_cfg_path} --out {tok_cfg_path}`."
+            )
 
 
 def _print_upload_plan(repo_id: str) -> int:

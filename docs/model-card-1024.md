@@ -76,6 +76,20 @@ those sections as history about this model's lineage, not as claims about the we
 currently published. The chat-template/context-crash-guard section immediately below still
 describes the current weights (the guard is unchanged by Stage A/B).
 
+**The chat template (2026-09-27).** `/v1/chat/completions` renders each exchange as the
+exact token sequence of a databricks-dolly-15k document in the pretraining corpus —
+`Question: {question} Answer: {answer}</s>` — with no newline tokens, because the training
+pipeline encoded the corpus line by line and never produced one. Proven, not assumed:
+15,006 of 15,006 consecutive dolly document pairs render to the pipeline's own ids, and a
+rendered three-turn conversation occurs verbatim in `artifacts/tokens-v4/train_ids.npy`
+(`docs/measurements/chat-template-proof.json`, `scripts/verify_chat_templates.py`). It replaced
+a `Q: …\nAnswer:` template that was right for the separate tool-calling SFT checkpoint and
+wrong for these weights: on CPU, the same 30 fresh questions end cleanly with `</s>` 77% of the
+time under the new template versus 7% under the old one, and the old prompt costs 0.41
+nats/token of answer likelihood (paired over 300 dolly documents, t = 14.9). System messages
+are dropped (the corpus has no slot for them); reference text goes in the user message after
+a blank line, where dolly's `context` field sat.
+
 **The chat template guard (2026-08-29, still current):** baked into `tokenizer_config.json`,
 capping rendered conversation history at the last 5 messages. That guard is what makes
 multi-turn chat safe here: a growing conversation otherwise crashes the vLLM engine outright,
@@ -114,7 +128,7 @@ five-slot think-blocks in **98%** of generations where a control arm emits none.
 | vLLM serving (TT plugin) | ✅ | OpenAI-compatible |
 | `tt-model` packaging | ✅ v4 / ⏳ v5 | v5 needs wheels assembled |
 | CPU-portable HF export | ✅ | runs without Tenstorrent hardware |
-| Chat template | ✅ | ships in `tokenizer_config.json`; renders `Q:`/`Answer:`, caps history at 5 messages |
+| Chat template | ✅ | ships in `tokenizer_config.json`; renders the dolly `Question: … Answer: …</s>` format these weights were pretrained on (token-for-token, `docs/measurements/chat-template-proof.json`), caps history at 5 messages |
 | Tool calling | ⚠️ separate checkpoint | *these* weights emit none; a continued-training run reaches 100% emission / 75% schema-valid — see below |
 | Skits (multi-turn improv) | ✅ | five-turn scenes, real two-voice dialogue |
 | Reach dial (controllable surprise) | ⚠️ measured, small | +0.060 residualised; plateaus; see below |
