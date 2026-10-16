@@ -3845,3 +3845,56 @@ which runs the real script with a stub tt-model and checks the staged layout and
 env (it goes red with the copy or the pin removed). Staging tt-tnt with the fixed tt-model
 reproduces the hardware-verified bundle exactly (run.sh identical; manifest identical but for
 its timestamp). `manifests/` gets a README marking the v5 manifests as legacy.
+
+## 2026-10-16 — repackage both v6 bundles to the canonical thin shape
+
+**Prompt (orchestrator).** Bring `packaging/package-thin.sh` in line with tt-model-manager PR
+#183 (`docs/E2E_RECIPE_V6.md`, the `tt-model-thin-package` skill). Stage only, no hardware, no
+push. Branch `feat/v6-canonical-shape`. Project version 0.2.0 to 0.3.0. The adapter is
+unchanged, so `ADAPTER_VERSION` stays 1.1.0.
+
+**What changed.**
+- The vendored `tt-tnt-models-closure` wheel is no longer a pinned requirement. The recipe
+  unpacks its `models/` tree (159 files, byte for byte) into `extra_code/` and ships it with
+  `--extra-code`. The import path stays `models.*`, so the adapter needs no edit. The wheel is
+  still the source, held outside git and checked against a pinned sha256.
+- `packaging/constraints.txt` is new: the `uv pip freeze` of the hardware-verified venv, minus
+  the path-installed wheels. `packaging/requirements.txt` drops `transformers` (vLLM's step
+  installs it, and the constraints pin 5.5.3), keeps `ttnn==0.77.0`, `torchvision`, `pytest`.
+- `packaging/vllm-common-0.25.1.txt` is a pinned copy of vLLM's `common.txt`
+  (`--vllm-common-requirements`), so install no longer downloads a mutable file.
+- Three `--verify` guards fail the install: stock ttnn 0.77.0 (read from metadata, no import),
+  model code present and `models` resolving only to `extra_code/`, and the old closure wheel
+  absent. `--provenance`, `--python 3.12.12` (the interpreter the bundles were verified under).
+- tt-tnt-1024's fabric now goes in with `--mesh-fabric FABRIC_2D_TORUS_XY`. The old post-stage
+  manifest patch and `run.sh` re-render are gone. Staged both ways, the two `run.sh` files
+  differ only in the `PYTHONPATH` line (`extra_code` first).
+- `packaging/check_static_imports.py` proves every `models.*` import in `extra_code/` and the
+  adapter resolves, with no ttnn or torch import. Result: 159 files, 0 unresolved.
+- Kept as before: mesh descriptor copied to the bundle root, `TT_MESH_GRAPH_DESC_PATH`, and
+  `TT_VISIBLE_DEVICES` narrowed to the first leased chip for tt-tnt.
+
+**What does not fit the canonical shape, and why.**
+- No tooling-only tt-transformers wheel and no `--ops-wheel`. The code here is tt-metal
+  v0.77.0's `models/` tree, which is the Llama implementation itself. The newer
+  `tt_transformers` wheel has a different layout and targets a 0.79 ttnn. Moving to it needs
+  its own bring-up on hardware. The closure also carries lazy-import reach into gpt_oss,
+  deepseek and gemma3 demo code (it was built that way to satisfy `generator_vllm`). Trimming
+  it is a follow-up that needs a serve to confirm.
+- No custom-op wheel: the Gumbel-sampling kernels are training-side (ttml), and nothing at
+  serve time calls them.
+- No `--tool-parser` or `--reasoning-parser`. README's feature table says the published base
+  models declare neither. The hermes tool-calling checkpoint (2026-08-29 entry) was never
+  published. Publish one, and that bundle gets `--tool-parser hermes`.
+
+**Verified (no hardware).** Both bundles staged with the real `tt-model` (0.1.0); manifest,
+`run.sh` argv tokens, env, `deps.custom_ops` (empty), and PYTHONPATH inspected. `install.sh` run
+in a copy of the staged tt-tnt: exit 0, `uv pip check` clean, and the resulting `uv pip freeze`
+equals the freeze of the hardware-verified venv. All three guards run and pass in that venv.
+tt-tnt-1024 is the same wheels, requirements and constraints with a different mesh, and its
+install was not repeated. 30 recipe tests pass, and ten deliberate breakages of the recipe each
+turned at least one red.
+
+**Not verified.** Import smoke test (needs ttnn, so it opens the device path), serve on
+hardware, tool calling, a greedy-text comparison against the published bundle, and a pull of a
+published copy. Nothing was pushed.
