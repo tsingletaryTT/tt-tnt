@@ -382,6 +382,34 @@ plugin older than `c127c17` will reproduce it.
 report — what the v4 manifest schema can express, which fields are actually read, and what
 authoring a real bundle against it turned up.
 
+### The v6 thin bundles (`episod/tt-tnt`, `episod/tt-tnt-1024`)
+
+Both published bundles are v6 thin bundles. [`packaging/package-thin.sh`](packaging/package-thin.sh)
+stages either one (stage only; it never uploads):
+
+```bash
+WHEELS_DIR=~/.cache/tt-model/models/episod/tt-tnt/wheels \
+  packaging/package-thin.sh tt-tnt <weights-revision> /tmp/out
+```
+
+The bundle follows the canonical v6 shape from tt-model-manager's `docs/E2E_RECIPE_V6.md`:
+
+- **Engine:** stock `ttnn==0.77.0` from PyPI. `packaging/requirements.txt` has no index options.
+- **Pins:** `packaging/constraints.txt` pins every resolved package. It is the `uv pip freeze`
+  of the venv the published bundle served from on hardware.
+- **Model code:** tt-tnt is a stock HF Llama. The code that computes it is tt-metal v0.77.0's
+  `models/tt_transformers` and `models/common`. It ships inside the bundle in `extra_code/`,
+  at the same `models.*` import path the adapter already uses.
+- **No custom-op wheel and no parsers.** tt-tnt has no custom kernels at serve time, and the
+  published weights are base completion models.
+- **Install guards** check the ttnn version, the code under `extra_code/`, and that the old
+  `tt-tnt-models-closure` wheel is not installed.
+
+`WHEELS_DIR` holds three wheels that are too large for git (`vllm_tt_plugin`, the empty-target
+`vllm`, and `tt_tnt_models_closure`, whose `models/` tree becomes `extra_code/`). The recipe
+checks each against a pinned sha256. `tests/test_packaging_recipe.py` runs the recipe against
+stand-in wheels and a stub `tt-model`. No hardware or network is needed.
+
 ## Gradio Demo
 
 A demo covering chat/completion, tool-calling roles, known failure modes, and

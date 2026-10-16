@@ -11,8 +11,9 @@
   card agree, especially after a schema change.
 
   Currently packaged as v6 THIN (episod/tt-tnt), not v5 fat -- "self-contained" is
-  deliberately NOT in this tag list; v6 thin resolves ttnn/tt-tnt-models-closure from
-  an index at install time, so the bundle is not self-contained.
+  deliberately NOT in this tag list; v6 thin installs stock ttnn from an index at install
+  time (the model code ships inside the bundle, in extra_code/), so the bundle is not
+  self-contained.
 -->
 
 ---
